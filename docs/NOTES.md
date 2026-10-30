@@ -807,6 +807,9 @@ memory is shown even while the FEP has the display off.
   /dev/bus/usb`). The chain is the HPS (4BA00477) then the 5CSEBA6, so the
   FPGA is device 2. A load takes ~5 s against ~1 min to copy and load an
   .rbf; afterwards the script restarts MiSTer's main program, which finds the
-  core already configured, sets up video and mounts the disks. SignalTap
+  core already configured, sets up video and mounts the disks. Typed keys
+  did not reach the core after one such restart (Oct 2026), probably
+  MiSTer's menu left open (it doesn't show in screenshots); unconfirmed.
+  SignalTap
   (`quartus_stp`) works through the same cable when a bug only shows on the
   hardware.

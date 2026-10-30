@@ -21,8 +21,10 @@ with keyboard and mouse.
 ## Setup
 
 1. Copy `XL1200_*.rbf` to `_Computer` on the SD card.
-2. Copy the disk image to `games/XL1200/boot0.vhd`, or mount it from the OSD as SCSI disk 0.
-3. Load the core; the FEP prompt appears after about ten seconds.
+2. Copy the disk image to `games/XL1200/boot0.vhd`.
+3. Copy `XL1200.mgl` to `_Computer` and start the core from it; it mounts the disk
+   and the FEP prompt appears after about ten seconds. (Or load the core and mount
+   the image from the OSD as SCSI disk 0.)
 4. Type `Hello` and Return.
 5. Type `Load World FEP7:>Genera-8-3.ilod` and Return (the name `tools/fepfs.py` gives the world).
 6. Type `Start` and Return; Genera's Lisp Listener appears after about a minute and a half.

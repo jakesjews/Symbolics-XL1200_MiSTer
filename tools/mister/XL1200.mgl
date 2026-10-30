@@ -1,0 +1,4 @@
+<mistergamedescription>
+    <rbf>_Computer/XL1200</rbf>
+    <file delay="2" type="s" index="0" path="boot0.vhd"/>
+</mistergamedescription>
