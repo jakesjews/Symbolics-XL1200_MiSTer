@@ -38,3 +38,19 @@ c5_pin_model_dump.txt
 *_netlist
 *.cdf
 **/.DS_Store
+# Licensed Symbolics media (worlds, disk images); never commit
+research/media/
+# tools/world: the reference VLM build and its run files
+tools/world/linux-vlm/
+tools/world/sysroot/
+tools/world/debs/
+tools/world/run/
+tools/world/shots/
+tools/world/work/
+# Simulator and emulator build output
+sim/*/obj_*/
+emu/build/
+emu/xlemu
+__pycache__/
+# Downloaded manuals, archives and repos (third-party, large)
+research/downloads/

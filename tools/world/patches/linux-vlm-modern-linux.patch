@@ -1,0 +1,479 @@
+diff --git a/configure.ac b/configure.ac
+index 13107c9..006e38c 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -28,7 +28,7 @@ AC_CHECK_LIB([X11], [XKeysymToKeycode],[],
+ AC_CHECK_LIB([xcb], [xcb_disconnect],[:])
+ AC_CHECK_LIB([c], [fprintf],[],
+ 		    [AC_MSG_ERROR([you need libc to compile the vlm])])
+-AC_CHECK_LIB([crypt], [encrypt],[],
++AC_CHECK_LIB([crypt], [crypt],[],
+ 		    [AC_MSG_ERROR([you need libcrypt to compile the vlm])])
+ AC_CHECK_LIB([dl], [dlopen],[],
+ 		    [AC_MSG_ERROR([you need libdl to compile the vlm])])
+diff --git a/emulator/externals.c b/emulator/externals.c
+index 6240b4b..9d1c7d8 100644
+--- a/emulator/externals.c
++++ b/emulator/externals.c
+@@ -249,6 +249,20 @@ LispObj CoprocessorRead (unsigned int operand)
+ 	 valid return value.  Until the "standard" is fixed, it seems riskier to check
+ 	 for an error than to ignore it */
+       tod = time(NULL);
++      /* The stock Genera 8.5 world rejects calendar-clock years outside 1985..1999
++	 (it keeps only the year mod 100).  Shift the clock back by a whole number of
++	 28-year cycles (same weekdays and leap years within 1901..2099) so an
++	 unpatched world boots without asking for the time.  Override with
++	 VLM_CALENDAR_SHIFT_YEARS=<n> (n a multiple of 28; 0 disables). */
++      {
++	static long shiftYears = -1;
++	if (shiftYears < 0) {
++	  char *e = getenv ("VLM_CALENDAR_SHIFT_YEARS");
++	  shiftYears = e ? strtol (e, NULL, 10) : 28;
++	  if (shiftYears < 0 || shiftYears % 28) shiftYears = 28;
++	}
++	tod -= (time_t)(shiftYears / 28) * 10227L * 86400L;	/* 10227 days per 28 years */
++      }
+       ut = gmtime(&tod);
+       if (ut) {
+ 	encodedUT =   (int64_t)(ut->tm_sec & 0x3F)
+diff --git a/life-support/console.c b/life-support/console.c
+index 87e89a8..7672d95 100644
+--- a/life-support/console.c
++++ b/life-support/console.c
+@@ -180,6 +180,8 @@ void ConsoleInput (EmbConsoleChannel* consoleChannel)
+ 
+ /* Open the display */
+ 
++static void ResetConsoleInputFixup (void);
++
+ int OpenDisplay (EmbConsoleChannel* pConsoleChannel, EmbConsoleBuffer* pCommand)
+ {
+   register EmbConsoleChannel* consoleChannel = pConsoleChannel;
+@@ -204,6 +206,7 @@ int OpenDisplay (EmbConsoleChannel* pConsoleChannel, EmbConsoleBuffer* pCommand)
+ 	  {
+ 		consoleChannel->fd = XConnectionNumber ((Display*) consoleChannel->display);
+ 		consoleChannel->openingState = OpeningStatePrefix;
++		ResetConsoleInputFixup ();
+ 		openDisplay->lastRequestNumber = ((struct _XDisplay*)consoleChannel->display)->request;
+ 		result = ESUCCESS;
+ 	  }
+@@ -459,6 +462,67 @@ void AdvanceOpeningState (EmbConsoleChannel* pConsoleChannel)
+ }
+ 
+ 
++
++/* Modern X.Org servers reject a SetModifierMapping request that lists the same keycode
++   under more than one modifier (BadValue).  The stock Genera 8.5 X console code
++   (X-SCREEN::UPDATE-SERVER-MODIFIER-MAPPING) builds exactly such a request while holding a
++   server grab; the resulting error puts Genera into the debugger on the cold load stream,
++   which cannot be drawn while the server is grabbed, so the whole X server hangs.
++   We watch the server->Lisp byte stream and turn that one error into a MappingSuccess
++   reply, so Genera simply keeps the server's existing modifier map.
++   (Set VLM_NO_MODMAP_FIXUP=1 in the environment to disable.) */
++
++static unsigned char fixupHeader[32];
++static int fixupHeaderFill = 0;
++static size_t fixupBodySkip = 0;
++static int fixupDisabled = -1;
++
++static void ResetConsoleInputFixup (void)
++{
++	fixupHeaderFill = 0;
++	fixupBodySkip = 0;
++}
++
++static void FixupConsoleInput (unsigned char* data, ssize_t n)
++{
++	if (fixupDisabled < 0)
++		fixupDisabled = (getenv ("VLM_NO_MODMAP_FIXUP") != NULL);
++	while (n > 0)
++	  {
++		if (fixupBodySkip)
++		  {
++			size_t k = (fixupBodySkip < (size_t)n) ? fixupBodySkip : (size_t)n;
++			fixupBodySkip -= k; data += k; n -= k;
++			continue;
++		  }
++		{
++			int k = 32 - fixupHeaderFill;
++			int whole = (0 == fixupHeaderFill) && (n >= 32);
++			if (k > n) k = n;
++			memcpy (&fixupHeader[fixupHeaderFill], data, k);
++			fixupHeaderFill += k; data += k; n -= k;
++			if (fixupHeaderFill < 32) break;
++			fixupHeaderFill = 0;
++			if ((1 == fixupHeader[0]) || (35 == (fixupHeader[0] & 0x7F)))
++				/* Reply or GenericEvent: 32 bytes + 4*length (client byte order is LSB first) */
++				fixupBodySkip = 4 * ((size_t)fixupHeader[4] | ((size_t)fixupHeader[5] << 8) |
++						     ((size_t)fixupHeader[6] << 16) | ((size_t)fixupHeader[7] << 24));
++			else if ((0 == fixupHeader[0]) && (2 == fixupHeader[1]) && (118 == fixupHeader[10])
++				 && whole && !fixupDisabled)
++			  {
++				unsigned char* msg = data - 32;
++				unsigned char seqLo = msg[2], seqHi = msg[3];
++				memset (msg, 0, 32);
++				msg[0] = 1;			/* Reply */
++				msg[1] = 0;			/* MappingSuccess */
++				msg[2] = seqLo; msg[3] = seqHi;	/* Same sequence number, length 0 */
++				vwarn ("console", "X server rejected Genera's SetModifierMapping (BadValue); "
++				       "keeping the existing modifier map");
++			  }
++		}
++	  }
++}
++
+ /* Write data to the server */
+ 
+ int ConsoleWrite (EmbConsoleChannel* pConsoleChannel, EmbConsoleBuffer* pCommand)
+@@ -544,6 +608,8 @@ int ConsoleRead (EmbConsoleChannel* pConsoleChannel, EmbConsoleBuffer* pCommand)
+ 		if (pollDisplay.revents & POLLIN)
+ 		  {
+ 			actualBytes = read (consoleChannel->fd, data, nBytes);
++			if (actualBytes > 0)
++				FixupConsoleInput ((unsigned char*) data, actualBytes);
+ 			if (actualBytes == nBytes)
+ 				result = ESUCCESS;
+ 			else if ((0 == actualBytes) && (EWOULDBLOCK != errno))
+diff --git a/src/utilities.c b/src/utilities.c
+index 690be53..1e565ec 100644
+--- a/src/utilities.c
++++ b/src/utilities.c
+@@ -165,11 +165,11 @@ void BuildXDisplayName (char* displayName, char* hostName, int display, int scre
+ 
+ 	if (display != -1 || screen != -1)
+ 	  {
+-		sprintf (displayName, "%s:", displayName);
++		strcat (displayName, ":");
+ 		if (display != -1)
+-			sprintf (displayName, "%s%d", displayName, display);
++			sprintf (displayName + strlen (displayName), "%d", display);
+ 		if (screen != -1)
+-			sprintf (displayName, "%s.%d", displayName, screen);
++			sprintf (displayName + strlen (displayName), ".%d", screen);
+ 	  }
+ }
+ 
+diff --git a/stub/idispat.c b/stub/idispat.c
+index 06af7fb..4c3c32f 100644
+--- a/stub/idispat.c
++++ b/stub/idispat.c
+@@ -42,7 +42,7 @@ g6046:
+     goto g6049;
+ 
+ g6055:
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ memoryreaddatadecode:
+   if (_trace) printf("memoryreaddatadecode:\n");
+@@ -167,7 +167,7 @@ g6057:
+     goto g6060;
+ 
+ g6066:
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ memoryreadgeneraldecode:
+   if (_trace) printf("memoryreadgeneraldecode:\n");
+@@ -297,7 +297,7 @@ g6068:
+     goto g6071;
+ 
+ g6075:
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ memoryreadheaderdecode:
+   if (_trace) printf("memoryreadheaderdecode:\n");
+@@ -373,7 +373,7 @@ g6077:
+     goto g6080;
+ 
+ g6084:
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ memoryreadcdrdecode:
+   if (_trace) printf("memoryreadcdrdecode:\n");
+diff --git a/stub/idouble.c b/stub/idouble.c
+index 78ab305..e0defd2 100644
+--- a/stub/idouble.c
++++ b/stub/idouble.c
+@@ -72,7 +72,7 @@ g8897:
+     goto g8873;
+   *(u32 *)&processor->fp0 = arg6;
+   sp = sp + 8;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ g8890:
+   if (_trace) printf("g8890:\n");
+@@ -187,7 +187,7 @@ g8900:
+   STQ_U(t5, t7);
+   *(u32 *)t8 = arg6;
+   sp = sp + 8;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ g8898:
+   if (_trace) printf("g8898:\n");
+diff --git a/stub/ifunarra.c b/stub/ifunarra.c
+index f0917c9..5b208e5 100644
+--- a/stub/ifunarra.c
++++ b/stub/ifunarra.c
+@@ -1934,12 +1934,12 @@ g7811:
+ g7766:
+   if (_trace) printf("g7766:\n");
+   t2 = ReturnValue_Exception;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ g7774:
+   if (_trace) printf("g7774:\n");
+   t2 = ReturnValue_Normal;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ g7851:
+   if (_trace) printf("g7851:\n");
+diff --git a/stub/ifuncom1.c b/stub/ifuncom1.c
+index d1e4821..7575124 100644
+--- a/stub/ifuncom1.c
++++ b/stub/ifuncom1.c
+@@ -353,7 +353,7 @@ g6202:
+     goto haltmachine;
+ #endif
+   /* Jump to the handler */
+-    goto *t3; /* jmp */
++    goto *(void *)t3; /* jmp */
+   /* Here to advance the PC and begin a new instruction.  Most */
+   /* instructions come here when they have finished.  Instructions */
+   /* that explicitly update the PC (and CP) go to interpretInstruction. */
+@@ -2942,7 +2942,7 @@ g6480:
+   t7 = arg6;
+   t9 = arg3;
+   sp = sp + 8;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ g6473:
+   if (_trace) printf("g6473:\n");
+@@ -3308,7 +3308,7 @@ g6494:
+ g6493:
+   if (_trace) printf("g6493:\n");
+   sp = sp + 8;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ g6495:
+   if (_trace) printf("g6495:\n");
+@@ -3482,7 +3482,7 @@ g6517:
+ g6516:
+   if (_trace) printf("g6516:\n");
+   sp = sp + 8;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ g6518:
+   if (_trace) printf("g6518:\n");
+@@ -3653,7 +3653,7 @@ DoReadInternalRegisterFP:
+     goto ReadRegisterError;
+   t3 = *(u64 *)t3;
+   /* Jump to the handler */
+-    goto *t3; /* jmp */
++    goto *(void *)t3; /* jmp */
+ 
+ g6555:
+   if (_trace) printf("g6555:\n");
+@@ -3664,7 +3664,7 @@ g6555:
+     goto ReadRegisterError;
+   t3 = *(u64 *)t3;
+   /* Jump to the handler */
+-    goto *t3; /* jmp */
++    goto *(void *)t3; /* jmp */
+ 
+ /* end DoReadInternalRegister */
+   /* End of Halfword operand from stack instruction - DoReadInternalRegister */
+@@ -3711,7 +3711,7 @@ DoWriteInternalRegisterFP:
+     goto WriteRegisterError;
+   t3 = *(u64 *)t3;
+   /* Jump to the handler */
+-    goto *t3; /* jmp */
++    goto *(void *)t3; /* jmp */
+ 
+ g6556:
+   if (_trace) printf("g6556:\n");
+@@ -3722,7 +3722,7 @@ g6556:
+     goto WriteRegisterError;
+   t3 = *(u64 *)t3;
+   /* Jump to the handler */
+-    goto *t3; /* jmp */
++    goto *(void *)t3; /* jmp */
+ 
+ /* end DoWriteInternalRegister */
+   /* End of Halfword operand from stack instruction - DoWriteInternalRegister */
+diff --git a/stub/ifuncom2.c b/stub/ifuncom2.c
+index e8eb591..34c57af 100644
+--- a/stub/ifuncom2.c
++++ b/stub/ifuncom2.c
+@@ -1921,7 +1921,7 @@ g6824:
+     goto g6827;
+ 
+ g6832:
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ memoryreadwritedecode:
+   if (_trace) printf("memoryreadwritedecode:\n");
+diff --git a/stub/ifunfcal.c b/stub/ifunfcal.c
+index b3df2b4..facd559 100644
+--- a/stub/ifunfcal.c
++++ b/stub/ifunfcal.c
+@@ -343,7 +343,7 @@ g6982:
+ g6980:
+   if (_trace) printf("g6980:\n");
+   sp = sp + 8;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ g6983:
+   if (_trace) printf("g6983:\n");
+@@ -1865,7 +1865,7 @@ g7132:
+ g7133:
+   if (_trace) printf("g7133:\n");
+ #endif
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ /* end StackCacheUnderflow */
+ /* start StackCacheOverflowHandler */
+diff --git a/stub/ifunmath.c b/stub/ifunmath.c
+index 87a7473..906b967 100644
+--- a/stub/ifunmath.c
++++ b/stub/ifunmath.c
+@@ -529,7 +529,7 @@ g7550:
+ g7541:
+   if (_trace) printf("g7541:\n");
+   sp = sp + 8;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ g7551:
+   if (_trace) printf("g7551:\n");
+diff --git a/stub/ifunsubp.c b/stub/ifunsubp.c
+index 7aed125..66e713c 100644
+--- a/stub/ifunsubp.c
++++ b/stub/ifunsubp.c
+@@ -3420,7 +3420,7 @@ cpwriteexc:
+ 
+ getrpcc:
+   if (_trace) printf("getrpcc:\n");
+-  goto *ra; /* ret */
++  goto *(void *)ra; /* ret */
+ 
+ /* end GetRPCC */
+ /* start SpinWheels */
+@@ -3436,7 +3436,7 @@ spinwheelaxis:
+   arg1 = arg1 + -1;
+   if ((s64)arg1 > 0)
+     goto spinwheelaxis;
+-  goto *ra; /* ret */
++  goto *(void *)ra; /* ret */
+ 
+ /* end SpinWheels */
+   /* Fin. */
+diff --git a/stub/ifuntran.c b/stub/ifuntran.c
+index c11e88e..f810668 100644
+--- a/stub/ifuntran.c
++++ b/stub/ifuntran.c
+@@ -15,7 +15,7 @@ nativeexception:
+   /* Restore SP (Just in case?) */
+   iSP = *(u64 *)&(processor->restartsp);
+   *(u64 *)&processor->linkage = zero;
+-  goto *t1; /* ret */
++  goto *(void *)t1; /* ret */
+ 
+ /* end NativeException */
+ /* start PadPastAref1 */
+@@ -37,7 +37,7 @@ padpastaref1:
+   /* Restore SP (Just in case?) */
+   iSP = *(u64 *)&(processor->restartsp);
+   *(u64 *)&processor->linkage = zero;
+-  goto *t1; /* ret */
++  goto *(void *)t1; /* ret */
+ 
+ /* end PadPastAref1 */
+ /* start CarSubroutine */
+@@ -59,7 +59,7 @@ return0093:
+   r0 = *(u64 *)sp;
+   *(u64 *)&processor->linkage = zero;
+   sp = sp + 8;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ /* end CarSubroutine */
+ /* start CdrSubroutine */
+@@ -81,7 +81,7 @@ return0094:
+   r0 = *(u64 *)sp;
+   *(u64 *)&processor->linkage = zero;
+   sp = sp + 8;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ /* end CdrSubroutine */
+ /* start CarCdrSubroutine */
+@@ -103,7 +103,7 @@ return0095:
+   r0 = *(u64 *)sp;
+   *(u64 *)&processor->linkage = zero;
+   sp = sp + 8;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ /* end CarCdrSubroutine */
+ 
+diff --git a/stub/ifuntrap.c b/stub/ifuntrap.c
+index 5269262..e66ec40 100644
+--- a/stub/ifuntrap.c
++++ b/stub/ifuntrap.c
+@@ -1907,7 +1907,7 @@ g8864:
+   /* write the stack cache */
+   *(u32 *)(iSP + 12) = t9;
+   iSP = iSP + 8;
+-  goto *r0; /* ret */
++  goto *(void *)r0; /* ret */
+ 
+ g8865:
+   if (_trace) printf("g8865:\n");
+diff --git a/stub/ihalt.c b/stub/ihalt.c
+index 59f8a6b..b0be86d 100644
+--- a/stub/ihalt.c
++++ b/stub/ihalt.c
+@@ -128,7 +128,7 @@ stopinterp:
+   r29 = *(u64 *)&(processor->asrr29);
+   r30 = *(u64 *)&(processor->asrr30);
+   r14 = *(u64 *)&(processor->asrr14);
+-  goto *ra; /* ret */
++  goto *(void *)ra; /* ret */
+ 
+ /* end iOutOfLine */
+ 
+diff --git a/stub/process.lisp b/stub/process.lisp
+index 8853952..7476fa1 100644
+--- a/stub/process.lisp
++++ b/stub/process.lisp
+@@ -1556,7 +1556,7 @@
+ 
+ 	(JMP
+ 	 (check-comment arg4)
+-	 (format destination "    goto *~A; /* jmp */~%"
++	 (format destination "    goto *(void *)~A; /* jmp */~%"
+ 		 (fixarg arg2)))
+ 
+ 	(JSR
+@@ -2159,7 +2159,7 @@
+ 
+ 	(RET
+ 	 (if (eq arg1 'zero)
+-	     (format destination "  goto *~A; /* ret */~%" (fixarg arg2))
++	     (format destination "  goto *(void *)~A; /* ret */~%" (fixarg arg2))
+ 	   (format t "*** RET w/arg1")))
+ 
+ 	(TAGTYPE

@@ -1,0 +1,2208 @@
+{
+"0": {
+"name": "car",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"1": {
+"name": "cdr",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"2": {
+"name": "endp",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"3": {
+"name": "setup-1d-array",
+"nargs": "1",
+"nret": "4",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"4": {
+"name": "setup-force-1d-array",
+"nargs": "1",
+"nret": "4",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"5": {
+"name": "bind-locative",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"6": {
+"name": "%restore-binding-stack",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"7": {
+"name": "%ephemeralp",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"8": {
+"name": "start-call",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"9": {
+"name": "%jump",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"10": {
+"name": "%tag",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"11": {
+"name": "dereference",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"12": {
+"name": "logic-tail-test",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"13": {
+"name": "%proc-breakpoint",
+"nargs": "0",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"14": {
+"name": "%double-float-op",
+"nargs": "5",
+"nret": "3",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"16": {
+"name": "push-lexical-var-0",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"17": {
+"name": "push-lexical-var-1",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"18": {
+"name": "push-lexical-var-2",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"19": {
+"name": "push-lexical-var-3",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"20": {
+"name": "push-lexical-var-4",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"21": {
+"name": "push-lexical-var-5",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"22": {
+"name": "push-lexical-var-6",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"23": {
+"name": "push-lexical-var-7",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"24": {
+"name": "%block-0-write",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"25": {
+"name": "%block-1-write",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"26": {
+"name": "%block-2-write",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"27": {
+"name": "%block-3-write",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"28": {
+"name": "zerop",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"29": {
+"name": "minusp",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"30": {
+"name": "plusp",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"32": {
+"name": "type-member-0",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"12-bit-unsigned-immediate"
+]
+},
+"33": {
+"name": "type-member-1",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"12-bit-unsigned-immediate"
+]
+},
+"34": {
+"name": "type-member-2",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"12-bit-unsigned-immediate"
+]
+},
+"35": {
+"name": "type-member-3",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"12-bit-unsigned-immediate"
+]
+},
+"36": {
+"name": "type-member-no-pop-0",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"12-bit-unsigned-immediate"
+]
+},
+"37": {
+"name": "type-member-no-pop-1",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"12-bit-unsigned-immediate"
+]
+},
+"38": {
+"name": "type-member-no-pop-2",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"12-bit-unsigned-immediate"
+]
+},
+"39": {
+"name": "type-member-no-pop-3",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"12-bit-unsigned-immediate"
+]
+},
+"40": {
+"name": "locate-locals",
+"nargs": "0",
+"nret": "0",
+"operands": []
+},
+"41": {
+"name": "catch-close",
+"nargs": "0",
+"nret": "0",
+"operands": []
+},
+"42": {
+"name": "%generic-dispatch",
+"nargs": "0",
+"nret": "0",
+"operands": []
+},
+"43": {
+"name": "%message-dispatch",
+"nargs": "0",
+"nret": "0",
+"operands": []
+},
+"44": {
+"name": "%check-preempt-request",
+"nargs": "0",
+"nret": "0",
+"operands": []
+},
+"45": {
+"name": "push-global-logic-variable",
+"nargs": "0",
+"nret": "1",
+"operands": []
+},
+"46": {
+"name": "no-op",
+"nargs": "0",
+"nret": "0",
+"operands": []
+},
+"47": {
+"name": "%halt",
+"nargs": "0",
+"nret": "0",
+"operands": []
+},
+"48": {
+"name": "branch-true",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"49": {
+"name": "branch-true-else-extra-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"50": {
+"name": "branch-true-and-extra-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"51": {
+"name": "branch-true-extra-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"52": {
+"name": "branch-true-no-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"53": {
+"name": "branch-true-and-no-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"54": {
+"name": "branch-true-else-no-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"55": {
+"name": "branch-true-and-no-pop-else-no-pop-extra-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"56": {
+"name": "branch-false",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"57": {
+"name": "branch-false-else-extra-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"58": {
+"name": "branch-false-and-extra-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"59": {
+"name": "branch-false-extra-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"60": {
+"name": "branch-false-no-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"61": {
+"name": "branch-false-and-no-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"62": {
+"name": "branch-false-else-no-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"63": {
+"name": "branch-false-and-no-pop-else-no-pop-extra-pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"64": {
+"name": "push",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"65": {
+"name": "push-n-nils",
+"nargs": "1",
+"nret": "I",
+"operands": [
+"unsigned"
+]
+},
+"66": {
+"name": "push-address-sp-relative",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"67": {
+"name": "push-local-logic-variables",
+"nargs": "1",
+"nret": "n",
+"operands": [
+"lp",
+"fp",
+"sp",
+"unsigned"
+]
+},
+"68": {
+"name": "return-multiple",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"pop",
+"unsigned"
+]
+},
+"69": {
+"name": "return-kludge",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"pop",
+"unsigned"
+]
+},
+"70": {
+"name": "take-values",
+"nargs": "1",
+"nret": "I",
+"operands": [
+"unsigned"
+]
+},
+"71": {
+"name": "unbind-n",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"unsigned"
+]
+},
+"72": {
+"name": "push-instance-variable",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"unsigned"
+]
+},
+"73": {
+"name": "push-address-instance-variable",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"unsigned"
+]
+},
+"74": {
+"name": "push-instance-variable-ordered",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"unsigned"
+]
+},
+"75": {
+"name": "push-address-instance-variable-ordered",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"unsigned"
+]
+},
+"76": {
+"name": "unary-minus",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"77": {
+"name": "return-single",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"10-bit-immediate"
+]
+},
+"78": {
+"name": "%memory-read",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"79": {
+"name": "%memory-read-address",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"80": {
+"name": "%block-0-read",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"81": {
+"name": "%block-1-read",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"82": {
+"name": "%block-2-read",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"83": {
+"name": "%block-3-read",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"84": {
+"name": "%block-0-read-shift",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"85": {
+"name": "%block-1-read-shift",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"86": {
+"name": "%block-2-read-shift",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"87": {
+"name": "%block-3-read-shift",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"88": {
+"name": "%block-0-read-test",
+"nargs": "n",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"89": {
+"name": "%block-1-read-test",
+"nargs": "n",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"90": {
+"name": "%block-2-read-test",
+"nargs": "n",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"91": {
+"name": "%block-3-read-test",
+"nargs": "n",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"92": {
+"name": "finish-call-n",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"10-bit-immediate"
+]
+},
+"93": {
+"name": "finish-call-n-apply",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"10-bit-immediate"
+]
+},
+"94": {
+"name": "finish-call-tos",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"10-bit-immediate"
+]
+},
+"95": {
+"name": "finish-call-tos-apply",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"10-bit-immediate"
+]
+},
+"96": {
+"name": "set-to-car",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"97": {
+"name": "set-to-cdr",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"98": {
+"name": "set-to-cdr-push-car",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"99": {
+"name": "increment",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"100": {
+"name": "decrement",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"101": {
+"name": "%pointer-increment",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"102": {
+"name": "%set-cdr-code-1",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"103": {
+"name": "%set-cdr-code-2",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"104": {
+"name": "push-address",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"105": {
+"name": "set-sp-to-address",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"106": {
+"name": "set-sp-to-address-save-tos",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"108": {
+"name": "%read-internal-register",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"109": {
+"name": "%write-internal-register",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"10-bit-immediate"
+]
+},
+"110": {
+"name": "%coprocessor-read",
+"nargs": "1",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+},
+"111": {
+"name": "%coprocessor-write",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"10-bit-immediate"
+]
+},
+"112": {
+"name": "%block-0-read-alu",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"113": {
+"name": "%block-1-read-alu",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"114": {
+"name": "%block-2-read-alu",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"115": {
+"name": "%block-3-read-alu",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"120": {
+"name": "ldb",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"byte"
+]
+},
+"121": {
+"name": "char-ldb",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"byte"
+]
+},
+"122": {
+"name": "%p-ldb",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"byte"
+]
+},
+"123": {
+"name": "%p-tag-ldb",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"byte"
+]
+},
+"124": {
+"name": "branch",
+"nargs": "1",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"125": {
+"name": "loop-decrement-tos",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"126": {
+"name": "entry-rest-accepted",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"entry"
+]
+},
+"127": {
+"name": "entry-rest-not-accepted",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"entry"
+]
+},
+"128": {
+"name": "rplaca",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"129": {
+"name": "rplacd",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"130": {
+"name": "multiply",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"131": {
+"name": "quotient",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"132": {
+"name": "ceiling",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"133": {
+"name": "floor",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"134": {
+"name": "truncate",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"135": {
+"name": "round",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"137": {
+"name": "rational-quotient",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"138": {
+"name": "min",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"139": {
+"name": "max",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"140": {
+"name": "%alu",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"141": {
+"name": "logand",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"142": {
+"name": "logxor",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"143": {
+"name": "logior",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"144": {
+"name": "rot",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"145": {
+"name": "lsh",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"146": {
+"name": "%multiply-double",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"147": {
+"name": "%lshc-bignum-step",
+"nargs": "3",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"148": {
+"name": "stack-blt",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"149": {
+"name": "rgetf",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"150": {
+"name": "member",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"151": {
+"name": "assoc",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"152": {
+"name": "%pointer-plus",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"153": {
+"name": "%pointer-difference",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"154": {
+"name": "ash",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"155": {
+"name": "store-conditional",
+"nargs": "3",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"156": {
+"name": "%memory-write",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"157": {
+"name": "%p-store-contents",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"158": {
+"name": "bind-locative-to-value",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"159": {
+"name": "unify",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"160": {
+"name": "pop-lexical-var-0",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"161": {
+"name": "pop-lexical-var-1",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"162": {
+"name": "pop-lexical-var-2",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"163": {
+"name": "pop-lexical-var-3",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"164": {
+"name": "pop-lexical-var-4",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"165": {
+"name": "pop-lexical-var-5",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"166": {
+"name": "pop-lexical-var-6",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"167": {
+"name": "pop-lexical-var-7",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"168": {
+"name": "movem-lexical-var-0",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"169": {
+"name": "movem-lexical-var-1",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"170": {
+"name": "movem-lexical-var-2",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"171": {
+"name": "movem-lexical-var-3",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"172": {
+"name": "movem-lexical-var-4",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"173": {
+"name": "movem-lexical-var-5",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"174": {
+"name": "movem-lexical-var-6",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"175": {
+"name": "movem-lexical-var-7",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop"
+]
+},
+"176": {
+"name": "equal-number",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"177": {
+"name": "lessp",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"178": {
+"name": "greaterp",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"179": {
+"name": "eql",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"180": {
+"name": "equal-number-no-pop",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"181": {
+"name": "lessp-no-pop",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"182": {
+"name": "greaterp-no-pop",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"183": {
+"name": "eql-no-pop",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"184": {
+"name": "eq",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"187": {
+"name": "logtest",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"188": {
+"name": "eq-no-pop",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"191": {
+"name": "logtest-no-pop",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"signed"
+]
+},
+"192": {
+"name": "add",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"193": {
+"name": "sub",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"194": {
+"name": "%32-bit-plus",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"195": {
+"name": "%32-bit-difference",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"196": {
+"name": "%add-bignum-step",
+"nargs": "3",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"197": {
+"name": "%sub-bignum-step",
+"nargs": "3",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"198": {
+"name": "%multiply-bignum-step",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"199": {
+"name": "%divide-bignum-step",
+"nargs": "3",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"200": {
+"name": "aset-1",
+"nargs": "3",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"201": {
+"name": "%allocate-list-block",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"202": {
+"name": "aref-1",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"203": {
+"name": "aloc-1",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"204": {
+"name": "store-array-leader",
+"nargs": "3",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"205": {
+"name": "%allocate-structure-block",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"206": {
+"name": "array-leader",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"207": {
+"name": "aloc-leader",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"208": {
+"name": "pop-instance-variable",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"unsigned"
+]
+},
+"209": {
+"name": "movem-instance-variable",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"unsigned"
+]
+},
+"210": {
+"name": "pop-instance-variable-ordered",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"unsigned"
+]
+},
+"211": {
+"name": "movem-instance-variable-ordered",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"unsigned"
+]
+},
+"212": {
+"name": "%instance-ref",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"213": {
+"name": "%instance-set",
+"nargs": "3",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"214": {
+"name": "%instance-loc",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"215": {
+"name": "%set-tag",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"217": {
+"name": "%unsigned-lessp",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"221": {
+"name": "%unsigned-lessp-no-pop",
+"nargs": "2",
+"nret": "2",
+"operands": [
+"lp",
+"fp",
+"sp",
+"pop",
+"unsigned"
+]
+},
+"224": {
+"name": "pop",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"225": {
+"name": "movem",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"226": {
+"name": "%merge-cdr-no-pop",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"232": {
+"name": "fast-aref-1",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"233": {
+"name": "fast-aset-1",
+"nargs": "3",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"234": {
+"name": "stack-blt-address",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"lp",
+"fp",
+"sp"
+]
+},
+"248": {
+"name": "dpb",
+"nargs": "3",
+"nret": "1",
+"operands": [
+"byte"
+]
+},
+"249": {
+"name": "char-dpb",
+"nargs": "3",
+"nret": "1",
+"operands": [
+"byte"
+]
+},
+"250": {
+"name": "%p-dpb",
+"nargs": "3",
+"nret": "0",
+"operands": [
+"byte"
+]
+},
+"251": {
+"name": "%p-tag-dpb",
+"nargs": "3",
+"nret": "0",
+"operands": [
+"byte"
+]
+},
+"253": {
+"name": "loop-increment-tos-less-than",
+"nargs": "2",
+"nret": "0",
+"operands": [
+"relative-pc"
+]
+},
+"254": {
+"name": "catch-open",
+"nargs": "1",
+"nret": "n",
+"operands": [
+"unsigned"
+]
+},
+"255": {
+"name": "%hack",
+"nargs": "2",
+"nret": "1",
+"operands": [
+"10-bit-immediate"
+]
+}
+}
