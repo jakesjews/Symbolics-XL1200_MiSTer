@@ -505,6 +505,17 @@ void Ivory::exec_op(int op, int operand) {
       sp = restart_sp;
       error_trap(E_BINARY_ARITH_TYPE, 0);
     }
+    if (fpa_enabled() && wtype(a1) == DTP_SINGLE_FLOAT && wtype(a2) == DTP_SINGLE_FLOAT) {
+      W r = fpa_op(2, a1, a2, false);
+      if (op < 0264) sp--;
+      if (wtype(r) != DTP_SINGLE_FLOAT) {
+        if (op >= 0264) sp--;
+        W args[2] = {a1, a2};
+        arith_exception(2, args);
+      }
+      push(boolw(wdata(r) & 1));
+      return;
+    }
     if (!fix2(a1, a2)) {
       sp--;
       W args[2] = {a1, a2};
@@ -549,6 +560,12 @@ void Ivory::exec_op(int op, int operand) {
   case 034: case 035: case 036: {  // zerop, minusp, plusp
     a1 = operand_value(true);
     if (!is_numeric_type(wtype(a1))) { sp = restart_sp; error_trap(E_UNARY_ARITH_TYPE, 0); }
+    if (fpa_enabled() && wtype(a1) == DTP_SINGLE_FLOAT) {
+      W r = fpa_op(1, a1, 0, false);
+      if (wtype(r) != DTP_SINGLE_FLOAT) arith_exception(1, &a1);
+      push(boolw(wdata(r) & 1));
+      return;
+    }
     if (wtype(a1) != DTP_FIXNUM) arith_exception(1, &a1);
     int32_t x = wsdata(a1);
     push(boolw(op == 034 ? x == 0 : op == 035 ? x < 0 : x > 0));
@@ -1537,6 +1554,16 @@ void Ivory::arith_binary(int op, W a1, W a2) {
     error_trap(E_BINARY_ARITH_TYPE, 0);
   }
   W args[2] = {a1, a2};
+  if (fpa_enabled()) {
+    bool single = wtype(a1) == DTP_SINGLE_FLOAT && wtype(a2) == DTP_SINGLE_FLOAT;
+    bool fixmul = op == 0202 && fix2(a1, a2);
+    if ((single && (op == 0300 || op == 0301 || op == 0202 || op == 0203 || op == 0211)) || fixmul) {
+      W r = fpa_op(2, a1, a2, fixmul);
+      if (wtype(r) != DTP_SINGLE_FLOAT) arith_exception(2, args);
+      push(mkw(fixmul ? DTP_FIXNUM : DTP_SINGLE_FLOAT, wdata(r)));
+      return;
+    }
+  }
   if (!fix2(a1, a2)) arith_exception(2, args);
   int64_t x = wsdata(a1), y = wsdata(a2);
   int64_t r = 0;
@@ -1596,8 +1623,30 @@ void Ivory::arith_binary(int op, W a1, W a2) {
 void Ivory::arith_unary(int op, W a1) {
   (void)op;
   if (!is_numeric_type(wtype(a1))) { sp = restart_sp; error_trap(E_UNARY_ARITH_TYPE, 0); }
+  if (fpa_enabled() && wtype(a1) == DTP_SINGLE_FLOAT) {
+    W r = fpa_op(1, a1, 0, false);
+    if (wtype(r) != DTP_SINGLE_FLOAT) arith_exception(1, &a1);
+    push(mkw(DTP_SINGLE_FLOAT, wdata(r)));
+    return;
+  }
   if (wtype(a1) != DTP_FIXNUM || wsdata(a1) == INT32_MIN) arith_exception(1, &a1);
   push(fixnum(-wsdata(a1)));
+}
+
+// With the FPA enabled (internal register 021 bit 0) the chip runs
+// single-float arithmetic and predicates, and fixnum multiplies, on it
+// (emu/fpa.h): the operands go to the operation's coprocessor address,
+// opcode<4:0> shifted left two (0o374 for fixnum multiply), and the result
+// comes back from 2 (0o400 for fixnum multiply, op+2 for a predicate).  A
+// result not tagged dtp-single-float means the FPA took an exception; the
+// caller then takes the instruction's arithmetic trap, whose Lisp handler
+// reads the FPA's state (i-sys/float.lisp single-float-trap-body).
+W Ivory::fpa_op(int nargs, W a1, W a2, bool fixnum_multiply) {
+  unsigned op = fixnum_multiply ? 0374 : (cur_opcode & 037) << 2;
+  bool predicate = !fixnum_multiply && (cur_opcode & 037) >= 020;
+  if (nargs == 2) bus->coproc_write(fixnum_multiply ? 0374 : 0, a1);
+  bus->coproc_write(op | 1, nargs == 2 ? a2 : a1);
+  return bus->coproc_read(fixnum_multiply ? 0400 : predicate ? op | 2 : 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -1804,7 +1853,12 @@ void Ivory::write_internal_register(int r, W w) {
   case IR_CONTROL_REGISTER: cr = wdata(w); return;
   case IR_EPHEMERAL_OLDSPACE: ephemeral_oldspace = wdata(w); return;
   case IR_ZONE_OLDSPACE: zone_oldspace = wdata(w); return;
-  case IR_FP_COPROCESSOR_PRESENT: fp_coprocessor_present = wdata(w); return;
+  case IR_FP_COPROCESSOR_PRESENT:
+    if (log_errors && wdata(w) != fp_coprocessor_present)
+      fprintf(stderr, "[fpa] fp-coprocessor-present <- %u at %llu\n", wdata(w),
+                            (unsigned long long)icount);
+    fp_coprocessor_present = wdata(w);
+    return;
   case IR_PREEMPT_REGISTER: preempt_register = wdata(w); return;
   case IR_ICACHE_CONTROL: icache_control = wdata(w); return;
   case IR_PREFETCHER_CONTROL: prefetcher_control = wdata(w); return;

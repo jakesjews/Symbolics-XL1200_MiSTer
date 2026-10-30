@@ -162,6 +162,7 @@ int main(int argc, char** argv) {
   }
   m.attach_disk(0, disk0, 1280, disk_stride);
   cpu.log_errors = getenv("XLEMU_ERRLOG") != nullptr;
+  m.fpa_fitted = getenv("XLEMU_NO_FPA") == nullptr;
   m.iob.scsi.trace = getenv("SCSI_TRACE") ? atoi(getenv("SCSI_TRACE")) : 0;
   m.iob.ether.trace = getenv("ETHER_TRACE") != nullptr;
 
@@ -219,6 +220,8 @@ int main(int argc, char** argv) {
   fprintf(stderr, "stopped after %llu instructions at pc=%08x.%d sp=%08x fp=%08x traps=%llu last_trap=%o\n",
           (unsigned long long)cpu.icount, (uint32_t)(cpu.pc >> 1), (int)(cpu.pc & 1), cpu.sp, cpu.fp,
           (unsigned long long)cpu.trap_count, cpu.last_trap_vector);
+  fprintf(stderr, "FPA %s, %llu operations\n", (cpu.fp_coprocessor_present & 1) ? "enabled" : "disabled",
+          (unsigned long long)m.fpa.operations);
   if (getenv("XLEMU_BT")) backtrace(cpu, m);
   if (cpu.tracef) fclose(cpu.tracef);
   if (videofile) {

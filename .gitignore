@@ -49,6 +49,7 @@ tools/world/shots/
 tools/world/work/
 # Simulator and emulator build output
 sim/*/obj_*/
+sim/fpa/fpa_test
 emu/build/
 emu/xlemu
 __pycache__/

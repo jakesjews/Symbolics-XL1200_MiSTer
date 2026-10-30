@@ -214,6 +214,8 @@ private:
   bool eql(W a, W b);
   void arith_binary(int op, W a, W b);
   void arith_unary(int op, W a);
+  bool fpa_enabled() const { return fp_coprocessor_present & 1; }
+  W fpa_op(int nargs, W a1, W a2, bool fixnum_multiply);
   W read_internal_register(int r);
   void write_internal_register(int r, W w);
   void op_block_read(int n, int imm, int kind);

@@ -7,6 +7,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_mem.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_scsi.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_i82586.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_pit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_fpa_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_fpa.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_console.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_keyboard.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_video.sv

@@ -16,6 +16,7 @@
   logic [31:0] idx, base, len;
   logic [2:0]  pops;
   logic        cond_r;
+  logic        fpa_two, fpa_fix;      // FPA instruction: two operands; fixnum multiply
   alu_t        alu_r;
   logic [8:0]  scratch_rd_ix;
   word_t       scratch_rd;

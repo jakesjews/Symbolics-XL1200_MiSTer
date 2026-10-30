@@ -1,6 +1,6 @@
 # System lockstep test of the RTL XL1200 (rtl/xl) against the C++ model (emu/).
 #   make            build obj_dir/Vxl_machine (lockstep) and obj_free/Vxl_machine (as on the MiSTer)
-#   ./obj_dir/Vxl_machine DISK.dd [STEPS] [TYPE-AT TEXT] [SCREEN.pgm]
+#   [LOCKSTEP_FROM=N] ./obj_dir/Vxl_machine DISK.dd [STEPS] [TYPE-AT TEXT] [SCREEN.pgm]
 #   ./obj_free/Vxl_machine DISK.dd SECONDS [AT-SECONDS TEXT] [SCREEN.pgm]
 VERILATOR ?= verilator
 EMU := $(abspath ../../emu)
@@ -10,10 +10,10 @@ MEM := $(abspath ../mem)
 PROM := $(XL)/boot_prom.mem
 
 SV := $(IVORY)/ivory_pkg.sv $(IVORY)/ivory_cpu.sv $(IVORY)/ivory_mmu.sv $(IVORY)/ivory_core.sv \
-      $(XL)/xl_mem.sv $(XL)/xl_scsi.sv $(XL)/xl_i82586.sv $(XL)/xl_pit.sv $(XL)/xl_console.sv \
+      $(XL)/xl_mem.sv $(XL)/xl_scsi.sv $(XL)/xl_i82586.sv $(XL)/xl_pit.sv $(XL)/xl_fpa_unit.sv $(XL)/xl_fpa.sv $(XL)/xl_console.sv \
       $(XL)/xl_video.sv $(XL)/xl_iob.sv $(XL)/xl_nvram.sv $(XL)/xl_machine.sv
 SVH := $(wildcard $(IVORY)/*.svh)
-CPP := tb_system.cpp $(EMU)/machine.cpp $(EMU)/nvram.cpp $(EMU)/pit.cpp $(EMU)/scsi.cpp $(EMU)/i82586.cpp $(EMU)/ioboard.cpp \
+CPP := tb_system.cpp $(EMU)/machine.cpp $(EMU)/fpa.cpp $(EMU)/nvram.cpp $(EMU)/pit.cpp $(EMU)/scsi.cpp $(EMU)/i82586.cpp $(EMU)/ioboard.cpp \
        $(EMU)/console.cpp $(EMU)/cpu_core.cpp $(EMU)/cpu_insn.cpp
 
 VFLAGS := --cc --exe --build -j 8 -O3 --x-assign fast --x-initial fast --noassert \
@@ -22,9 +22,9 @@ VFLAGS := --cc --exe --build -j 8 -O3 --x-assign fast --x-initial fast --noasser
 
 all: obj_dir/Vxl_machine obj_free/Vxl_machine
 
-obj_dir/Vxl_machine: $(SV) $(SVH) $(CPP) $(PROM) $(wildcard $(EMU)/*.h) $(MEM)/ddr_model.h
+obj_dir/Vxl_machine: $(SV) $(SVH) $(CPP) transfer.h $(PROM) $(wildcard $(EMU)/*.h) $(MEM)/ddr_model.h
 	python3 ../../tools/gen_ivory_states.py
-	$(VERILATOR) $(VFLAGS) -GLOCKSTEP=1 -GMEM_CLEAR=0 -GPROM_FILE='"$(PROM)"' \
+	$(VERILATOR) $(VFLAGS) --public-flat-rw -GLOCKSTEP=1 -GMEM_CLEAR=0 -GPROM_FILE='"$(PROM)"' \
 	  -CFLAGS "-std=c++17 -O2 -I$(EMU) -I$(MEM) -DPROM_PATH='\"$(PROM)\"'" $(SV) $(CPP)
 
 obj_free/Vxl_machine: $(SV) $(SVH) tb_free.cpp sd_model.h $(PROM) $(MEM)/ddr_model.h

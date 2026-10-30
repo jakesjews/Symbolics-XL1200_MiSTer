@@ -1,12 +1,12 @@
 # Symbolics XL1200 for MiSTer
 
 A Symbolics XL1200 Lisp machine: the Ivory processor with the machine's
-Merlin-II and I/O boards. It boots the XL1200's front-end processor (FEP)
-from a SCSI disk image, and from the FEP it loads and starts Genera 8.3 on
-the 1152 × 880 black-and-white console, with keyboard and mouse.
+Merlin-II and I/O boards and its floating-point accelerator. It boots the
+XL1200's front-end processor (FEP) from a SCSI disk image, and from the FEP
+it loads and starts Genera 8.3 on the 1152 × 880 black-and-white console,
+with keyboard and mouse.
 
-**Work in progress:** there is no floating-point unit yet (Genera does
-floating point in software) and no network.
+**Work in progress:** there is no network yet.
 
 ## What you need
 
@@ -42,6 +42,7 @@ function keys: [docs/keyboard.md](docs/keyboard.md).
 - No FEP prompt: turn on Debug line in the OSD and read the words with
   [docs/NOTES.md](docs/NOTES.md#debug-line).
 - "Unable to get time from the network or the calendar clock": set Clock to "28 years back".
+- Genera asks for the date right after the MiSTer starts: MiSTer hadn't set its clock yet when the core loaded; type the date, or reload the core.
 - No picture on direct video: the display has to take an 80 MHz, 54 kHz signal.
 
 How the core is built and what has been found out about the machine:

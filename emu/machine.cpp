@@ -78,12 +78,14 @@ void Machine::phys_write(uint32_t pa, W w) {
 }
 
 W Machine::coproc_read(unsigned reg) {
+  if (reg < 01000 && fpa_fitted) return fpa.read(reg);
   if (reg == 01002) return mkw(DTP_FIXNUM, microsecond_clock());
   if (log_io) fprintf(logf, "[cp] read  %o\n", reg);
   return mkw(DTP_FIXNUM, 0);
 }
 
 void Machine::coproc_write(unsigned reg, W w) {
+  if (reg < 01000 && fpa_fitted) { fpa.write(reg, wdata(w)); return; }
   if (log_io) fprintf(logf, "[cp] write %o <- %02o:%08x\n", reg, wtag(w), wdata(w));
 }
 

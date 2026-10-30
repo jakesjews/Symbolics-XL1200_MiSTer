@@ -9,6 +9,7 @@
 #include "ivory.h"
 
 class Nvram {
+  friend struct ModelState;   // sim/system: copies state into the RTL
 public:
   static const uint32_t SIZE = 2048;
   explicit Nvram(const std::string& path = "");

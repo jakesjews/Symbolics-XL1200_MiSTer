@@ -22,7 +22,9 @@ booting the FEP (v333) from the machine's own FEPFS disks, then Genera.
 Agreed departures from a real XL1200 (forced by missing material):
 - No dump of the Merlin boot PROM exists: a stand-in written in Ivory code
   does its job (find the FEP kernel through the disk label, load it, start it).
-- Ethernet (82586) and the Weitek FPA come after the console and disks.
+- No WTL3164 datasheet survives: the FPA's interface comes from how Genera
+  drives it and its arithmetic from its documented relatives ([FPA](#fpa-weitek-wtl3164)).
+- The 82586 Ethernet chip answers Genera but has no network yet.
 
 Plan for the hardware (phase 1), each step checked against the model:
 1. The stand-in boot PROM, in the model first (replacing `load_fep_file`).
@@ -60,9 +62,10 @@ the FEP disk as on a real machine.
   through the FEP-mode trap vector register (internal register 01024).
 - Memory cycle numbering follows sysdef (`BIND-READ`=2, `BIND-READ-NO-MONITOR`=4),
   which disagrees with the spec's table.
-- Floating point: no FPA modelled; float operands take the arithmetic-dispatch
-  exception and Lisp emulates them. (The real XL1200 has a Weitek WTL3164 FPA on
-  coprocessor addresses; sysdef lists its operation addresses.)
+- Floating point: with the FPA enabled (internal register 021 bit 0) the chip
+  runs single-float arithmetic and predicates, and fixnum multiplies, on it;
+  otherwise float operands take the arithmetic-dispatch exception and Lisp
+  emulates them ([FPA](#fpa-weitek-wtl3164)).
 
 ## Boot
 
@@ -401,12 +404,16 @@ Genera 8.3 to the Dynamic Lisp Listener ("a Symbolics XL1200", 4.0M words).
 In the model that is about 3.5G instructions (two minutes of `xlemu` at
 ~31M instructions/s; device time counted in instructions makes the FEP's
 disk waits long). On the MiSTer it takes about 90 s from `Start`; typed
-forms evaluate and the mouse brings up Genera's menus. The remaining
-warning is the missing FPA.
+forms evaluate and the mouse brings up Genera's menus. With the FPA no
+warnings remain.
 
 Genera reads the calendar clock as GMT and shows local time by its time
 zone (EST until the site says otherwise); MiSTer's RTC is local time, so the
-status line is off by the zone (6:49 shown at 11:49 EDT).
+status line is off by the zone (6:49 shown at 11:49 EDT). MiSTer sends a core
+the RTC once, when it loads it (`send_rtc(3)` in `user_io.cpp`; only Minimig
+gets it again every minute), so a core loaded just after the MiSTer starts,
+before its clock is set from the network, gets a wrong time, and Genera asks
+for the date.
 
 What it took (first in the model, then the RTL):
 
@@ -449,6 +456,72 @@ What it took (first in the model, then the RTL):
   get time from the network or the calendar clock"). The model, like the
   core's default, runs the clock 28 years behind (`XLEMU_CLOCK_TODAY` turns
   that off).
+
+## FPA (Weitek WTL3164)
+
+The XL1200's floating-point accelerator is a Weitek WTL3164 behind the
+Ivory's coprocessor bus (addresses 0-0o777; the microsecond clock is at
+0o1002). No 3164 datasheet survives, so `emu/fpa.cpp` models what Genera
+relies on (`i-sys/float.lisp`, `sys2/bignum.lisp`), with the arithmetic of the
+WTL 2264/2265 datasheet (`research/downloads/weitek`, from bitsavers):
+
+- Registers: writes to 0, 2, 3 load R0 high, R0 low, R1 low; a write to an
+  operation's address + 1 loads R1 high and starts it (X in R0, Y in R1, a
+  unary operation's operand in R1, the result in R0). Reads: 1 R1 low, 2 R0
+  high, 3 R0 low, 0o400 an integer result, op + 2 a predicate's result.
+  0o600 + n is status register n (bits 31:24): 0 modes (rounding 26:25,
+  FPEX sticky 30), 2 trap enables, 3 sticky flags, 6 adder (31:28) and
+  multiplier (27:24) status codes, 11 FPEX (31), condition (29), divider
+  status (27:24). 0o624 resets it. Flags and enables share Genera's layout:
+  31 NaN, 30 invalid, 29 division by zero, 28 denormalized input, 27
+  overflow, 26 underflow, 25 inexact, 24 integer overflow.
+- Operation addresses are the Ivory opcode's low five bits shifted left two
+  (0o000 add, 0o004 sub, 0o010 multiply, 0o014 and 0o044 the two divides,
+  0o060 negate, 0o100-0o130 =, <, > and their no-pop forms, 0o160-0o170
+  zerop, minusp, plusp), plus 0o200 for double precision; 0o374 is fixnum
+  multiply and 0o400-0o554 the conversions, square roots and absolute
+  values (`*fpa-operations*`). So the Ivory can issue an instruction's
+  operation directly, and it does: Genera's trap handlers for single-float
+  `+ - * /`, the comparisons, `zerop`/`minusp`/`plusp` and negation read
+  the FPA's result and status without starting an operation, so the chip
+  has run it. Rev 4 Ivories also multiply fixnums on it (the "doesn't wait
+  long enough for an integer multiply" handler in `sys2/bignum.lisp`).
+  Double floats are done by Lisp through the same registers.
+- Every read is tagged: dtp-single-float normally, dtp-fixnum while FPEX is
+  set (an exception whose trap is enabled, or a result Lisp has to finish),
+  dtp-null while busy (Genera's state save loops until the tag is a fixnum
+  or single-float). The chip pushes a dtp-single-float result and takes the
+  instruction's arithmetic trap for anything else; the handlers then read
+  the status, fix up the result and clear FPEX (`SINGLE-FLOAT-TRAP-BODY`).
+- Results the 3164 can't express come back wrapped: an underflow as the
+  2264's UNRM (unrounded, exponent in two's complement, status
+  "unnormalized"), which Lisp turns into a denormal; with the overflow trap
+  enabled, an overflow with its exponent less 255 (2047), as the handlers
+  rebuild it. Denormalized operands raise their flag (always trapped) and
+  Lisp recomputes. NaNs come out as the 2264's (sign 0, all ones).
+- Our FPA finishes every operation before the next access, so the busy tag
+  never shows; the RTL holds the bus off instead.
+
+Choices with no source behind them: the predicate result in bit 0; NaN
+operands set only the NaN flag, except in comparisons (invalid, as an
+unordered compare is); negation and absolute value flip the sign bit.
+
+Checks: `sim/fpa/fpa_test` (the C++ against the host's IEEE arithmetic in
+all four rounding modes, ~5M cases), `sim/fpa/obj_dir/Vxl_fpa_unit`
+(`rtl/xl/xl_fpa_unit.sv` against the C++, every bit, flag and status, 10M
+random operations including denormals, NaNs and infinities), and
+`sim/system` in lockstep (RTL machine with `xl_fpa` against the model): ten
+20M-instruction windows from 330M (Genera enables the FPA at 332M) to 3.63G
+(the Listener evaluating float forms) match. In the model,
+Genera 8.3 enables it (`*enable-fpa-p*`, `W3X64-EXISTS-P` multiplies two
+patterns) and runs ~250K operations booting; forms like `(sqrt 2d0)`,
+`(cos 1d0)`, `(float 123456789)`, `(* 100000 100000)`, overflow, underflow
+and division by zero give the same results as with the FPA removed
+(`XLEMU_NO_FPA=1`), which brings back "Floating point coprocessor is missing,
+defective, or disabled". On the MiSTer (71% of the ALMs, 47 DSP blocks, +0.33
+ns setup slack at 50 MHz) `(cli::fp-coprocessor-enabled-p)` is T, the same
+forms print the same results, and overflow, underflow and a fixnum multiply
+overflowing into a bignum take their traps as in the model.
 
 ## RTL Ivory (`rtl/ivory/`)
 
@@ -500,9 +573,16 @@ Each follows its C++ counterpart in `emu/`:
 - `xl_machine`: processor, address decode (as `Machine::phys_read`), boot
   PROM (512-word block RAM from `boot_prom.mem`), main board registers
   (0x0A00000C is the interrupt register: pending sources, mask), VME
-  registers, the microsecond clock (coprocessor 0o1002), device time, the
+  registers, the coprocessor bus (the FPA below 0o1000, the microsecond
+  clock at 0o1002), device time, the
   sequence-break requests (high priority: any enabled source but bit 1).
-- `xl_pit`: the 82C54 (as `emu/pit.cpp`).
+- `xl_pit`: the 82C54 (as `emu/pit.cpp`). A tick in the same cycle as a
+  register write counts the cycle after, as the model counts it after the
+  instruction (it used to be dropped).
+- `xl_fpa`, `xl_fpa_unit`: the WTL3164 (as `emu/fpa.cpp`): registers and bus
+  in `xl_fpa`, arithmetic in `xl_fpa_unit` over several cycles (multiply in
+  four 64x16 steps, divide 56 restoring steps, square root 64), the bus held
+  off until it finishes.
 - `xl_mem`: main memory and the I/O board's buffer memory in DDR3, one word
   per 64-bit DDR word (main memory at DDR word 0x06000000, buffer at
   0x06400000). Main memory goes through an 8K-word direct-mapped cache
@@ -538,6 +618,24 @@ sequence-break requests the model's would). From reset through `Hello`,
 `Load World`, `Start` and Genera's first 70M instructions (timer and
 interrupts, both 82586 initializations): 260M instructions, 158 opcodes,
 no difference, video memory identical (85 minutes at ~51K instructions/s).
+To start anywhere else, `LOCKSTEP_FROM=N` runs the model alone for N
+instructions (~30M/s), then `transfer.h` copies its state into the RTL
+machine before its first instruction: processor registers, RAM and buffer
+memory into the DDR3 model, video memory, NVRAM and its running clock, the
+WD33C93's registers and queued statuses, DUSCC, AM9517, board registers,
+console link state and queued bytes, 82C54, interrupt mask, 82586, and the
+disk image. Map caches and instruction buffers start empty on both sides;
+the SCN2674 registers keep their defaults (they don't affect the
+comparison). The lockstep build has every signal public
+(`--public-flat-rw`, about 2% slower) and a DDR3 model without wait states
+(the comparison doesn't depend on memory timing). Windows of 20M
+instructions run in parallel, about 12 minutes each. Both machines start their
+calendar clocks from the host's time, so runs of the same window can take
+different paths. The transfer has to set registers, not port wires: Verilator
+keeps both, and recomputes the wire (`pit_out` was set instead of
+`pit.out`, so in about half the windows the RTL missed one OUT1 edge and its
+interval timer fired 8 instructions late). The bench also compares the 82C54s
+after every instruction and reports the first difference.
 `obj_free/Vxl_machine` runs it as on the
 MiSTer (microseconds of the 50 MHz clock, SCSI commands running while the FEP
 polls, memory cleared from junk, the dot clock running) and saves the screen.

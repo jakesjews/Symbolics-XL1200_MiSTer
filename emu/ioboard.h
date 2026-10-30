@@ -29,6 +29,7 @@
 #include "i82586.h"
 
 class IoBoard {
+  friend struct ModelState;   // sim/system: copies state into the RTL
 public:
   static const uint32_t BASE = 0x40000000u;
   static const uint32_t BUFFER_WORDS = 0x10000u;

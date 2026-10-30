@@ -7,7 +7,7 @@ RTL := $(abspath ../../rtl/ivory)
 
 SV := $(RTL)/ivory_pkg.sv $(RTL)/ivory_cpu.sv $(RTL)/ivory_mmu.sv $(RTL)/ivory_core.sv
 SVH := $(wildcard $(RTL)/*.svh)
-CPP := tb_lockstep.cpp $(EMU)/machine.cpp $(EMU)/nvram.cpp $(EMU)/pit.cpp $(EMU)/scsi.cpp $(EMU)/i82586.cpp $(EMU)/ioboard.cpp \
+CPP := tb_lockstep.cpp $(EMU)/machine.cpp $(EMU)/fpa.cpp $(EMU)/nvram.cpp $(EMU)/pit.cpp $(EMU)/scsi.cpp $(EMU)/i82586.cpp $(EMU)/ioboard.cpp \
        $(EMU)/console.cpp $(EMU)/cpu_core.cpp $(EMU)/cpu_insn.cpp
 
 obj_dir/Vivory_core: $(SV) $(SVH) $(CPP) $(wildcard $(EMU)/*.h)

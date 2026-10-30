@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include "cpu.h"
+#include "fpa.h"
 #include "ioboard.h"
 #include "nvram.h"
 #include "pit.h"
@@ -32,6 +33,8 @@ public:
   static const uint32_t PROM_SIZE = 0x10000u;
   IoBoard iob;                    // I/O board slot 0 at 0x40000000
   Pit82C54 pit;                   // interval timer, 0x08000000 (1 MHz)
+  Wtl3164 fpa;                    // floating-point accelerator, coprocessor 0-0o777
+  bool fpa_fitted = true;         // false: as a machine without the FPA option
 
   // Interrupt register (0x0A00000C; Genera i-sys/io-register-definitions):
   // reads give the pending sources, writes set the mask.  Bit 0 timer 2,

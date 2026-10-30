@@ -18,6 +18,7 @@ module xl_pit (
   logic [2:0]  msb_next, pending, counting;
   logic [15:0] reload [3];
   logic [16:0] value [3];
+  logic        tick_late;     // a tick that came with a write, taken the next cycle
 
   // One clock of counter n given its state; returns the new OUT.
   // (Pit82C54::clock)
@@ -49,13 +50,15 @@ module xl_pit (
   endtask
 
   always_ff @(posedge clk) begin
+    tick_late <= 1'b0;
     if (reset) begin
       for (int i = 0; i < 3; i++) begin
         mode[i] <= 3'd0; rw[i] <= 2'd3; reload[i] <= '0; value[i] <= '0;
       end
       msb_next <= '0; pending <= '0; counting <= '0; out <= '0;
     end else if (we) begin
-      // Pit82C54::write
+      // Pit82C54::write; a tick in the same cycle counts after it, as in the model
+      tick_late <= tick;
       if (reg_n == 2'd3) begin
         logic [1:0] n;
         logic [2:0] m;
@@ -106,7 +109,7 @@ module xl_pit (
           end
         end
       end
-    end else if (tick) begin
+    end else if (tick || tick_late) begin
       // Pit82C54::tick: counter 1, then counter 2; OUT1 falling clocks counter 0
       logic o1, o2, o0;
       clock_n(1, out[1], o1);

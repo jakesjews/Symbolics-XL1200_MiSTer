@@ -8,6 +8,7 @@
 #include <vector>
 
 class Console {
+  friend struct ModelState;   // sim/system: copies state into the RTL
 public:
   // Switchpack status.  Bits 2:1 are the monitor type (index into the FEP's
   // B&W monitor table, see STREAM-MONITOR-ID): 1 = Moniterm, 3 = the 80MHz

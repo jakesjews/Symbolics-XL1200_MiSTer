@@ -150,7 +150,11 @@
         S_NUMCMP_2: begin
           logic res;
           if (!is_numeric_type(wtype(m_rd)) || !is_numeric_type(wtype(a2))) err(E_BINARY_ARITH_TYPE, 32'd0);
-          else if (!fix2(m_rd, a2)) begin
+          else if (fp_coprocessor_present[0] && wtype(m_rd) == DTP_SINGLE_FLOAT &&
+                   wtype(a2) == DTP_SINGLE_FLOAT && op != 8'o273 && op != 8'o277) begin
+            a1 <= m_rd; fpa_two <= 1'b1; fpa_fix <= 1'b0;
+            st <= S_FPA_X;
+          end else if (!fix2(m_rd, a2)) begin
             sp <= sp - 32'd1;
             arith_exc(3'd2, m_rd, a2);
           end else begin
@@ -182,7 +186,10 @@
 
         S_ZEROP_1: begin
           if (!is_numeric_type(wtype(opv))) err(E_UNARY_ARITH_TYPE, 32'd0);
-          else if (!is_fixnum(opv)) arith_exc(3'd1, opv, '0);
+          else if (fp_coprocessor_present[0] && wtype(opv) == DTP_SINGLE_FLOAT) begin
+            a1 <= opv; fpa_two <= 1'b0; fpa_fix <= 1'b0;
+            st <= S_FPA_Y;
+          end else if (!is_fixnum(opv)) arith_exc(3'd1, opv, '0);
           else push(boolw(op == 8'o034 ? opv[31:0] == 32'd0 :
                           op == 8'o035 ? opv[31] : !opv[31] && opv[31:0] != 32'd0), S_RETIRE);
         end
@@ -198,7 +205,13 @@
           r = '0;
           ovf = 1'b0;
           if (!is_numeric_type(wtype(pop_w)) || !is_numeric_type(wtype(a2))) err(E_BINARY_ARITH_TYPE, 32'd0);
-          else if (!fix2(pop_w, a2)) arith_exc(3'd2, pop_w, a2);
+          else if (fp_coprocessor_present[0] &&
+                   ((wtype(pop_w) == DTP_SINGLE_FLOAT && wtype(a2) == DTP_SINGLE_FLOAT &&
+                     (op == 8'o300 || op == 8'o301 || op == 8'o202 || op == 8'o203 || op == 8'o211)) ||
+                    (op == 8'o202 && fix2(pop_w, a2)))) begin
+            fpa_two <= 1'b1; fpa_fix <= op == 8'o202 && fix2(pop_w, a2);
+            st <= S_FPA_X;
+          end else if (!fix2(pop_w, a2)) arith_exc(3'd2, pop_w, a2);
           else begin
             case (op)
               8'o203, 8'o204, 8'o205, 8'o206, 8'o207, 8'o210, 8'o211: begin
@@ -281,7 +294,10 @@
 
         S_UMINUS_1: begin
           if (!is_numeric_type(wtype(opv))) err(E_UNARY_ARITH_TYPE, 32'd0);
-          else if (!is_fixnum(opv) || opv[31:0] == 32'h80000000) arith_exc(3'd1, opv, '0);
+          else if (fp_coprocessor_present[0] && wtype(opv) == DTP_SINGLE_FLOAT) begin
+            a1 <= opv; fpa_two <= 1'b0; fpa_fix <= 1'b0;
+            st <= S_FPA_Y;
+          end else if (!is_fixnum(opv) || opv[31:0] == 32'h80000000) arith_exc(3'd1, opv, '0);
           else push(fixnum(-opv[31:0]), S_RETIRE);
         end
 
@@ -1504,6 +1520,59 @@
           cop_req <= 1'b0;
           if (cop_err) err(E_UNKNOWN_INTERNAL_REGISTER, 32'd0);
           else st <= S_RETIRE;
+        end
+
+        // ---------------------------------------------------------------- FPA instructions
+        // emu/cpu_insn.cpp fpa_op: X to 0 (0o374 for a fixnum multiply), Y (or the one
+        // operand) to the operation's address opcode<4:0> << 2 plus 1, the result back
+        // from 2 (0o400; op+2 for a predicate).  Not dtp-single-float: the FPA took an
+        // exception, and the instruction takes its arithmetic trap.
+        S_FPA_X: begin
+          cop_req <= 1'b1; cop_we <= 1'b1;
+          cop_reg <= fpa_fix ? 10'o374 : 10'o000;
+          cop_wdata <= a1;
+          st <= S_FPA_XW;
+        end
+        S_FPA_XW: if (cop_ack) begin cop_req <= 1'b0; st <= S_FPA_Y; end
+        S_FPA_Y: begin
+          cop_req <= 1'b1; cop_we <= 1'b1;
+          cop_reg <= fpa_fix ? 10'o375 : {3'd0, op[4:0], 2'd1};
+          cop_wdata <= fpa_two ? a2 : a1;
+          st <= S_FPA_YW;
+        end
+        S_FPA_YW: if (cop_ack) begin cop_req <= 1'b0; st <= S_FPA_R; end
+        S_FPA_R: begin
+          cop_req <= 1'b1; cop_we <= 1'b0;
+          cop_reg <= fpa_fix ? 10'o400 : op[4:0] >= 5'o20 ? {3'd0, op[4:0], 2'd2} : 10'd2;
+          st <= S_FPA_RW;
+        end
+        S_FPA_RW: if (cop_ack) begin
+          logic ok;
+          cop_req <= 1'b0;
+          ok = wtype(cop_rdata) == DTP_SINGLE_FLOAT;
+          case (op)
+            8'o260, 8'o261, 8'o262, 8'o264, 8'o265, 8'o266: begin
+              if (!ok) begin
+                sp <= sp - 32'd1;
+                arith_exc(3'd2, a1, a2);
+              end else begin
+                if (!op[2]) sp <= sp - 32'd1;
+                push(boolw(cop_rdata[0]), S_RETIRE);
+              end
+            end
+            8'o034, 8'o035, 8'o036: begin
+              if (!ok) arith_exc(3'd1, a1, '0);
+              else push(boolw(cop_rdata[0]), S_RETIRE);
+            end
+            8'o114: begin
+              if (!ok) arith_exc(3'd1, a1, '0);
+              else push(mkw(DTP_SINGLE_FLOAT, cop_rdata[31:0]), S_RETIRE);
+            end
+            default: begin
+              if (!ok) arith_exc(3'd2, a1, a2);
+              else push(mkw(fpa_fix ? DTP_FIXNUM : DTP_SINGLE_FLOAT, cop_rdata[31:0]), S_RETIRE);
+            end
+          endcase
         end
 
         // ---------------------------------------------------------------- memory subprimitives

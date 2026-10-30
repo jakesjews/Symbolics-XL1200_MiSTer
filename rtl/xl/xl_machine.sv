@@ -289,11 +289,19 @@ module xl_machine #(
   assign run_light = mb_reg[0][1];
 
   // ---------------------------------------------------------------- coprocessor
-  // 0o1002 is the microsecond clock; nothing else is fitted (no FPA yet).
+  // 0-0o777 the FPA; above, 0o1002 is the microsecond clock.
+  logic   fpa_ack, clk_ack;
+  word_t  fpa_rdata, clk_rdata;
+  xl_fpa fpa (
+    .clk, .reset, .req(cop_req && !cop_reg[9]), .we(cop_we), .addr(cop_reg[8:0]),
+    .wdata(cop_wdata[31:0]), .ack(fpa_ack), .rdata(fpa_rdata)
+  );
   always_ff @(posedge clk) begin
-    cop_ack <= cop_req && !cop_ack;
-    cop_rdata <= fixnum(cop_reg == 10'o1002 ? usec_now : 32'd0);
+    clk_ack <= cop_req && cop_reg[9] && !clk_ack;
+    clk_rdata <= fixnum(cop_reg == 10'o1002 ? usec_now : 32'd0);
   end
+  assign cop_ack = fpa_ack | clk_ack;
+  assign cop_rdata = cop_reg[9] ? clk_rdata : fpa_rdata;
 
 `ifdef VERILATOR
   // +memtrace: every memory transaction

@@ -9,6 +9,7 @@
 #include <cstdint>
 
 class Pit82C54 {
+  friend struct ModelState;   // sim/system: copies state into the RTL
 public:
   void write(int reg, uint8_t v);
   void tick(uint64_t clocks);     // advance by n 1 MHz clocks

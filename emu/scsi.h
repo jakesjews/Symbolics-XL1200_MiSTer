@@ -10,6 +10,7 @@
 #include <vector>
 
 class ScsiDisk {
+  friend struct ModelState;   // sim/system: copies state into the RTL
 public:
   // An image holds one block every `stride` bytes.  SCSI2SD stores a 1280-byte
   // block in three 512-byte SD sectors, so raw card dumps use a stride of 1536.
@@ -30,6 +31,7 @@ private:
 };
 
 class WD33C93 {
+  friend struct ModelState;   // sim/system: copies state into the RTL
 public:
   WD33C93();
   void write_reg(int reg, uint8_t v);

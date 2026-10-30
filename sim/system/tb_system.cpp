@@ -7,6 +7,8 @@
 //   ./obj_dir/Vxl_machine DISK.dd [STEPS] [TYPE-AT TEXT] [SCREEN.pgm]
 // The disk image is copied twice (one copy per machine); TEXT is typed on both
 // consoles from step TYPE-AT ('|' is Return, {w N} waits N million steps).
+// LOCKSTEP_FROM=N: the model runs alone for the first N steps, then its state
+// is copied into the RTL (transfer.h) and the lockstep starts there.
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -24,10 +26,12 @@
 #include "sd_model.h"
 #include "keyboard.h"
 #include "machine.h"
+#include "transfer.h"
 
 const char* ivory_opcode_name(int op);
 
 #define R(x) top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__##x
+#define M(x) top->rootp->xl_machine__DOT__##x
 #ifndef PROM_PATH
 #error PROM_PATH
 #endif
@@ -110,6 +114,10 @@ int main(int argc, char** argv) {
   // the RTL
   ddr.flat_base = RAM_BASE;
   ddr.flat.assign(BUF_BASE + 0x10000 - RAM_BASE, 0);
+  // Lockstep compares instructions, not timing: no wait states, one-cycle
+  // reads (obj_free keeps the random ones).
+  ddr.busy_pct = 0;
+  ddr.min_latency = ddr.max_latency = 1;
   sd.f[0] = fopen((dir / "rtl.dd").string().c_str(), "r+b");
   top = new Vxl_machine;
   top->power_on = 1;
@@ -127,24 +135,11 @@ int main(int argc, char** argv) {
   for (int i = 0; i < 100; i++) tick();     // memory ready (no clearing), block count
   top->reset = 0;
 
-  std::vector<uint32_t> rlog, dlog;
-  rbus.write_log = &rlog;
-  ddr.write_log = &dlog;
-  std::deque<std::pair<uint64_t, uint64_t>> history;
-  uint64_t opcount[257] = {};
-  std::set<uint32_t> pcs;
   size_t typed = 0;
   uint64_t next_key = type_at;
-  auto t0 = std::chrono::steady_clock::now();
-  int status = 0;
-  auto ram_word = [](uint32_t pa) { return (W)(ddr.flat[pa] & 0xFFFFFFFFFFull); };
-
-  uint64_t n;
-  for (n = 0; n < steps; n++) {
-    uint64_t pc0 = ref.pc;
-    rlog.clear();
-    dlog.clear();
-    // the same keys reach both consoles before the same step
+  // the same keys reach both consoles before the same step (only the model's
+  // while it runs alone)
+  auto type_keys = [&](uint64_t n, bool rtl) {
     if (n >= next_key && typed < text.size()) {
       if (text[typed] == '{') {   // {w N}: wait N million steps
         size_t end = text.find('}', typed);
@@ -153,11 +148,47 @@ int main(int argc, char** argv) {
       } else {
         char c[2] = {text[typed] == '|' ? '\r' : text[typed], 0};
         rbus.iob.console.type(c);
-        type_rtl(c[0]);
+        if (rtl) type_rtl(c[0]);
         next_key = n + (text[typed] == '|' ? 3000000 : 200000);
         typed++;
       }
     }
+  };
+  uint64_t from = getenv("LOCKSTEP_FROM") ? strtoull(getenv("LOCKSTEP_FROM"), nullptr, 0) : 0;
+  if (from) {
+    auto f0 = std::chrono::steady_clock::now();
+    for (uint64_t n = 0; n < from; n++) {
+      type_keys(n, false);
+      try {
+        ref.step();
+      } catch (ProcessorHalt& h) {
+        printf("reference halted at step %llu: %s\n", (unsigned long long)n, h.why.c_str());
+        return 1;
+      }
+      rbus.tick(1);
+    }
+    ModelState::to_rtl(ref, rbus, top, ddr, RAM_BASE, BUF_BASE, sd.f[0], dir / "ref.dd", dir / "rtl.dd");
+    printf("model ran %llu steps alone (%.0f s); the RTL starts from its state\n", (unsigned long long)from,
+           std::chrono::duration<double>(std::chrono::steady_clock::now() - f0).count());
+  }
+
+  std::vector<uint32_t> rlog, dlog;
+  rbus.write_log = &rlog;
+  ddr.write_log = &dlog;
+  std::deque<std::pair<uint64_t, uint64_t>> history;
+  uint64_t opcount[257] = {};
+  std::set<uint32_t> pcs;
+  auto t0 = std::chrono::steady_clock::now();
+  int status = 0;
+  auto ram_word = [](uint32_t pa) { return (W)(ddr.flat[pa] & 0xFFFFFFFFFFull); };
+
+  uint64_t n;
+  bool pit_checked = true;   // report the first step after which the 82C54s differ
+  for (n = from; n < steps; n++) {
+    uint64_t pc0 = ref.pc;
+    rlog.clear();
+    dlog.clear();
+    type_keys(n, true);
     try {
       ref.step();
     } catch (ProcessorHalt& h) {
@@ -165,6 +196,7 @@ int main(int argc, char** argv) {
       status = 1;
       break;
     }
+    Pit82C54 pit_before = rbus.pit;   // the RTL's 82C54 ticks on the edge after the retire
     rbus.tick(1);
 
     uint64_t c0 = cycles;
@@ -182,6 +214,15 @@ int main(int argc, char** argv) {
       }
     } while (!top->retire);
 
+    if (pit_checked && !ModelState::pit_same(pit_before, top)) {
+      printf("82C54 differs after step %llu, instruction at %08x.%d\n", (unsigned long long)n,
+             (uint32_t)(pc0 >> 1), (int)(pc0 & 1));
+      ModelState::print_pit(pit_before);
+      for (int k = 0; k < 3; k++)
+        printf("  rtl pit %d: value %u pending %d out %d\n", k, M(pit__DOT__value)[k],
+               (M(pit__DOT__pending) >> k) & 1, (M(pit__DOT__out) >> k) & 1);
+      pit_checked = false;
+    }
     history.emplace_back(n, pc0);
     {
       W w = (pc0 >> 1) >= VMA_PMA_BASE ? rbus.phys_read((uint32_t)(pc0 >> 1) - VMA_PMA_BASE) : 0;
@@ -220,9 +261,20 @@ int main(int argc, char** argv) {
     if (!bad.empty()) {
       printf("MISMATCH at step %llu (icount %llu), instruction at %08x.%d:\n%s", (unsigned long long)n,
              (unsigned long long)ref.icount, (uint32_t)(pc0 >> 1), (int)(pc0 & 1), bad.c_str());
+      printf("  ref interrupts %08x mask %08x hp %d lp %d cycles %llu; rtl pending %08x mask %08x "
+             "hp %d lp %d ticks %u pit_out %x\n",
+             rbus.interrupts_pending(), rbus.interrupt_mask, rbus.hp_sb, rbus.lp_sb,
+             (unsigned long long)rbus.cycles, M(int_pending), M(int_mask), M(hp_sb), M(lp_sb),
+             M(ticks), M(pit_out));
+      ModelState::print_pit(rbus.pit);
+      for (int k = 0; k < 3; k++)
+        printf("  rtl pit %d: mode %d reload %u value %u pending %d counting %d out %d msb_next %d\n", k,
+               M(pit__DOT__mode)[k], M(pit__DOT__reload)[k], M(pit__DOT__value)[k], (M(pit__DOT__pending) >> k) & 1,
+               (M(pit__DOT__counting) >> k) & 1, (M(pit_out) >> k) & 1, (M(pit__DOT__msb_next) >> k) & 1);
       printf("recent steps:\n");
       for (auto& h : history) {
-        W w = (h.second >> 1) >= VMA_PMA_BASE ? rbus.phys_read((uint32_t)(h.second >> 1) - VMA_PMA_BASE) : 0;
+        uint32_t pa;
+        W w = ref.debug_translate((uint32_t)(h.second >> 1), pa) ? rbus.phys_read(pa) : 0;
         uint32_t half = (h.second & 1) ? (uint32_t)((((w >> 32) & 0xF) << 14) | (wdata(w) >> 18))
                                        : (uint32_t)(wdata(w) & 0x3FFFF);
         printf("  %8llu %08x.%d  %s\n", (unsigned long long)h.first, (uint32_t)(h.second >> 1),
@@ -233,8 +285,8 @@ int main(int argc, char** argv) {
     }
     if ((n + 1) % 1000000 == 0) {
       double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-      printf("%llu steps ok (%.0f steps/s, %.1f cycles/step)\n", (unsigned long long)(n + 1), (n + 1) / s,
-             (double)cycles / (n + 1));
+      printf("%llu steps ok (%.0f steps/s, %.1f cycles/step)\n", (unsigned long long)(n + 1), (n + 1 - from) / s,
+             (double)cycles / (n + 1 - from));
       fflush(stdout);
     }
   }
