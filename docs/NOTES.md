@@ -70,6 +70,9 @@ the FEP disk as on a real machine.
   the BAR it loaded with a compiled function, so `compile-file` failed
   ("The first argument to the CDR instruction, #<compiled function>, was
   not a list or a locative") while the BAR kept the function's tag.
+  Confirmed on the MiSTer: with this, the FPA's integers in R0 and the
+  manual's FPA behaviour, `compile-file` of `sys:examples;gabriel-benchmarks`
+  completes (log in first, and leave the FEP disk some free blocks).
 - Floating point: with the FPA enabled (internal register 021 bit 0) the chip
   runs single-float arithmetic and predicates, and fixnum multiplies, on it;
   otherwise float operands take the arithmetic-dispatch exception and Lisp
