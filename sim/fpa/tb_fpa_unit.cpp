@@ -56,9 +56,10 @@ int main(int argc, char** argv) {
       else y = (y & 0x807FFFFF) | (uint32_t)(127 + e) << 23;
     }
     int mode = rng() % 4;
-    bool trunc = rng() % 4 == 0, wrap = rng() % 2;
-    fpa::Result want = fpa::compute(op, dbl, x, y, mode, trunc, wrap);
-    top.op = op; top.dbl = dbl; top.mode = mode; top.trunc = trunc; top.wrap_ovf = wrap; top.x = x; top.y = y;
+    bool trunc = rng() % 4 == 0, unfr = rng() % 2, dexc = rng() % 4 != 0;
+    fpa::Result want = fpa::compute(op, dbl, x, y, mode, trunc, unfr, dexc);
+    top.op = op; top.dbl = dbl; top.mode = mode; top.trunc = trunc; top.unf_round = unfr;
+    top.dnrm_exc = dexc; top.x = x; top.y = y;
     top.start = 1;
     tick();
     top.start = 0;

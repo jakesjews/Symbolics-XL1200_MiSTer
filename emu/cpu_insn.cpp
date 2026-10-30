@@ -1716,7 +1716,11 @@ W Ivory::read_internal_register(int r) {
   case IR_FP: if (r < 0200) return mkw(DTP_LOCATIVE, fp); break;
   case IR_LP: if (r < 0200) return mkw(DTP_LOCATIVE, lp); break;
   case IR_SP: if (r < 0200) return mkw(DTP_LOCATIVE, sp); break;
-  case IR_BAR0: return stripcdr(bar[barn]);
+  // A BAR holds an address and whether it is physical (spec: "BARs need to store
+  // 33 bits"), so it reads back as a locative or a physical address, whatever
+  // was written (the VLM's ReadRegisterBARx pushes a locative).
+  case IR_BAR0:
+    return mkw(wtype(bar[barn]) == DTP_PHYSICAL_ADDRESS ? DTP_PHYSICAL_ADDRESS : DTP_LOCATIVE, wdata(bar[barn]));
   case IR_PHT_HASH0: return fixnum((int32_t)pht_hash(wdata(bar[barn]) >> 8));
   default: break;
   }

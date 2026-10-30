@@ -15,9 +15,10 @@ Layout and sources: docs/NOTES.md, "FEP file system layout".
         copy TEMPLATE to OUT, grow it to the size its label gives, and add the
         Ivory world load file WORLD (GENERA_8_3.ILOD from the Genera 8.3 CD)
         and a paging file (>Page.page, the rest of the disk) to the root
-        directory
+        directory; --text FILE (repeatable) adds a text file before the
+        paging file, e.g. a Lisp source to compile in Genera
 """
-import argparse, os, shutil, struct, sys, time
+import argparse, io, os, shutil, struct, sys, time
 
 BLOCK = 1280                  # bytes in a block
 WORDS = BLOCK // 4            # %page-size32 on the Ivory (storage/disk-definitions.lisp)
@@ -305,6 +306,13 @@ class FEPFS:
         return version, hdr_dpn, runs
 
 
+def lispm_text(data):
+    """A text file in the Lisp Machine character set: Return, Tab and Page are
+    #o215, #o211 and #o214; the codes below 32 are graphics there, and the
+    Genera sources on the CD keep them as they are."""
+    return data.replace(b'\n', b'\x8d').replace(b'\t', b'\x89').replace(b'\x0c', b'\x8c')
+
+
 def runs_string(runs):
     s = ' '.join(f"{d}+{n}" if n > 1 else f"{d}" for n, d in runs[:4]) or '-'
     return s + (f" (+{len(runs) - 4} more)" if len(runs) > 4 else '')
@@ -397,6 +405,16 @@ def build_world_disk(args, name, typ, size):
                                          int(os.path.getmtime(args.world)) + UT_EPOCH)
     print(f"{args.out}: >{name}.{typ}.{version}, {size} bytes, header {hdr}, "
           f"data {runs_string(runs)}; image {disk.nblocks} blocks")
+    for path in args.text or []:
+        name, _, typ = os.path.basename(path).rpartition('.')
+        if not name or len(typ) > 4 or len(name) > 32:
+            sys.exit(f"{path}: wants name.type, a name of at most 32 characters and a type of at most 4")
+        with open(path, 'rb') as f:
+            data = lispm_text(f.read())
+        version, hdr, runs = fs.add_file(name, typ, io.BytesIO(data), len(data), args.author, '',
+                                         int(os.path.getmtime(path)) + UT_EPOCH)
+        print(f"{args.out}: >{name}.{typ}.{version}, {len(data)} bytes of text, header {hdr}, "
+              f"data {runs_string(runs)}")
     # Load World pages to the declared paging files, FEPn:>Page.page by default.
     paging = fs.free_blocks() - 1 if args.paging == 'rest' else int(args.paging)
     if paging > 0:
@@ -428,6 +446,8 @@ def main():
     s.add_argument('--name', default='Genera-8-3.ilod', help="FEP file name (default %(default)s)")
     s.add_argument('--author', default='LISPM', help="default %(default)s")
     s.add_argument('--comment', default='', help="file comment")
+    s.add_argument('--text', action='append', metavar='FILE',
+                   help="also add this text file (Lisp Machine character set), before the paging file")
     s.add_argument('--paging', default='rest', metavar='BLOCKS',
                    help="also add the paging file >Page.page of this many blocks; "
                         "'rest' (the default) uses all the free space, 0 adds none")

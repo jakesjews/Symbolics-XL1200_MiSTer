@@ -145,7 +145,7 @@ struct ModelState {
     RS(fpa__DOT__r0h) = f.r0h; RS(fpa__DOT__r0l) = f.r0l;
     RS(fpa__DOT__r1h) = f.r1h; RS(fpa__DOT__r1l) = f.r1l;
     RS(fpa__DOT__r2h) = f.r2h; RS(fpa__DOT__r2l) = f.r2l;
-    RS(fpa__DOT__ix) = f.ix; RS(fpa__DOT__ir) = f.ir; RS(fpa__DOT__cond) = f.cond;
+    RS(fpa__DOT__cond) = f.cond;
     for (int i = 0; i < 12; i++) RS(fpa__DOT__sr)[i] = f.sr[i];
 
     // ---- I/O board registers, DUSCC, AM9517 (xl_iob)

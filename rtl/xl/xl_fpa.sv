@@ -17,7 +17,11 @@ module xl_fpa (
   import ivory_pkg::*;
   import xl_fpa_pkg::*;
 
-  logic [31:0] r0h, r0l, r1h, r1l, r2h, r2l, ix, ir;
+  // R0-R2 as 32-bit halves; a 32-bit integer sits in bits 52:21 of a register
+  // (manual 6.1), so the fixnum multiplicand and integer results are in R0
+  logic [31:0] r0h, r0l, r1h, r1l, r2h, r2l;
+  wire  [31:0] r0_int = {r0h[20:0], r0l[31:21]};
+  wire  [31:0] r1_int = {r1h[20:0], r1l[31:21]};
   logic        cond;
   logic [7:0]  sr [12];      // status registers, bits 31:24 of the word
 
@@ -92,7 +96,7 @@ module xl_fpa (
 
   xl_fpa_unit unit (
     .clk, .reset, .start(u_start), .op(u_d.op), .dbl(u_d.dbl), .mode(sr[0][2:1]), .trunc(u_d.trunc),
-    .wrap_ovf(sr[2][3]),
+    .unf_round(sr[2][2]), .dnrm_exc(sr[2][4]),
     .x(u_x), .y(u_y), .busy(u_busy), .done(u_done), .bits(u_bits), .flags(u_flags), .status(u_status)
   );
 
@@ -109,7 +113,7 @@ module xl_fpa (
     end else begin
       if (act && !we) begin
         logic [31:0] v;
-        v = addr == 9'd1 ? r1l : addr == 9'd2 ? r0h : addr == 9'd3 ? r0l : addr == 9'o400 ? ir :
+        v = addr == 9'd1 ? r1l : addr == 9'd2 ? r0h : addr == 9'd3 ? r0l : addr == 9'o400 ? r0_int :
             pred_addr(addr) ? {31'd0, cond} :
             addr >= 9'o600 && addr < 9'o614 ? {sr[addr - 9'o600], 24'd0} : 32'd0;
         rdata <= mkw(sr[11][7] ? DTP_FIXNUM : DTP_SINGLE_FLOAT, v);
@@ -121,18 +125,21 @@ module xl_fpa (
           9'd3: r1l <= wdata;
           9'o200: r2h <= wdata;
           9'o202: r2l <= wdata;
-          9'o374: ix <= wdata;
+          9'o374: begin r0h <= {11'd0, wdata[31:11]}; r0l <= {wdata[10:0], 21'd0}; end
           9'o624: for (int i = 0; i < 12; i++) sr[i] <= '0;
           default:
             if (addr >= 9'o600 && addr < 9'o614) sr[addr - 9'o600] <= wdata[31:24];
             else if (addr[1:0] == 2'd1 && addr < 9'o600) begin
               dec_t d;
-              r1h <= wdata;
+              logic int_in;
               d = decode({addr[8:2], 2'b00});
+              int_in = d.valid && (d.op == F_IMUL || d.op == F_I2D || d.op == F_I2S);
+              if (int_in) begin r1h <= {11'd0, wdata[31:11]}; r1l <= {wdata[10:0], 21'd0}; end
+              else r1h <= wdata;
               if (d.valid) begin
                 u_d <= d;
                 u_start <= 1'b1;
-                u_x <= d.op == F_IMUL ? {32'd0, ix} : in64(d) ? {r0h, r0l} : {32'd0, r0h};
+                u_x <= d.op == F_IMUL ? {32'd0, r0_int} : in64(d) ? {r0h, r0l} : {32'd0, r0h};
                 u_y <= in64(d) ? {wdata, r1l} : {32'd0, wdata};
               end
             end
@@ -148,19 +155,27 @@ module xl_fpa (
         if (is_pred(run_d.op)) begin
           cond <= u_bits[0];
           s11[5] = u_bits[0];
-        end else if (run_d.op == F_D2I || run_d.op == F_S2I || run_d.op == F_IMUL) ir <= u_bits[31:0];
-        else begin
-          r0h <= out64(run_d) ? u_bits[63:32] : u_bits[31:0];
-          if (out64(run_d)) r0l <= u_bits[31:0];
+        end else if (run_d.op == F_D2I || run_d.op == F_S2I || run_d.op == F_IMUL) begin
+          r0h <= {11'd0, u_bits[31:11]};
+          r0l <= {u_bits[10:0], 21'd0};
         end
-        if (run_d.unit == U_ADD) sr[6][7:4] <= u_status;
-        else if (run_d.unit == U_MUL) sr[6][3:0] <= u_status;
-        else s11[3:0] = u_status;
+        else begin
+          // a single-precision result clears the register's low half
+          r0h <= out64(run_d) ? u_bits[63:32] : u_bits[31:0];
+          r0l <= out64(run_d) ? u_bits[31:0] : 32'd0;
+        end
+        // compares write no register, so they leave the status alone (but set FPCN)
+        if (!is_pred(run_d.op)) begin
+          if (run_d.unit == U_ADD) sr[6][7:4] <= u_status;
+          else if (run_d.unit == U_MUL) sr[6][3:0] <= u_status;
+          else s11[3:0] = u_status;
+        end
         sr[3] <= sr[3] | u_flags;
-        exception = (u_flags & sr[2]) != 8'd0 || u_status == 4'd2 || u_status == 4'd3 ||
-                    u_status == 4'd10 || u_status == 4'd11 || u_status == 4'd14;
+        // FPEX: an enabled exception (SR2's underflow bit is UNF CONTROL, but an
+        // underflow always raises it), or a denormalized operand under DNRM
+        // CONTROL; FPEX-taken stays until software clears it
+        exception = (u_flags & sr[2] & ~FL_UNF) != 8'd0 || u_flags[2];
         if (exception) s11[7] = 1'b1;
-        else if (!sr[0][6]) s11[7] = 1'b0;
         sr[11] <= s11;
       end
     end

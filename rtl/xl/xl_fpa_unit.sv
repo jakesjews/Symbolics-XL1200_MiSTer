@@ -21,7 +21,8 @@ module xl_fpa_unit (
   input  logic              dbl,     // double precision (the result's format for conversions)
   input  logic [1:0]        mode,    // 0 nearest, 1 zero, 2 plus, 3 minus
   input  logic              trunc,   // conversions: round to zero
-  input  logic              wrap_ovf, // overflows come back wrapped (the overflow trap is enabled)
+  input  logic              unf_round, // SR2 UNF CONTROL: underflows come back rounded
+  input  logic              dnrm_exc,  // SR2 DNRM CONTROL: denormalized operands raise their flag
   input  logic [63:0]       x, y,
   output logic              busy,
   output logic              done,    // one cycle, with the results
@@ -34,7 +35,7 @@ module xl_fpa_unit (
   localparam logic [2:0] C_ZERO = 3'd0, C_NORM = 3'd1, C_INF = 3'd2, C_NAN = 3'd3, C_DEN = 3'd4;
   // value = m * 2^(e-62); a NORM has its leading one at bit 62
   typedef struct packed { logic s; logic [2:0] c; logic signed [13:0] e; logic [63:0] m; } unp_t;
-  typedef struct packed { logic [63:0] bits, wrapped; logic [7:0] flags; logic [3:0] status; } res_t;
+  typedef struct packed { logic [63:0] bits; logic [7:0] flags; logic [3:0] status; } res_t;
 
   function automatic unp_t unpack(logic d, logic [63:0] b);
     unp_t u;
@@ -75,13 +76,12 @@ module xl_fpa_unit (
 
   // round_pack in emu/fpa.cpp
   function automatic res_t round_pack(logic d, logic s, logic signed [13:0] e, logic [63:0] m,
-                                      logic sticky, logic [1:0] md);
+                                      logic sticky, logic [1:0] md, logic unfr);
     res_t r;
     logic [52:0] q;
     logic [53:0] qr;
     logic g, rest, inexact, up, carry;
-    logic signed [13:0] E, Er, Ew;
-    r.wrapped = '0;
+    logic signed [13:0] E, Er;
     if (d) begin q = m[62:10]; g = m[9]; rest = m[8:0] != 9'd0; end
     else begin q = {29'd0, m[62:39]}; g = m[38]; rest = m[37:0] != 38'd0; end
     rest = rest | sticky;
@@ -97,14 +97,12 @@ module xl_fpa_unit (
     carry = d ? qr[53] : qr[24];
     Er = carry ? E + 14'sd1 : E;
     if (Er < 14'sd1) begin
-      r.bits = pack(d, s, E[10:0], q[51:0]);
+      r.bits = unfr ? pack(d, s, Er[10:0], qr[51:0]) : pack(d, s, E[10:0], q[51:0]);
       r.flags = FL_UNF | (inexact ? FL_NX : 8'd0);
       r.status = base(d) + (inexact ? 4'd3 : 4'd2);
     end else if (Er > (d ? 14'sd2046 : 14'sd254)) begin
       r.bits = (md == 2'd0 || (md == 2'd2 && !s) || (md == 2'd3 && s)) ? inf_v(d, s)
              : pack(d, s, d ? 11'd2046 : 11'd254, {52{1'b1}});
-      Ew = Er - (d ? 14'sd2047 : 14'sd255);
-      r.wrapped = pack(d, s, Ew[10:0], qr[51:0]);
       r.flags = FL_OVF | FL_NX;
       r.status = base(d) + 4'd4;
     end else begin
@@ -146,7 +144,7 @@ module xl_fpa_unit (
   st_t st;
 
   fop_t        op_r;
-  logic        d_r, src_d, s_r, diff, sticky_r, wrap_r;
+  logic        d_r, src_d, s_r, diff, sticky_r, unfr_r, dexc_r;
   logic [1:0]  md_r;
   logic [63:0] x_r, y_r, am, bm, m_r;
   logic signed [13:0] e_r;
@@ -176,7 +174,8 @@ module xl_fpa_unit (
     if (reset) st <= S_IDLE;
     else case (st)
       S_IDLE: if (start) begin
-        op_r <= op; d_r <= dbl; md_r <= trunc ? 2'd1 : mode; x_r <= x; y_r <= y; wrap_r <= wrap_ovf;
+        op_r <= op; d_r <= dbl; md_r <= trunc ? 2'd1 : mode; x_r <= x; y_r <= y;
+        unfr_r <= unf_round; dexc_r <= dnrm_exc;
         src_d <= op == F_D2I || op == F_D2S ? 1'b1 : op == F_S2I || op == F_S2D ? 1'b0 : dbl;
         fl <= '0;
         st <= S_UNPACK;
@@ -196,14 +195,14 @@ module xl_fpa_unit (
         sign = d_r ? 64'h8000_0000_0000_0000 : 64'h8000_0000;
         f = '0;
         if (op_r != F_I2D && op_r != F_I2S && op_r != F_IMUL) begin   // float operands
-          if (a.c == C_DEN) begin a.c = C_ZERO; f = FL_DEN; end
-          if (b.c == C_DEN) begin b.c = C_ZERO; f = FL_DEN; end
+          if (a.c == C_DEN) begin a.c = C_ZERO; f = dexc_r ? FL_DEN : 8'd0; end
+          if (b.c == C_DEN) begin b.c = C_ZERO; f = dexc_r ? FL_DEN : 8'd0; end
         end
         fl <= f;
         ua_r <= a;
         case (op_r)
           F_ADD, F_SUB: begin
-            if (a.c == C_NAN || b.c == C_NAN) finish(nan_v(d_r), FL_NAN, base(d_r));
+            if (a.c == C_NAN || b.c == C_NAN) finish(nan_v(d_r), FL_NAN | FL_INV, base(d_r));
             else if (a.c == C_INF || b.c == C_INF) begin
               if (a.c == C_INF && b.c == C_INF && a.s != b.s) finish(nan_v(d_r), f | FL_INV, base(d_r));
               else finish(inf_v(d_r, a.c == C_INF ? a.s : b.s), f, base(d_r));
@@ -231,7 +230,7 @@ module xl_fpa_unit (
             end
           end
           F_MUL: begin
-            if (a.c == C_NAN || b.c == C_NAN) finish(nan_v(d_r), FL_NAN, base(d_r));
+            if (a.c == C_NAN || b.c == C_NAN) finish(nan_v(d_r), FL_NAN | FL_INV, base(d_r));
             else if ((a.c == C_INF && b.c == C_ZERO) || (a.c == C_ZERO && b.c == C_INF))
               finish(nan_v(d_r), f | FL_INV, base(d_r));
             else if (a.c == C_INF || b.c == C_INF) finish(inf_v(d_r, a.s ^ b.s), f, base(d_r));
@@ -242,7 +241,7 @@ module xl_fpa_unit (
             end
           end
           F_DIV: begin
-            if (a.c == C_NAN || b.c == C_NAN) finish(nan_v(d_r), FL_NAN, base(d_r));
+            if (a.c == C_NAN || b.c == C_NAN) finish(nan_v(d_r), FL_NAN | FL_INV, base(d_r));
             else if ((a.c == C_INF && b.c == C_INF) || (a.c == C_ZERO && b.c == C_ZERO))
               finish(nan_v(d_r), f | FL_INV, base(d_r));
             else if (a.c == C_INF) finish(inf_v(d_r, a.s ^ b.s), f, base(d_r));
@@ -254,7 +253,7 @@ module xl_fpa_unit (
             end
           end
           F_SQRT: begin
-            if (a.c == C_NAN) finish(nan_v(d_r), FL_NAN, base(d_r));
+            if (a.c == C_NAN) finish(nan_v(d_r), FL_NAN | FL_INV, base(d_r));
             else if (a.c == C_ZERO) finish(zero_v(d_r, a.s), f, base(d_r));
             else if (a.s) finish(nan_v(d_r), f | FL_INV, base(d_r));
             else if (a.c == C_INF) finish(inf_v(d_r, 1'b0), f, base(d_r));
@@ -268,7 +267,9 @@ module xl_fpa_unit (
           end
           F_EQ, F_LT, F_GT, F_ZEROP, F_MINUSP, F_PLUSP: begin
             logic t;
-            if (a.c == C_NAN || b.c == C_NAN) finish(64'd0, FL_NAN | FL_INV, base(d_r));
+            // unordered: = and zerop are false, the predicates with > or < invalid too
+            if (a.c == C_NAN || b.c == C_NAN)
+              finish(64'd0, FL_NAN | (op_r == F_EQ || op_r == F_ZEROP ? 8'd0 : FL_INV), base(d_r));
             else begin
               c = compare(a, b);
               t = op_r == F_EQ || op_r == F_ZEROP ? c == 2'b00 :
@@ -276,16 +277,13 @@ module xl_fpa_unit (
               finish({63'd0, t}, f, base(d_r));
             end
           end
-          F_NEG, F_ABS: begin
-            if (a.c == C_NAN) finish(nan_v(d_r), FL_NAN, base(d_r));
-            else finish(op_r == F_NEG ? y_r ^ sign : y_r & ~sign, f, base(d_r));
-          end
+          F_NEG, F_ABS: finish(op_r == F_NEG ? y_r ^ sign : y_r & ~sign, 8'd0, base(d_r));   // logical
           F_I2D, F_I2S: begin
             if (y_r[31:0] == 32'd0) finish(zero_v(d_r, 1'b0), 8'd0, base(d_r));
             else to_round(y_r[31], 14'sd62, {32'd0, y_r[31] ? -y_r[31:0] : y_r[31:0]}, 1'b0, S_NORM);
           end
           F_D2S, F_S2D: begin
-            if (a.c == C_NAN) finish(nan_v(d_r), FL_NAN, base(d_r));
+            if (a.c == C_NAN) finish(nan_v(d_r), FL_NAN | FL_INV, base(d_r));
             else if (a.c == C_INF) finish(inf_v(d_r, a.s), f, base(d_r));
             else if (a.c == C_ZERO) finish(zero_v(d_r, a.s), f, base(d_r));
             else to_round(a.s, a.e, a.m, 1'b0, S_ROUND);
@@ -375,12 +373,12 @@ module xl_fpa_unit (
 
       S_ROUND: begin
         res_t r;
-        r = round_pack(d_r, s_r, e_r, m_r, sticky_r, md_r);
+        r = round_pack(d_r, s_r, e_r, m_r, sticky_r, md_r, unfr_r);
         if (op_r == F_D2S) begin
           if (r.status == 4'd4) r.status = 4'd13;
           else if (r.status == 4'd2 || r.status == 4'd3) r.status = 4'd14;
         end
-        finish(wrap_r && (r.flags & FL_OVF) != 8'd0 ? r.wrapped : r.bits, fl | r.flags, r.status);
+        finish(r.bits, fl | r.flags, r.status);
       end
 
       S_TOINT: begin

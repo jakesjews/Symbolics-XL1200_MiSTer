@@ -22,8 +22,9 @@ booting the FEP (v333) from the machine's own FEPFS disks, then Genera.
 Agreed departures from a real XL1200 (forced by missing material):
 - No dump of the Merlin boot PROM exists: a stand-in written in Ivory code
   does its job (find the FEP kernel through the disk label, load it, start it).
-- No WTL3164 datasheet survives: the FPA's interface comes from how Genera
-  drives it and its arithmetic from its documented relatives ([FPA](#fpa-weitek-wtl3164)).
+- The Symbolics logic around the WTL3164 FPA is undocumented: its interface
+  comes from how Genera drives it, the arithmetic from the 3164's manual
+  ([FPA](#fpa-weitek-wtl3164)).
 - The 82586 Ethernet chip answers Genera but has no network yet.
 
 Plan for the hardware (phase 1), each step checked against the model:
@@ -62,6 +63,13 @@ the FEP disk as on a real machine.
   through the FEP-mode trap vector register (internal register 01024).
 - Memory cycle numbering follows sysdef (`BIND-READ`=2, `BIND-READ-NO-MONITOR`=4),
   which disagrees with the spec's table.
+- BARs hold an address and its physical-ness only ("BARs need to store 33
+  bits"): reading one gives a locative or a physical address, whatever tag
+  was written (the VLM's ReadRegisterBARx pushes a locative). Genera's
+  `DO-COMPILED-FUNCTION-INSTRUCTIONS` takes each constant's location from
+  the BAR it loaded with a compiled function, so `compile-file` failed
+  ("The first argument to the CDR instruction, #<compiled function>, was
+  not a list or a locative") while the BAR kept the function's tag.
 - Floating point: with the FPA enabled (internal register 021 bit 0) the chip
   runs single-float arithmetic and predicates, and fixnum multiplies, on it;
   otherwise float operands take the arithmetic-dispatch exception and Lisp
@@ -461,14 +469,26 @@ What it took (first in the model, then the RTL):
 
 The XL1200's floating-point accelerator is a Weitek WTL3164 behind the
 Ivory's coprocessor bus (addresses 0-0o777; the microsecond clock is at
-0o1002). No 3164 datasheet survives, so `emu/fpa.cpp` models what Genera
-relies on (`i-sys/float.lisp`, `sys2/bignum.lisp`), with the arithmetic of the
-WTL 2264/2265 datasheet (`research/downloads/weitek`, from bitsavers):
+0o1002). `emu/fpa.cpp` follows the chip's manual (3164/3364 64-Bit
+Floating-Point Data Path Units, November 1989, 208 pages,
+`research/downloads/weitek/WTL3164_3364_Nov1989.pdf`, with a tesseract OCR
+next to it) for the arithmetic, and Genera (`i-sys/float.lisp`,
+`sys2/bignum.lisp`) for the Symbolics glue around it, which no document
+describes:
 
 - Registers: writes to 0, 2, 3 load R0 high, R0 low, R1 low; a write to an
   operation's address + 1 loads R1 high and starts it (X in R0, Y in R1, a
   unary operation's operand in R1, the result in R0). Reads: 1 R1 low, 2 R0
-  high, 3 R0 low, 0o400 an integer result, op + 2 a predicate's result.
+  high, 3 R0 low, 0o400 R0 as an integer, op + 2 a predicate's result. A
+  32-bit integer sits in bits 52:21 of a register (manual 6.1): the fixnum
+  multiplicand (0o374) and integer results are in R0, the integer operand
+  of an operation in R1. That matters: Genera's interrupt-time save
+  (`WITH-FLOATING-POINT-STATUS-SAVED`) keeps R0 high and low and R1 low, and
+  `AR-2` multiplies through the FPA and reads the product a few
+  instructions later; with separate integer registers another process's
+  product could land in between (seen on the MiSTer as "The subscript,
+  -5872006, used with the FAST-AREF-1 instruction ... was negative" during
+  `compile-file`). A single-precision result clears R0 low (manual 6.1).
   0o600 + n is status register n (bits 31:24): 0 modes (rounding 26:25,
   FPEX sticky 30), 2 trap enables, 3 sticky flags, 6 adder (31:28) and
   multiplier (27:24) status codes, 11 FPEX (31), condition (29), divider
@@ -493,18 +513,30 @@ WTL 2264/2265 datasheet (`research/downloads/weitek`, from bitsavers):
   or single-float). The chip pushes a dtp-single-float result and takes the
   instruction's arithmetic trap for anything else; the handlers then read
   the status, fix up the result and clear FPEX (`SINGLE-FLOAT-TRAP-BODY`).
-- Results the 3164 can't express come back wrapped: an underflow as the
-  2264's UNRM (unrounded, exponent in two's complement, status
-  "unnormalized"), which Lisp turns into a denormal; with the overflow trap
-  enabled, an overflow with its exponent less 255 (2047), as the handlers
-  rebuild it. Denormalized operands raise their flag (always trapped) and
-  Lisp recomputes. NaNs come out as the 2264's (sign 0, all ones).
+- Exceptions (manual 12, 19.5): sticky flags are set whatever the enables;
+  FPEX is raised by an enabled exception and always by an underflow, and
+  FPEX-taken (SR11 bit 7) stays until software clears it. An underflow
+  gives an UNRM (hidden one, exponent in two's complement, status
+  "unnormalized"), its significand rounded when SR2 bit 2 (UNF CONTROL;
+  Genera's "underflow trap enable") is set, which Genera's default does,
+  truncated otherwise; Lisp turns it into a denormal. An overflow gives
+  infinity or the largest number by the rounding mode. Denormalized
+  operands count as zero and raise their flag when SR2 bit 4 (DNRM CONTROL)
+  is set; Lisp recomputes. An operation on a NaN is invalid and gives the
+  default NaN (sign 0, all ones); compares with a NaN are false and set the
+  NaN flag, and those with > or < are invalid too; negate and absolute
+  value are logical operations (no exceptions, NaNs kept). Compares set
+  FPCN but leave the status codes.
 - Our FPA finishes every operation before the next access, so the busy tag
   never shows; the RTL holds the bus off instead.
 
-Choices with no source behind them: the predicate result in bit 0; NaN
-operands set only the NaN flag, except in comparisons (invalid, as an
-unordered compare is); negation and absolute value flip the sign bit.
+Choices with no source behind them (the glue): the predicate result in bit
+0; which Weitek instructions the operations are (negate as the chip's
+logical `neg`, compares as its ordered predicates). Not modelled: the
+status queue (SR4, 5, 7, 8, 9: destinations; SR10: the previous status),
+FAST mode, the latencies (manual 9.2: add and multiply 2 cycles, divide
+⌈14/N⌉+3 single and ⌈28/N⌉+3 double, square root ⌈25/N⌉+3 and ⌈54/N⌉+3,
+N the divide clock's multiple).
 
 Checks: `sim/fpa/fpa_test` (the C++ against the host's IEEE arithmetic in
 all four rounding modes, ~5M cases), `sim/fpa/obj_dir/Vxl_fpa_unit`
@@ -522,6 +554,43 @@ defective, or disabled". On the MiSTer (71% of the ALMs, 47 DSP blocks, +0.33
 ns setup slack at 50 MHz) `(cli::fp-coprocessor-enabled-p)` is T, the same
 forms print the same results, and overflow, underflow and a fixnum multiply
 overflowing into a bignum take their traps as in the model.
+
+## Performance
+
+Published numbers for real machines:
+- Gabriel, *Performance and Evaluation of Lisp Systems* (1985,
+  [dreamsongs.com/Files/Timrep.pdf](https://www.dreamsongs.com/Files/Timrep.pdf)),
+  Symbolics 3600 + IFU, CPU seconds: Tak 0.43, Stak 2.30, Ctak 5.04, Takl
+  4.95, Boyer 9.40 (+1.77 GC), Browse 21.43, Destructive 2.18, Traverse 35.34
+  (init 6.37), Deriv 3.79, Dderiv 3.89, Div2 1.51 / 2.50, FFT 3.87, Puzzle
+  11.04, Triang 116.99.
+- XL1201 (the XL1200's board set in a smaller chassis), Genera 8.3, measured
+  by Douglas Fields (2016, symbolics.lisp.engineer), elapsed time of
+  `(defun fib (n) (if (or (= n 0) (= n 1)) 1 (+ (fib (- n 1)) (fib (- n 2)))))`
+  after `(compile 'fib)`: (fib 20) 0.0334 s, (fib 30) 4.097 s, (fib 36) 73.9 s,
+  (fib 38) 192.1 s; a MacIvory III (same chip) 4.097 s for (fib 30).
+- XL1200, de Kleer, "An Improved Incremental Algorithm for Generating Prime
+  Implicates" (AAAI 1992, Table 1, trie column): K44 0.46 s, K54 1.1 s, K55
+  8.6 s, K66 224 s, K67 2541 s, Regulator 85 s, BD 38 s, Adder 721 s. The
+  code survives in the Building Problem Solvers distribution (`cltms.lisp`,
+  `ltms-ex.lisp`, `(keanp 4 4)` etc.), revised since; the paper notes symbol
+  order changes the times.
+- Ratios: initial Ivories "3-5 times" Symbolics' 1987 products (Baker et
+  al., ICCD 1987); XL1200 launch (April 1990) 5x a 3640 (Tech Monitor
+  reported 600%); Genera 8.1's install guide rates the XL1200 3x the XL400;
+  later Ivories about 6x the 3600, at 30.75 MHz (a 61.5 MHz oscillator
+  halved, on a MacIvory III). Symbolics' current VLM comparison uses the
+  XL1200 as 1x on the Gabriel benchmarks.
+- The real Ivory: four-stage pipeline, simple instructions (push, add, eq)
+  in one cycle, a 32-word instruction cache filled by its own prefetcher, a
+  128-word top-of-stack cache, a 32-word scratchpad, a 16-entry TLB.
+
+Genera ships the suite: `sys:examples;gabriel-benchmarks.lisp`,
+`(gabriel:run-series)`. On the MiSTer (Oct 2026) compiled `(tak 18 12 6)`
+takes 0.437 s, the 3600's time; the RTL Ivory averages ~29 cycles an
+instruction at 50 MHz, two thirds of them waiting ~7 cycles per memory
+access (`PROFILE=1` on `sim/system`), where the real chip's stack cache, TLB
+and instruction cache answer in a cycle.
 
 ## RTL Ivory (`rtl/ivory/`)
 

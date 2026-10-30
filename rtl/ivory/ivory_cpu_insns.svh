@@ -1408,7 +1408,10 @@
         S_RIR_1: begin
           logic [9:0] r;
           r = operand;
-          if (r < 10'o1000 && r[6:0] == 7'o006) push(stripcdr(bar[r[8:7]]), S_RETIRE);
+          // a BAR reads back as a locative or a physical address (read_internal_register)
+          if (r < 10'o1000 && r[6:0] == 7'o006)
+            push(mkw(wtype(bar[r[8:7]]) == DTP_PHYSICAL_ADDRESS ? DTP_PHYSICAL_ADDRESS : DTP_LOCATIVE,
+                     bar[r[8:7]][31:0]), S_RETIRE);
           else if (r < 10'o1000 && r[6:0] == 7'o007)
             push(fixnum(pht_hash(bar[r[8:7]][31:0] & 32'hFFFFFF00)), S_RETIRE);
           else if (r == 10'o001) push(mkw(DTP_LOCATIVE, fp), S_RETIRE);

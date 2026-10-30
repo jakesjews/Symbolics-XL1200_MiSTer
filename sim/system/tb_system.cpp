@@ -9,6 +9,7 @@
 // consoles from step TYPE-AT ('|' is Return, {w N} waits N million steps).
 // LOCKSTEP_FROM=N: the model runs alone for the first N steps, then its state
 // is copied into the RTL (transfer.h) and the lockstep starts there.
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -16,9 +17,12 @@
 #include <ctime>
 #include <deque>
 #include <filesystem>
+#include <fstream>
+#include <map>
 #include <set>
 #include <string>
 #include <unistd.h>
+#include <vector>
 #include "Vxl_machine.h"
 #include "Vxl_machine___024root.h"
 #include "verilated.h"
@@ -39,6 +43,8 @@ const char* ivory_opcode_name(int op);
 static Vxl_machine* top;
 static DdrModel ddr;
 static uint64_t cycles = 0;
+static std::map<int, uint64_t> prof_cpu;   // PROFILE: cycles by processor state
+static uint64_t prof_mmu[16], prof_mem[16];
 static const time_t BOOT_TIME = 625000000;   // 1989-10-21, for both NVRAM clocks
 static const uint32_t RAM_BASE = 0x06000000, BUF_BASE = 0x06400000;
 
@@ -116,8 +122,12 @@ int main(int argc, char** argv) {
   ddr.flat.assign(BUF_BASE + 0x10000 - RAM_BASE, 0);
   // Lockstep compares instructions, not timing: no wait states, one-cycle
   // reads (obj_free keeps the random ones).
-  ddr.busy_pct = 0;
-  ddr.min_latency = ddr.max_latency = 1;
+  // PROFILE=1 keeps the random ones and counts cycles by state (see the end).
+  bool profile = getenv("PROFILE") != nullptr;
+  if (!profile) {
+    ddr.busy_pct = 0;
+    ddr.min_latency = ddr.max_latency = 1;
+  }
   sd.f[0] = fopen((dir / "rtl.dd").string().c_str(), "r+b");
   top = new Vxl_machine;
   top->power_on = 1;
@@ -201,6 +211,11 @@ int main(int argc, char** argv) {
 
     uint64_t c0 = cycles;
     do {
+      if (profile) {
+        prof_cpu[R(st)]++;
+        prof_mmu[M(core__DOT__mmu__DOT__st) & 15]++;
+        prof_mem[M(mem__DOT__st) & 15]++;
+      }
       tick();
       if (top->halted) {
         printf("RTL halted (code %d) at step %llu pc=%08x.%d\n", top->halt_reason, (unsigned long long)n,
@@ -289,6 +304,37 @@ int main(int argc, char** argv) {
              (double)cycles / (n + 1 - from));
       fflush(stdout);
     }
+  }
+
+  if (profile) {
+    // CPU state names, in the order tools/gen_ivory_states.py numbers them
+    std::vector<std::string> names;
+    std::ifstream en(std::string(PROM_PATH).substr(0, std::string(PROM_PATH).rfind("/xl/")) +
+                     "/ivory/ivory_cpu_state_enum.svh");
+    for (std::string line; std::getline(en, line);)
+      for (size_t i = 0; (i = line.find("S_", i)) != std::string::npos;) {
+        size_t j = line.find_first_of(", \n", i);
+        names.push_back(line.substr(i, j - i));
+        i = j;
+      }
+    uint64_t total = 0;
+    for (auto& [k, v] : prof_cpu) total += v;
+    std::vector<std::pair<uint64_t, int>> top_states;
+    for (auto& [k, v] : prof_cpu) top_states.emplace_back(v, k);
+    std::sort(top_states.rbegin(), top_states.rend());
+    printf("profile: %llu cycles, %llu instructions, %.2f cycles/instruction\n", (unsigned long long)total,
+           (unsigned long long)(n - from), (double)total / (n - from));
+    for (size_t i = 0; i < top_states.size() && i < 25; i++)
+      printf("  cpu %-16s %5.1f%%\n", top_states[i].second < (int)names.size() ? names[top_states[i].second].c_str() : "?",
+             100.0 * top_states[i].first / total);
+    const char* mmu_names[] = {"SWEEP", "IDLE", "INVAL_W", "INVAL", "LOOK_W", "LOOK", "W0", "W1", "AGE",
+                               "FILL", "HIT", "N1", "N2", "ACCESS", "?", "?"};
+    const char* mem_names[] = {"CLEAR", "IDLE", "LOOKUP", "MISS", "FILL", "FILLED", "WRITE", "BUF_RD",
+                               "BUF_WAIT", "BUF_WR", "?", "?", "?", "?", "?", "?"};
+    for (int i = 0; i < 16; i++)
+      if (prof_mmu[i]) printf("  mmu %-8s %5.1f%%\n", mmu_names[i], 100.0 * prof_mmu[i] / total);
+    for (int i = 0; i < 16; i++)
+      if (prof_mem[i]) printf("  mem %-8s %5.1f%%\n", mem_names[i], 100.0 * prof_mem[i] / total);
   }
 
   // Video memory

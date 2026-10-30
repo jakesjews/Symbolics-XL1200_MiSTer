@@ -448,9 +448,10 @@ void Ivory::error_trap(int cond, uint32_t vma) {
   W args[2] = {fixnum(error_microstate(cond)), mkw(DTP_LOCATIVE, vma)};
   if (trace && tracef) fprintf(tracef, "  ERROR TRAP cond=%d vma=%08x\n", cond, vma);
   if (log_errors)
-    fprintf(stderr, "[cpu] error trap cond=%d vma=%08x pc=%08x.%d insn=%llu bsp=%02o:%08x bsl=%02o:%08x\n", cond,
-            vma, (uint32_t)(pc >> 1), (int)(pc & 1), (unsigned long long)icount, wtype(binding_stack_pointer),
-            wdata(binding_stack_pointer), wtype(binding_stack_limit), wdata(binding_stack_limit));
+    fprintf(stderr, "[cpu] error trap cond=%d vma=%08x pc=%08x.%d op=%03o insn=%llu tos=%02o:%08x %02o:%08x\n",
+            cond, vma, (uint32_t)(pc >> 1), (int)(pc & 1), cur_opcode, (unsigned long long)icount,
+            wtype(sread(restart_sp)), wdata(sread(restart_sp)), wtype(sread(restart_sp - 1)),
+            wdata(sread(restart_sp - 1)));
   take_pre_trap(TV_ERROR, 2, args);
   throw InstructionAbort{};
 }

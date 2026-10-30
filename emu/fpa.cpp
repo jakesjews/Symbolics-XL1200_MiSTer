@@ -31,15 +31,23 @@ uint64_t nan(const Fmt& f) { return pack(f, false, f.emax + 1, (1ull << (f.p - 1
 
 int base(const Fmt& f) { return f.p == 53 ? 8 : 0; }
 
+// round: 0 nearest, 1 zero, 2 plus, 3 minus; unf_round: status register 2
+// bit 2 (UNF CONTROL), underflows come back rounded; dnrm_exc: bit 4 (DNRM
+// CONTROL), denormalized operands raise the flag (else count silently as 0)
+struct Options { int round; bool unf_round, dnrm_exc; };
+
 // Round m * 2^(e-62) (m's leading one at bit 62; sticky: nonzero bits below
-// m) to f.  A result below the normalized range after rounding comes back
-// unrounded with its exponent wrapped (two's complement in the exponent
-// field), as the 2264's UNRM.
-Result round_pack(const Fmt& f, bool s, int e, uint64_t m, bool sticky, int mode) {
+// m) to f.  A result below the normalized range after rounding comes back as
+// an UNRM: its exponent wrapped (two's complement in the exponent field) and
+// its significand rounded or, without UNF CONTROL, truncated (manual 12.1,
+// 19.3.6).  An overflow gives infinity or the largest number by the rounding
+// mode (19.5.3).
+Result round_pack(const Fmt& f, bool s, int e, uint64_t m, bool sticky, const Options& o) {
   int sh = 63 - f.p;
   uint64_t q = m >> sh, rem = m & ((1ull << sh) - 1), half = 1ull << (sh - 1);
   uint64_t fmask = (1ull << (f.p - 1)) - 1;
   bool inexact = rem || sticky;
+  int mode = o.round;
   bool up = mode == 0 ? rem > half || (rem == half && (sticky || (q & 1)))
           : mode == 2 ? inexact && !s
           : mode == 3 ? inexact && s
@@ -48,14 +56,16 @@ Result round_pack(const Fmt& f, bool s, int e, uint64_t m, bool sticky, int mode
   uint64_t qr = q + up;
   if (qr >> f.p) { qr >>= 1; Er++; }
   uint8_t nx = inexact ? Wtl3164::F_INEXACT : 0;
-  if (Er < 1)
-    return {pack(f, s, (uint64_t)E & ((1u << f.ebits) - 1), q & fmask),
-            (uint8_t)(Wtl3164::F_UNDERFLOW | nx), (uint8_t)(base(f) + (inexact ? 3 : 2))};
+  if (Er < 1) {
+    uint64_t emask = (1u << f.ebits) - 1;
+    uint64_t bits = o.unf_round ? pack(f, s, (uint64_t)Er & emask, qr & fmask)
+                                : pack(f, s, (uint64_t)E & emask, q & fmask);
+    return {bits, (uint8_t)(Wtl3164::F_UNDERFLOW | nx), (uint8_t)(base(f) + (inexact ? 3 : 2))};
+  }
   if (Er > f.emax) {
     bool to_inf = mode == 0 || (mode == 2 && !s) || (mode == 3 && s);
     return {to_inf ? inf(f, s) : pack(f, s, f.emax, fmask),
-            (uint8_t)(Wtl3164::F_OVERFLOW | Wtl3164::F_INEXACT), (uint8_t)(base(f) + 4),
-            pack(f, s, (uint64_t)(Er - f.emax - 1) & ((1u << f.ebits) - 1), qr & fmask)};
+            (uint8_t)(Wtl3164::F_OVERFLOW | Wtl3164::F_INEXACT), (uint8_t)(base(f) + 4)};
   }
   return {pack(f, s, Er, qr & fmask), nx, (uint8_t)(base(f) + (inexact ? 1 : 0))};
 }
@@ -78,43 +88,46 @@ void normalize(int* e, uint64_t* m, bool* sticky) {
   *e += n;
 }
 
-Result special(uint64_t bits, uint8_t flags, const Fmt& f) { return {bits, flags, (uint8_t)base(f), 0}; }
+Result special(uint64_t bits, uint8_t flags, const Fmt& f) { return {bits, flags, (uint8_t)base(f)}; }
 
-// Denormalized operands raise the flag and count as zero
-uint8_t flush(U* u) {
+// Denormalized operands count as zero, raising the flag with DNRM CONTROL
+uint8_t flush(U* u, const Options& o) {
   if (u->c != DEN) return 0;
   u->c = ZERO;
-  return Wtl3164::F_DENORMALIZED;
+  return o.dnrm_exc ? Wtl3164::F_DENORMALIZED : 0;
 }
 
-Result add(const Fmt& f, U a, U b, int mode) {
-  if (a.c == NAN_ || b.c == NAN_) return special(nan(f), Wtl3164::F_NAN, f);
-  uint8_t fl = flush(&a) | flush(&b);
+// An operation on a NaN is invalid and gives the default NaN (19.5.1)
+const uint8_t NAN_OPERAND = Wtl3164::F_NAN | Wtl3164::F_INVALID;
+
+Result add(const Fmt& f, U a, U b, const Options& o) {
+  if (a.c == NAN_ || b.c == NAN_) return special(nan(f), NAN_OPERAND, f);
+  uint8_t fl = flush(&a, o) | flush(&b, o);
   if (a.c == INF || b.c == INF) {
     if (a.c == INF && b.c == INF && a.s != b.s) return special(nan(f), fl | Wtl3164::F_INVALID, f);
     return special(inf(f, a.c == INF ? a.s : b.s), fl, f);
   }
-  if (a.c == ZERO && b.c == ZERO) return special(zero(f, a.s == b.s ? a.s : mode == 3), fl, f);
+  if (a.c == ZERO && b.c == ZERO) return special(zero(f, a.s == b.s ? a.s : o.round == 3), fl, f);
   if (b.c == ZERO) std::swap(a, b);
-  if (a.c == ZERO) { Result r = round_pack(f, b.s, b.e, b.m, false, mode); r.flags |= fl; return r; }
+  if (a.c == ZERO) { Result r = round_pack(f, b.s, b.e, b.m, false, o); r.flags |= fl; return r; }
   if (a.e < b.e || (a.e == b.e && a.m < b.m)) std::swap(a, b);
   bool sticky = false;
   uint64_t mb = shr(b.m, a.e - b.e, &sticky), m;
   if (a.s == b.s) m = a.m + mb;
   else {
     m = a.m - mb - sticky;   // the shifted-out bits borrow one; sticky keeps the rest
-    if (!m && !sticky) return special(zero(f, mode == 3), fl, f);
+    if (!m && !sticky) return special(zero(f, o.round == 3), fl, f);
   }
   int e = a.e;
   normalize(&e, &m, &sticky);
-  Result r = round_pack(f, a.s, e, m, sticky, mode);
+  Result r = round_pack(f, a.s, e, m, sticky, o);
   r.flags |= fl;
   return r;
 }
 
-Result mul(const Fmt& f, U a, U b, int mode) {
-  if (a.c == NAN_ || b.c == NAN_) return special(nan(f), Wtl3164::F_NAN, f);
-  uint8_t fl = flush(&a) | flush(&b);
+Result mul(const Fmt& f, U a, U b, const Options& o) {
+  if (a.c == NAN_ || b.c == NAN_) return special(nan(f), NAN_OPERAND, f);
+  uint8_t fl = flush(&a, o) | flush(&b, o);
   bool s = a.s != b.s;
   if ((a.c == INF && b.c == ZERO) || (a.c == ZERO && b.c == INF))
     return special(nan(f), fl | Wtl3164::F_INVALID, f);
@@ -125,14 +138,14 @@ Result mul(const Fmt& f, U a, U b, int mode) {
   uint64_t m = (uint64_t)(p >> 62);
   int e = a.e + b.e;
   normalize(&e, &m, &sticky);
-  Result r = round_pack(f, s, e, m, sticky, mode);
+  Result r = round_pack(f, s, e, m, sticky, o);
   r.flags |= fl;
   return r;
 }
 
-Result div(const Fmt& f, U a, U b, int mode) {
-  if (a.c == NAN_ || b.c == NAN_) return special(nan(f), Wtl3164::F_NAN, f);
-  uint8_t fl = flush(&a) | flush(&b);
+Result div(const Fmt& f, U a, U b, const Options& o) {
+  if (a.c == NAN_ || b.c == NAN_) return special(nan(f), NAN_OPERAND, f);
+  uint8_t fl = flush(&a, o) | flush(&b, o);
   bool s = a.s != b.s;
   if ((a.c == INF && b.c == INF) || (a.c == ZERO && b.c == ZERO))
     return special(nan(f), fl | Wtl3164::F_INVALID, f);
@@ -146,14 +159,14 @@ Result div(const Fmt& f, U a, U b, int mode) {
   sticky |= (q & ((1u << k) - 1)) != 0;
   uint64_t m = (uint64_t)(q >> k);
   int e = a.e - b.e - 2 + k;
-  Result r = round_pack(f, s, e, m, sticky, mode);
+  Result r = round_pack(f, s, e, m, sticky, o);
   r.flags |= fl;
   return r;
 }
 
-Result sqrt(const Fmt& f, U a, int mode) {
-  if (a.c == NAN_) return special(nan(f), Wtl3164::F_NAN, f);
-  uint8_t fl = flush(&a);
+Result sqrt(const Fmt& f, U a, const Options& o) {
+  if (a.c == NAN_) return special(nan(f), NAN_OPERAND, f);
+  uint8_t fl = flush(&a, o);
   if (a.c == ZERO) return special(zero(f, a.s), fl, f);
   if (a.s) return special(nan(f), fl | Wtl3164::F_INVALID, f);
   if (a.c == INF) return special(inf(f, false), fl, f);
@@ -169,7 +182,7 @@ Result sqrt(const Fmt& f, U a, int mode) {
   }
   bool sticky = rem != 0;
   int e = (a.e - odd) / 2;
-  Result r = round_pack(f, false, e, root, sticky, mode);
+  Result r = round_pack(f, false, e, root, sticky, o);
   r.flags |= fl;
   return r;
 }
@@ -191,10 +204,10 @@ int compare(U a, U b) {
   return a.s ? -mag : mag;
 }
 
-Result to_int(U a, int mode, int base_status) {
+Result to_int(U a, const Options& o, int base_status) {
   if (a.c == NAN_) return {0, Wtl3164::F_NAN | Wtl3164::F_INTEGER_OVERFLOW, 15};
   if (a.c == INF) return {0, Wtl3164::F_INTEGER_OVERFLOW, 15};
-  uint8_t fl = flush(&a);
+  uint8_t fl = flush(&a, o);
   if (a.c == ZERO) return {0, fl, (uint8_t)base_status};
   if (a.e > 62) return {0, (uint8_t)(fl | Wtl3164::F_INTEGER_OVERFLOW), 15};
   int sh = 62 - a.e;
@@ -207,9 +220,9 @@ Result to_int(U a, int mode, int base_status) {
     half = sh ? 1ull << (sh - 1) : 1;
   }
   bool inexact = rem != 0;
-  bool up = mode == 0 ? !below && (rem > half || (rem == half && (ip & 1)))
-          : mode == 2 ? inexact && !a.s
-          : mode == 3 ? inexact && a.s
+  bool up = o.round == 0 ? !below && (rem > half || (rem == half && (ip & 1)))
+          : o.round == 2 ? inexact && !a.s
+          : o.round == 3 ? inexact && a.s
           : false;
   uint64_t mag = ip + up;
   if (mag > (a.s ? 0x80000000ull : 0x7FFFFFFFull))
@@ -218,21 +231,21 @@ Result to_int(U a, int mode, int base_status) {
   return {(uint32_t)(a.s ? -mag : mag), (uint8_t)(fl | nx), (uint8_t)(base_status + (inexact ? 1 : 0))};
 }
 
-Result from_int(const Fmt& f, uint32_t v, int mode) {
+Result from_int(const Fmt& f, uint32_t v, const Options& o) {
   if (!v) return special(zero(f, false), 0, f);
   bool s = (int32_t)v < 0;
   uint64_t a = s ? (uint64_t)(0 - (uint64_t)(int32_t)v) : v;
   int n = bitlen(a);
-  return round_pack(f, s, n - 1, a << (63 - n), false, mode);
+  return round_pack(f, s, n - 1, a << (63 - n), false, o);
 }
 
-Result convert(const Fmt& from, const Fmt& to, uint64_t x, int mode) {
+Result convert(const Fmt& from, const Fmt& to, uint64_t x, const Options& o) {
   U a = unpack(from, x);
-  if (a.c == NAN_) return special(nan(to), Wtl3164::F_NAN, to);
-  uint8_t fl = flush(&a);
+  if (a.c == NAN_) return special(nan(to), NAN_OPERAND, to);
+  uint8_t fl = flush(&a, o);
   if (a.c == INF) return special(inf(to, a.s), fl, to);
   if (a.c == ZERO) return special(zero(to, a.s), fl, to);
-  Result r = round_pack(to, a.s, a.e, a.m, false, mode);
+  Result r = round_pack(to, a.s, a.e, a.m, false, o);
   r.flags |= fl;
   if (from.p == 53 && to.p == 24) {
     if (r.status == 4) r.status = 13;                        // overflow-6432
@@ -243,43 +256,38 @@ Result convert(const Fmt& from, const Fmt& to, uint64_t x, int mode) {
 
 }  // namespace
 
-Result compute1(Op op, bool dbl, uint64_t x, uint64_t y, int mode);
-
-Result compute(Op op, bool dbl, uint64_t x, uint64_t y, int mode, bool trunc, bool wrap_ovf) {
-  Result r = compute1(op, dbl, x, y, trunc ? 1 : mode);
-  if (wrap_ovf && (r.flags & Wtl3164::F_OVERFLOW)) r.bits = r.wrapped;
-  return r;
-}
-
-Result compute1(Op op, bool dbl, uint64_t x, uint64_t y, int mode) {
+Result compute(Op op, bool dbl, uint64_t x, uint64_t y, int mode, bool trunc, bool unf_round,
+               bool dnrm_exc) {
+  Options o{trunc ? 1 : mode, unf_round, dnrm_exc};
   const Fmt& f = dbl ? DBL : SGL;
   switch (op) {
-  case ADD: return add(f, unpack(f, x), unpack(f, y), mode);
-  case SUB: return add(f, unpack(f, x), unpack(f, y ^ (1ull << (f.p - 1 + f.ebits))), mode);
-  case MUL: return mul(f, unpack(f, x), unpack(f, y), mode);
-  case DIV: return div(f, unpack(f, x), unpack(f, y), mode);
-  case SQRT: return sqrt(f, unpack(f, y), mode);
+  case ADD: return add(f, unpack(f, x), unpack(f, y), o);
+  case SUB: return add(f, unpack(f, x), unpack(f, y ^ (1ull << (f.p - 1 + f.ebits))), o);
+  case MUL: return mul(f, unpack(f, x), unpack(f, y), o);
+  case DIV: return div(f, unpack(f, x), unpack(f, y), o);
+  case SQRT: return sqrt(f, unpack(f, y), o);
   case EQ: case LT: case GT: case ZEROP: case MINUSP: case PLUSP: {
     bool unary = op == ZEROP || op == MINUSP || op == PLUSP;
     U a = unpack(f, unary ? y : x), b = unary ? U{false, ZERO, 0, 0} : unpack(f, y);
-    if (a.c == NAN_ || b.c == NAN_) return special(0, Wtl3164::F_NAN | Wtl3164::F_INVALID, f);
-    uint8_t fl = flush(&a) | flush(&b);
+    // Unordered: = and zerop are false; the predicates with > or < are also
+    // invalid (19.5.1)
+    if (a.c == NAN_ || b.c == NAN_)
+      return special(0, Wtl3164::F_NAN | (op == EQ || op == ZEROP ? 0 : Wtl3164::F_INVALID), f);
+    uint8_t fl = flush(&a, o) | flush(&b, o);
     int c = compare(a, b);
     bool t = op == EQ || op == ZEROP ? c == 0 : op == LT || op == MINUSP ? c < 0 : c > 0;
     return special(t, fl, f);
   }
-  case NEG: case ABS: {
-    U a = unpack(f, y);
-    if (a.c == NAN_) return special(nan(f), Wtl3164::F_NAN, f);
+  case NEG: case ABS: {   // logical operations: no exceptions, NaNs kept (17, 19.3.7)
     uint64_t sign = 1ull << (f.p - 1 + f.ebits);
-    return special(op == NEG ? y ^ sign : y & ~sign, a.c == DEN ? Wtl3164::F_DENORMALIZED : 0, f);
+    return special(op == NEG ? y ^ sign : y & ~sign, 0, f);
   }
-  case I2D: return from_int(DBL, (uint32_t)y, mode);
-  case I2S: return from_int(SGL, (uint32_t)y, mode);
-  case D2S: return convert(DBL, SGL, y, mode);
-  case S2D: return convert(SGL, DBL, y, mode);
-  case D2I: return to_int(unpack(DBL, y), mode, 0);
-  case S2I: return to_int(unpack(SGL, y), mode, 0);
+  case I2D: return from_int(DBL, (uint32_t)y, o);
+  case I2S: return from_int(SGL, (uint32_t)y, o);
+  case D2S: return convert(DBL, SGL, y, o);
+  case S2D: return convert(SGL, DBL, y, o);
+  case D2I: return to_int(unpack(DBL, y), o, 0);
+  case S2I: return to_int(unpack(SGL, y), o, 0);
   case IMUL: {
     int64_t p = (int64_t)(int32_t)x * (int32_t)y;
     if (p != (int32_t)p) return {(uint32_t)p, Wtl3164::F_INTEGER_OVERFLOW, 15};
@@ -348,12 +356,16 @@ bool predicate(unsigned a) {
 }
 }  // namespace
 
+// A 32-bit integer in a register: bits 52:21 (manual 6.1)
+static uint32_t int_of(uint32_t hi, uint32_t lo) { return (hi << 11) | (lo >> 21); }
+static void set_int(uint32_t* hi, uint32_t* lo, uint32_t v) { *hi = v >> 11; *lo = v << 21; }
+
 W Wtl3164::read(unsigned a) {
   uint32_t v = 0;
   if (a == 1) v = r1l;
   else if (a == 2) v = r0h;
   else if (a == 3) v = r0l;
-  else if (a == 0400) v = ir;
+  else if (a == 0400) v = int_of(r0h, r0l);
   else if (predicate(a)) v = cond;
   else if (a >= 0600 && a < 0614) v = (uint32_t)sr[a - 0600] << 24;
   return mkw(fpex() ? DTP_FIXNUM : DTP_SINGLE_FLOAT, v);
@@ -366,11 +378,17 @@ void Wtl3164::write(unsigned a, uint32_t v) {
   case 3: r1l = v; return;
   case 0200: r2h = v; return;
   case 0202: r2l = v; return;
-  case 0374: ix = v; return;
+  case 0374: set_int(&r0h, &r0l, v); return;
   case 0624: for (auto& r : sr) r = 0; return;
   }
   if (a >= 0600 && a < 0614) { sr[a - 0600] = (uint8_t)(v >> 24); return; }
-  if ((a & 3) == 1 && a < 0600) { r1h = v; execute(a & ~3u); }
+  if ((a & 3) == 1 && a < 0600) {
+    Decoded d;
+    bool integer_in = decode(a & ~3u, &d) && (d.op == fpa::IMUL || d.op == fpa::I2D || d.op == fpa::I2S);
+    if (integer_in) set_int(&r1h, &r1l, v);
+    else r1h = v;
+    execute(a & ~3u);
+  }
 }
 
 void Wtl3164::execute(unsigned op) {
@@ -378,27 +396,36 @@ void Wtl3164::execute(unsigned op) {
   if (!decode(op, &d)) return;
   operations++;
   int mode = (sr[0] >> 1) & 3;
-  uint64_t x = d.op == fpa::IMUL ? ix : in64(d) ? ((uint64_t)r0h << 32) | r0l : r0h;
-  uint64_t y = in64(d) ? ((uint64_t)r1h << 32) | r1l : r1h;
-  fpa::Result r = fpa::compute(d.op, d.dbl, x, y, mode, d.trunc, sr[2] & F_OVERFLOW);
+  bool integer_in = d.op == fpa::IMUL || d.op == fpa::I2D || d.op == fpa::I2S;
+  uint64_t x = d.op == fpa::IMUL ? int_of(r0h, r0l) : in64(d) ? ((uint64_t)r0h << 32) | r0l : r0h;
+  uint64_t y = integer_in ? int_of(r1h, r1l) : in64(d) ? ((uint64_t)r1h << 32) | r1l : r1h;
+  fpa::Result r = fpa::compute(d.op, d.dbl, x, y, mode, d.trunc, sr[2] & F_UNDERFLOW,
+                               sr[2] & F_DENORMALIZED);
+  bool predicate = false;
   switch (d.op) {
   case fpa::EQ: case fpa::LT: case fpa::GT: case fpa::ZEROP: case fpa::MINUSP: case fpa::PLUSP:
     cond = r.bits & 1;
     sr[11] = (uint8_t)((sr[11] & ~0x20) | (cond ? 0x20 : 0));
+    predicate = true;
     break;
   case fpa::D2I: case fpa::S2I: case fpa::IMUL:
-    ir = (uint32_t)r.bits;
+    set_int(&r0h, &r0l, (uint32_t)r.bits);
     break;
   default:
+    // a single-precision result clears the register's low half (manual 7.2)
     r0h = (uint32_t)(out64(d) ? r.bits >> 32 : r.bits);
-    if (out64(d)) r0l = (uint32_t)r.bits;
+    r0l = out64(d) ? (uint32_t)r.bits : 0;
   }
-  if (d.unit == U_ADD) sr[6] = (uint8_t)((sr[6] & 0x0F) | (r.status << 4));
-  else if (d.unit == U_MUL) sr[6] = (uint8_t)((sr[6] & 0xF0) | r.status);
-  else sr[11] = (uint8_t)((sr[11] & 0xF0) | r.status);
+  // compares write no register, so they leave the status alone (but set FPCN)
+  if (!predicate) {
+    if (d.unit == U_ADD) sr[6] = (uint8_t)((sr[6] & 0x0F) | (r.status << 4));
+    else if (d.unit == U_MUL) sr[6] = (uint8_t)((sr[6] & 0xF0) | r.status);
+    else sr[11] = (uint8_t)((sr[11] & 0xF0) | r.status);
+  }
   sr[3] |= r.flags;
-  bool exception = (r.flags & sr[2]) || r.status == 2 || r.status == 3 || r.status == 10 ||
-                   r.status == 11 || r.status == 14;
+  // FPEX: an exception whose trap is enabled (the underflow bit is UNF
+  // CONTROL, but an underflow always raises it), or a denormalized operand
+  // under DNRM CONTROL; FPEX-taken stays until software clears it (12.1)
+  bool exception = (r.flags & sr[2] & ~F_UNDERFLOW) || (r.flags & F_UNDERFLOW);
   if (exception) sr[11] |= 0x80;
-  else if (!(sr[0] & 0x40)) sr[11] &= 0x7F;
 }
