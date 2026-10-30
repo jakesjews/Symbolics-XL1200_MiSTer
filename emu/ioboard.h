@@ -10,6 +10,8 @@
 //                          byte is then readable anywhere in 0x04017000-0x04017FFF)
 //   0x01008000-0x01008005  Ethernet station address, one byte per word in bits 15:8
 //   0x04016000-0x0401601F  board ID PROM, one byte per word in bits 15:8 (see idprom)
+//   0x04016000             write: 82586 Ethernet pins (bit 5 loopback off, bit 6 CA, bit 7
+//                          reset off); they read back in bits 7:5 (Genera sets them with %p-ldb)
 //   0x0401A000/0x0401B800  SCSI DMA page window / word address (0x0401A800/0x0401B000 ESDI)
 //   0x04020000+r           DP8466 ESDI disk data controller registers
 //   0x04024000             video scanline counter
@@ -24,6 +26,7 @@
 #include "ivory.h"
 #include "console.h"
 #include "scsi.h"
+#include "i82586.h"
 
 class IoBoard {
 public:
@@ -38,6 +41,8 @@ public:
   void write(uint32_t pa, W w);
 
   std::vector<uint32_t> buffer, video;
+  I82586 ether{buffer};          // Ethernet
+  uint32_t ether_pins = 0;       // bits 7:5 of 0x04016000
   WD33C93 scsi;
   Console console;
   void tick(uint64_t cycles);   // device timing (console line rate)

@@ -111,8 +111,8 @@ int main(int argc, char** argv) {
     if (trace_n && top->retire) {
       trace_n--;
       printf("%10llu  pc %08x.%d  sp %08x\n", (unsigned long long)cycles,
-             (uint32_t)(top->rootp->xl_machine__DOT__cpu__DOT__pc >> 1),
-             (int)(top->rootp->xl_machine__DOT__cpu__DOT__pc & 1), top->rootp->xl_machine__DOT__cpu__DOT__sp);
+             (uint32_t)(top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__pc >> 1),
+             (int)(top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__pc & 1), top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__sp);
     }
     if (top->halted) {
       printf("halted (code %d) after %.3f s\n", top->halt_reason, cycles / 50e6);

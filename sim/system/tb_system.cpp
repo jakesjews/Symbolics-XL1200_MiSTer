@@ -6,7 +6,7 @@
 // the RTL's display output is captured for two frames.
 //   ./obj_dir/Vxl_machine DISK.dd [STEPS] [TYPE-AT TEXT] [SCREEN.pgm]
 // The disk image is copied twice (one copy per machine); TEXT is typed on both
-// consoles from step TYPE-AT ('|' is Return).
+// consoles from step TYPE-AT ('|' is Return, {w N} waits N million steps).
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -27,7 +27,7 @@
 
 const char* ivory_opcode_name(int op);
 
-#define R(x) top->rootp->xl_machine__DOT__cpu__DOT__##x
+#define R(x) top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__##x
 #ifndef PROM_PATH
 #error PROM_PATH
 #endif
@@ -146,11 +146,17 @@ int main(int argc, char** argv) {
     dlog.clear();
     // the same keys reach both consoles before the same step
     if (n >= next_key && typed < text.size()) {
-      char c[2] = {text[typed] == '|' ? '\r' : text[typed], 0};
-      rbus.iob.console.type(c);
-      type_rtl(c[0]);
-      next_key = n + (text[typed] == '|' ? 3000000 : 200000);
-      typed++;
+      if (text[typed] == '{') {   // {w N}: wait N million steps
+        size_t end = text.find('}', typed);
+        next_key = n + strtoull(text.c_str() + typed + 2, nullptr, 0) * 1000000;
+        typed = end == std::string::npos ? text.size() : end + 1;
+      } else {
+        char c[2] = {text[typed] == '|' ? '\r' : text[typed], 0};
+        rbus.iob.console.type(c);
+        type_rtl(c[0]);
+        next_key = n + (text[typed] == '|' ? 3000000 : 200000);
+        typed++;
+      }
     }
     try {
       ref.step();

@@ -9,10 +9,11 @@ XL := $(abspath ../../rtl/xl)
 MEM := $(abspath ../mem)
 PROM := $(XL)/boot_prom.mem
 
-SV := $(IVORY)/ivory_pkg.sv $(IVORY)/ivory_cpu.sv $(XL)/xl_mem.sv $(XL)/xl_scsi.sv $(XL)/xl_console.sv \
+SV := $(IVORY)/ivory_pkg.sv $(IVORY)/ivory_cpu.sv $(IVORY)/ivory_mmu.sv $(IVORY)/ivory_core.sv \
+      $(XL)/xl_mem.sv $(XL)/xl_scsi.sv $(XL)/xl_i82586.sv $(XL)/xl_pit.sv $(XL)/xl_console.sv \
       $(XL)/xl_video.sv $(XL)/xl_iob.sv $(XL)/xl_nvram.sv $(XL)/xl_machine.sv
 SVH := $(wildcard $(IVORY)/*.svh)
-CPP := tb_system.cpp $(EMU)/machine.cpp $(EMU)/nvram.cpp $(EMU)/pit.cpp $(EMU)/scsi.cpp $(EMU)/ioboard.cpp \
+CPP := tb_system.cpp $(EMU)/machine.cpp $(EMU)/nvram.cpp $(EMU)/pit.cpp $(EMU)/scsi.cpp $(EMU)/i82586.cpp $(EMU)/ioboard.cpp \
        $(EMU)/console.cpp $(EMU)/cpu_core.cpp $(EMU)/cpu_insn.cpp
 
 VFLAGS := --cc --exe --build -j 8 -O3 --x-assign fast --x-initial fast --noassert \

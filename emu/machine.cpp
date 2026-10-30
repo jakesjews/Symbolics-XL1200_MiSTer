@@ -30,7 +30,8 @@ void Machine::tick(uint64_t n) {
 }
 
 uint32_t Machine::interrupts_pending() const {
-  return (pit.out(2) ? 1u : 0u) | (pit.out(0) ? 2u : 0u) | (iob.scsi.irq() ? 1u << 8 : 0u);
+  return (pit.out(2) ? 1u : 0u) | (pit.out(0) ? 2u : 0u) | (iob.scsi.irq() ? 1u << 8 : 0u) |
+         (iob.ether.irq() ? 1u << 18 : 0u);
 }
 
 // Main-board registers (Merlin-II).

@@ -51,6 +51,7 @@ module xl_scsi #(
   input  logic          sd_buff_wr,
 
   output logic          busy,       // a command is running (disk light)
+  output logic          irq,        // INT: ASR bit 7
   output logic [31:0]   dbg,        // targets present, engine state, ASR, opcode
   output logic [31:0]   dbg_blocks  // target 0's block count
 );
@@ -188,6 +189,7 @@ module xl_scsi #(
 
   assign busy = cs != C_IDLE;
   assign dbg = {present, 4'd0, cs, asr, op};
+  assign irq = asr[7];
   assign dbg_blocks = blocks[0];
 
   // ---------------------------------------------------------------- state

@@ -303,8 +303,11 @@ def disassemble(img, body, total=None, out=print):
         a += 1
 
 
-def load_dump(path, base=0xF8000000):
-    """Load a physical-memory dump (uint64 per word) as an Image in VMA=PMA space."""
+def load_dump(path, base=0xF8000000, pht=None):
+    """Load a physical-memory dump (uint64 per word) as an Image in VMA=PMA space.
+
+    With pht=(PHT base, PHT mask), also place every page the PHT maps at its
+    virtual address."""
     import array
     img = Image()
     a = array.array('Q')
@@ -313,4 +316,14 @@ def load_dump(path, base=0xF8000000):
     for i, w in enumerate(a):
         if w:
             img[base + i] = ((w >> 32) & 0xFF, w & 0xFFFFFFFF)
+    if pht:
+        pbase, pmask = pht
+        for off in range(0, (pmask & 0xFFFFF8) + 8, 2):
+            e0, e1 = a[pbase + off] & 0xFFFFFFFF, a[pbase + off + 1] & 0xFFFFFFFF
+            vpn, ppn = e0 >> 8, e1 >> 8
+            if vpn == 0xFFFFFF or (ppn << 8) + 256 > len(a):
+                continue
+            for j in range(256):
+                w = a[(ppn << 8) + j]
+                img[(vpn << 8) + j] = ((w >> 32) & 0xFF, w & 0xFFFFFFFF)
     return img

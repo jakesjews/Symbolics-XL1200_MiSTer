@@ -54,6 +54,7 @@ W IoBoard::read(uint32_t pa) {
   default: break;
   }
   if (off >= 0x04017000u && off < 0x04018000u) return mkw(DTP_FIXNUM, polled_latch);  // 8-bit devices
+  if (off == 0x04016000u) return mkw(DTP_FIXNUM, (uint32_t)idprom[0] << 8 | ether_pins);
   if (off >= 0x04016000u && off < 0x04016020u) return mkw(DTP_FIXNUM, (uint32_t)idprom[off - 0x04016000u] << 8);
   if (off >= 0x01008000u && off < 0x01008006u) return mkw(DTP_FIXNUM, (uint32_t)idprom[16 + off - 0x01008000u] << 8);
   W v = mkw(DTP_FIXNUM, regs.count(off) ? regs[off] : 0);
@@ -98,6 +99,7 @@ void IoBoard::write(uint32_t pa, W w) {
     log("write", pa, w);
     return;
   case 0x0402C000: video_control = v; log("write", pa, w); return;
+  case 0x04016000: ether_pins = v & 0xE0; ether.control(v); log("write", pa, w); return;
   case 0x0402D000: sync_program[sync_address++ & 0xFFF] = v; return;
   case 0x0402D001: sync_address = v; log("write", pa, w); return;
   default: break;

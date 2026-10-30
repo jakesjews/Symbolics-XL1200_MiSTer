@@ -112,6 +112,16 @@ int main(int argc, char** argv) {
   }
 
   Machine m(4u << 20);   // 4 MW, like the reference XL1201
+  // The calendar clock runs 28 years behind (same weekdays), as the core does
+  // by default: Genera 8.3 doesn't accept a two-digit year past 1999.
+  if (!getenv("XLEMU_CLOCK_TODAY"))
+    m.nvram.set_time_source([] {
+      time_t t = time(nullptr);
+      struct tm tm;
+      gmtime_r(&t, &tm);
+      tm.tm_year -= 28;
+      return timegm(&tm);
+    });
   Ivory cpu(&m);
   if (progfile) {
     // Unit-test mode: load a program into VMA=PMA memory and run it in FEP mode
@@ -153,6 +163,7 @@ int main(int argc, char** argv) {
   m.attach_disk(0, disk0, 1280, disk_stride);
   cpu.log_errors = getenv("XLEMU_ERRLOG") != nullptr;
   m.iob.scsi.trace = getenv("SCSI_TRACE") ? atoi(getenv("SCSI_TRACE")) : 0;
+  m.iob.ether.trace = getenv("ETHER_TRACE") != nullptr;
 
   if (!kernel.empty()) {
     m.load_fep_file(kernel);
@@ -229,9 +240,9 @@ int main(int argc, char** argv) {
     fclose(f);
   }
   if (dumpfile) {
-    // Dump the low 1 MW of physical memory (FEP area) as 64-bit words.
+    // Dump physical memory as 64-bit words.
     FILE* f = fopen(dumpfile, "wb");
-    fwrite(m.ram.data(), sizeof(W), 1u << 20, f);
+    fwrite(m.ram.data(), sizeof(W), m.ram.size(), f);
     fclose(f);
   }
   return 0;

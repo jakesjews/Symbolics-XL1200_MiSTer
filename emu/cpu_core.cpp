@@ -29,6 +29,7 @@ void Ivory::init() {
   fp = lp = sp;
   cont = 0;
   preempt_register = 0;
+  ib_valid = false;
   flush_map();
   halted = false;
 }
@@ -80,6 +81,9 @@ MapEntry* Ivory::map_fill(uint32_t vma) {
         m->ppn = wdata(e1) >> 8;
         m->access = wdata(e1) & 0xFF;
         m->pht_addr = a;
+        if (log_errors && m->ppn >= 0x4000)
+          fprintf(stderr, "[cpu] PHT maps vma %08x to ppn %06x: PHT0 %02o:%08x PHT1 %02o:%08x at %08x insn %llu\n",
+                  vma, m->ppn, wtag(e0), wdata(e0), wtag(e1), wdata(e1), a, (unsigned long long)icount);
         count_map_reloads = fixnum(wdata(count_map_reloads) + 1);
         out = m;
         return true;
@@ -93,7 +97,9 @@ MapEntry* Ivory::map_fill(uint32_t vma) {
   uint32_t state = vpn;
   for (int guard = 0; guard < (1 << 24); guard++) {
     state = (state << 4) + state + 1;        // 17x + 1
-    if (search((state << 3) & pht_mask, out)) return out;
+    // The next bucket is state<24:0>: the mask's top four bits are don't-cares
+    // (storage/i-storage-defs.lisp, SEARCH-PHT).
+    if (search(((state & 0x1FFFFFF) << 3) & pht_mask, out)) return out;
   }
   char why[96];
   snprintf(why, sizeof why, "PHT search did not terminate (vma %08x, PHT base %08x mask %08x)", vma, pht_base,
@@ -116,6 +122,7 @@ void Ivory::note_write(MapEntry* e, W data) {
 }
 
 uint32_t Ivory::translate(uint32_t vma, bool write, W* data) {
+  last_vma = vma;
   if (vma >= VMA_PMA_BASE) return vma - VMA_PMA_BASE;
   uint32_t vpn = vma >> 8;
   MapEntry* e = map_lookup(vpn);
@@ -145,7 +152,7 @@ bool Ivory::debug_translate(uint32_t vma, uint32_t& pa) {
   };
   int r = search(pht_hash(vpn) & pht_mask);
   uint32_t state = vpn;
-  for (int g = 0; r == 0 && g < 100000; g++) { state = (state << 4) + state + 1; r = search((state << 3) & pht_mask); }
+  for (int g = 0; r == 0 && g < 100000; g++) { state = (state << 4) + state + 1; r = search(((state & 0x1FFFFFF) << 3) & pht_mask); }
   return r == 1;
 }
 
@@ -172,14 +179,17 @@ bool Ivory::page_transport_enabled(uint32_t vma) {
 }
 
 W Ivory::read_raw(uint32_t vma) { return bus->phys_read(translate(vma, false)); }
-void Ivory::write_raw(uint32_t vma, W w) { bus->phys_write(translate(vma, true, &w), w); }
+void Ivory::write_raw(uint32_t vma, W w) {
+  cpu_write(vma);
+  bus->phys_write(translate(vma, true, &w), w);
+}
 
 W Ivory::read_addr(W addr) {
   if (wtype(addr) == DTP_PHYSICAL_ADDRESS) return bus->phys_read(wdata(addr));
   return read_raw(wdata(addr));
 }
 void Ivory::write_addr(W addr, W w) {
-  if (wtype(addr) == DTP_PHYSICAL_ADDRESS) { bus->phys_write(wdata(addr), w); return; }
+  if (wtype(addr) == DTP_PHYSICAL_ADDRESS) { cpu_write(wdata(addr)); bus->phys_write(wdata(addr), w); return; }
   write_raw(wdata(addr), w);
 }
 
@@ -273,7 +283,7 @@ void Ivory::mem_write(W addr, int cycle, W value, bool preserve_cdr) {
       continue;
     }
     W nw = preserve_cdr ? ((stripcdr(value)) | (old & ((W)3 << 38))) : value;
-    if (physical) bus->phys_write(a, nw); else write_raw(a, nw);
+    if (physical) { cpu_write(a); bus->phys_write(a, nw); } else write_raw(a, nw);
     return;
   }
 }
@@ -282,12 +292,29 @@ void Ivory::mem_write(W addr, int cycle, W value, bool preserve_cdr) {
 // Traps
 // ---------------------------------------------------------------------------
 
+// Rev-5 microstate -> a rev-4 microstate with the same trap descriptor in
+// Genera's DBG:*TRAP-DISPATCH-TABLES* (tools/errortable.py).
+static const uint16_t rev4_microstate[85] = {
+    0, 1828, 1820, 1872, 1876, 71, 1288, 152, 1832, 1824, 1848, 1840,
+    160, 159, 1466, 87, 1544, 1664, 1044, 2007, 1997, 71, 71, 71,
+    1423, 72, 1214, 2020, 1508, 69, 1369, 2043, 155, 68, 1899, 1903,
+    181, 1035, 286, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 143, 1782, 1982, 86, 143, 71, 71, 71, 71, 71, 71,
+    71, 77, 78, 1288, 1032, 1044, 1044, 1210, 1312, 1320, 1214, 1036,
+    122, 1616, 143, 1414, 1186, 52, 1555, 1225, 1600, 1136, 1088, 1060,
+    143,
+};
+
 int Ivory::error_microstate(int cond) {
+  int m = rev5_microstate(cond);
+  return chip_revision == 4 ? rev4_microstate[m] : m;
+}
+
+int Ivory::rev5_microstate(int cond) {
   // Genera looks the microstate up in the chip-revision error table.  This is
   // the rev-5 (VLM) numbering, (1+ (position condition *all-conditions*)) from
   // vlm emulator/errortbl.lisp (= SYS:I-SYS;REV5-ERROR-TABLE).  Our condition
   // list matches it except that the table splits two conditions by detail.
-  // The rev-4 chip's own numbering is not known yet; the FEP only prints it.
   int detail = err_detail;
   err_detail = -1;
   if (cond <= E_I_STAGE) return cond;
@@ -430,6 +457,9 @@ void Ivory::error_trap(int cond, uint32_t vma) {
 
 void Ivory::memory_trap(int vector, W vma) {
   if (trace && tracef) fprintf(tracef, "  MEMORY TRAP %o vma=%08x\n", vector, wdata(vma));
+  if (log_errors && vector == TV_PAGE_NOT_RESIDENT && fault_log++ < 2000)
+    fprintf(stderr, "[cpu] page not resident %08x at pc %08x.%d insn %llu sp %08x\n", wdata(vma),
+            (uint32_t)(pc >> 1), (int)(pc & 1), (unsigned long long)icount, sp);
   take_pre_trap(vector, 1, &vma);
   throw InstructionAbort{};
 }
@@ -765,6 +795,10 @@ void Ivory::do_return(int kind, int arg, bool sp_pop) {
   cr = wdata(saved_cr) | (oldcr & CR_TRACE_PENDING);
   lp = fp + (cr & 0xFF);
   (void)oldfp;
+  // The caller's frame is reloaded into the stack cache (spec: the return
+  // instruction makes sure the frame returned to is in the cache), so the
+  // cache now starts no higher than its FP.
+  if (fp < stack_cache_lower_bound) stack_cache_lower_bound = fp;
   if (kind == 2) {
     // return-kludge: copy values to the top of the caller's stack
     for (uint32_t i = 0; i < nvals; i++) swrite(sp + 1 + i, sread(vbase + i));

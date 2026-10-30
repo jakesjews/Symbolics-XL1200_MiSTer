@@ -77,10 +77,13 @@ the FEP disk as on a real machine.
   No dump of the Merlin boot PROM has been found, so `tools/bootprom.py`
   writes a stand-in (`rtl/xl/boot_prom.mem`, Ivory code assembled with
   `tools/ivasm.py`): the boot communication area as data, then code that
-  resets the WD33C93 the way the FEP does, finds the first SCSI target whose
-  label names a kernel, loads the kernel by its load map (12 blocks a READ(10)
-  through buffer page 4), records BOOT-FEP-KERNEL-DPN, builds FEP-STARTUP's
-  frame on the boot stack and jumps to it. `xlemu` boots through it from
+  turns the main board's memory cache on (0x0A000004 mode 2: the FEP never
+  does, and Genera warns "On-board memory cache is defective or disabled"
+  without it), resets the WD33C93 the way the FEP does, finds the first SCSI
+  target whose label names a kernel, loads the kernel by its load map (12
+  blocks a READ(10) through buffer page 4), records BOOT-FEP-KERNEL-DPN,
+  builds FEP-STARTUP's frame on the boot stack, sets the stack cache lower
+  bound to its FP and jumps to it. `xlemu` boots through it from
   reset (about 1.8M instructions); `-k` still loads a kernel file directly.
   Two Ivory details it ran into: the field instructions (`ldb`, `dpb`) take a
   left rotation, not a bit position; and a value returned from a function
@@ -368,7 +371,7 @@ emulator follows the specification.
 Bug found by Genera: internal registers >= 0o1000 were decoded as per-BAR
 registers by their low bits (BindingStackLimit 0o1006 went to BAR0).
 
-## Interrupts (what Genera needs; not yet modelled)
+## Interrupts
 
 From Genera 8.3 `i-sys/io-register-definitions.lisp` and `i-sys/interrupts.lisp`:
 
@@ -390,30 +393,78 @@ From Genera 8.3 `i-sys/io-register-definitions.lisp` and `i-sys/interrupts.lisp`
   (the Domino comment says 10 MHz; `setup-periodic-timer` loads
   `*sequence-break-interval*`, capped at 65535, directly).
 
-## Genera 8.3 bring-up in the model (in progress)
+## Genera 8.3
 
 `tools/fepfs.py mkworld` builds a FEP disk with `GENERA_8_3.ILOD` and a
-paging file; on it the FEP's `Load World FEP7:>Genera-8-3.ilod` reports "The
-Lisp Release of this world is Genera 8.3". Then `Start`:
+paging file. On it, `Load World FEP7:>Genera-8-3.ilod` then `Start` boots
+Genera 8.3 to the Dynamic Lisp Listener ("a Symbolics XL1200", 4.0M words).
+In the model that is about 3.5G instructions (two minutes of `xlemu` at
+~31M instructions/s; device time counted in instructions makes the FEP's
+disk waits long). On the MiSTer it takes about 90 s from `Start`; typed
+forms evaluate and the mouse brings up Genera's menus. The remaining
+warning is the missing FPA.
 
-- It writes the 82C54 (0x08000000) first; without a timer there it took a
-  bus error and lost its way. `emu/pit.cpp` models the 82C54 now.
-- It then initializes an empty PHT (PHT-BASE 0x59080, PHT-MASK 0xF000FFF8:
-  8192 buckets, every PHT0 = 1:10 0xFFFFFF80, every PHT1 fixnum 0), clears
-  the screen, switches to Lisp's stack (0xF000021D) and takes an instruction
-  exception (opcode 3, setup-1d-array); pushing that trap's frame faults
-  (page not resident: the stack page isn't in the PHT) and the model halts
-  ("trap while pushing a trap frame"). Open question: what should have
-  mapped the stack (wired pages loaded by `Start`, the stack cache absorbing
-  the pushes, or something the FEP expected from hardware we don't model).
+Genera reads the calendar clock as GMT and shows local time by its time
+zone (EST until the site says otherwise); MiSTer's RTC is local time, so the
+status line is off by the zone (6:49 shown at 11:49 EDT).
+
+What it took (first in the model, then the RTL):
+
+- 82C54 timer and interrupt register (`emu/pit.cpp`, previous section):
+  `Start` writes the timer first.
+- Stack cache lower bound. The boot PROM has to set it (the stand-in sets it
+  to FP of FEP-STARTUP's frame): `INVOKE-ON-FEP-STACK` compares it with
+  `*boot-stack-base*`/`*boot-stack-size*` (PROM words 2 and 3) to tell
+  whether it is already on the FEP stack, and relocated the stack to nowhere
+  when it read 0. And the hardware lowers it: a return to a frame below the
+  bound reloads that frame into the cache (spec: the return instruction makes
+  sure the frame returned to is in the cache), so the bound becomes FP.
+  Genera's stack-group switch dumps the cache from the bound up to FP; with a
+  stale bound above FP the count went negative and walked the whole stack
+  region. The model's stack is otherwise write-through memory; it doesn't
+  raise the bound on overflow (Genera's comment: the chip's cache is 128
+  words and overflow is `D.SP<6:2> = stack-cache-overflow-limit`).
+- PHT rehash: the next bucket is `state<24:0> << 3`, masked; the mask's top
+  four bits are don't-cares (`SEARCH-PHT`, `storage/i-storage-defs.lisp`).
+  Genera's mask is 0xF000FFF8, and keeping its top bits sent PHT probes to
+  0x800629B0 and the like.
+- Error microstates for chip revision 4. Genera decodes an error trap by
+  looking its microstate up in `DBG:*TRAP-DISPATCH-TABLES*` for the chip
+  revision; the model's numbering was rev 5 (the VLM's), so trap-on-exit
+  (rev 4: 1225, rev 5: 79) was decoded as a RETURN-MULTIPLE type error.
+  `tools/errortable.py` maps each rev-5 microstate to a rev-4 one with the
+  same descriptor, from Open Genera's world (it has both tables; the 8.3
+  world's rev-4 table is identical). `tools/worldfile.py` reads `.ilod` and
+  `.vlod` worlds (after the VLM's `world_tools.c`).
+- 82586 Ethernet (`emu/i82586.cpp`, no network): Genera halts with "82586
+  appears to be hung: RESET failed" if it doesn't answer. Its pins are a
+  latch at I/O board 0x44016000 (Genera: base + #o400260000; bit 7 releases
+  RESET, a falling edge on bit 6 is channel attention, bit 5 releases
+  loopback), and they read back in bits 7:5 (Genera sets them with
+  `%p-ldb`; bits 15:8 are still the ID PROM's first byte). The chip sees the
+  buffer memory as bytes, address bits 16:0, low byte of each word first:
+  Genera's area is buffer words 0x7000-0x7FFF, the SCP at 0x7FFD
+  (= 0xFFFFF6). INT is interrupt register bit 18.
+- Calendar clock: Genera 8.3 rejects a two-digit year past 1999 ("Unable to
+  get time from the network or the calendar clock"). The model, like the
+  core's default, runs the clock 28 years behind (`XLEMU_CLOCK_TODAY` turns
+  that off).
 
 ## RTL Ivory (`rtl/ivory/`)
 
 `ivory_cpu.sv` is a state machine that follows the C++ model function by
 function (the comments name the routine each group of states implements).
-Memory is one 40-bit word per transaction; the processor marks physical
-addresses (DTP-PHYSICAL-ADDRESS), and the memory system answers with the trap
-vector to take. Subroutines (raw access, cycle-type reads/writes with
+Memory is one 40-bit word per transaction. `ivory_mmu.sv` translates
+(`ivory_core.sv` puts the two together with a physical bus): the map cache
+(4096 entries, direct-mapped, one block RAM) and the PHT search, step for
+step as the model's `translate`/`map_fill`/`note_write`, so they make the
+same memory cycles in the same order. It answers each access with the trap
+vector to take (page not resident, fault request, write fault) and the
+page's transport-trap bit, which the processor's read and write cycles check
+with the oldspace registers (Table 13's transport column). The map-cache
+internal registers (PHT base and mask, map cache control, load/invalidate
+map) drive it; writing the base, mask or control clears the map (4096
+cycles). Subroutines (raw access, cycle-type reads/writes with
 forwarding, push/pop, operand fetch, car/cdr, unbind) use a small return
 stack; a trap abandons it. `tools/gen_ivory_states.py` generates the state
 enum from the sources.
@@ -422,7 +473,19 @@ It was verified in lockstep with the C++ model under Verilator (`sim/ivory/`,
 the processor alone on the model's bus): from reset through the boot PROM,
 the FEP boot and `Hello`, 165M instructions, 141 opcodes, every register and
 every memory word written agreeing after each instruction (earlier, 420M
-instructions of a Genera 8.5 boot on the VLM's memory model).
+instructions of a Genera 8.5 boot on the VLM's memory model). With the MMU
+(`ivory_core` on the model's physical bus) it runs Genera 8.3: lockstep
+runs at about 0.1-0.15M instructions/s, so `LOCKSTEP_FROM=N` lets a second
+C++ processor run the RTL's machine for the first N steps, then the RTL takes
+over from its registers with both map caches empty. Windows of 40M
+instructions from 400M to 2.5G (Genera starting up, then idle at the
+Listener) agreed.
+
+The model keeps the RTL's one-word instruction buffer: the second halfword
+instruction of a word doesn't fetch (or translate) the word again; a
+processor write to that address, or a coprocessor access, forgets it.
+Without it the two diverged on `count-map-reloads` when the first half
+evicted its own page from the map cache.
 
 Speed: about 13 cycles an instruction with single-cycle memory, after an
 instruction-word buffer (the second halfword instruction of a word doesn't
@@ -435,8 +498,11 @@ needs them. Quartus 17.0.2, 5CSEBA6, processor alone: 15.5K ALMs (37%),
 Each follows its C++ counterpart in `emu/`:
 
 - `xl_machine`: processor, address decode (as `Machine::phys_read`), boot
-  PROM (512-word block RAM from `boot_prom.mem`), main board registers, VME
-  registers, the microsecond clock (coprocessor 0o1002), device time.
+  PROM (512-word block RAM from `boot_prom.mem`), main board registers
+  (0x0A00000C is the interrupt register: pending sources, mask), VME
+  registers, the microsecond clock (coprocessor 0o1002), device time, the
+  sequence-break requests (high priority: any enabled source but bit 1).
+- `xl_pit`: the 82C54 (as `emu/pit.cpp`).
 - `xl_mem`: main memory and the I/O board's buffer memory in DDR3, one word
   per 64-bit DDR word (main memory at DDR word 0x06000000, buffer at
   0x06400000). Main memory goes through an 8K-word direct-mapped cache
@@ -446,7 +512,9 @@ Each follows its C++ counterpart in `emu/`:
 - `xl_nvram`: MK48T02 behaviour; the clock is a BCD counter started from
   MiSTer's RTC (optionally 28 years back, as the VLM does for Genera).
 - `xl_iob`: registers, DUSCC and AM9517 subsets for the console link, the
-  buffer memory arbiter (console DMA, SCSI DMA, processor).
+  buffer memory arbiter (console DMA, SCSI DMA, 82586, processor).
+- `xl_i82586`: the Ethernet chip without a network (as `emu/i82586.cpp`),
+  16-bit cycles on the buffer memory.
 - `xl_scsi`: WD33C93 and disk targets on MiSTer `S` mounts: a 1280-byte
   block is three 512-byte sectors of a SCSI2SD-layout image, through a
   staging buffer.
@@ -464,7 +532,13 @@ Each follows its C++ counterpart in `emu/`:
 (DDR3 model, SD model) in lockstep with the C++ machine, with device time
 counted in instructions as the model does (`LOCKSTEP`: SCSI commands
 complete within the instruction that starts them, the console byte rate and
-video counters follow the model); `obj_free/Vxl_machine` runs it as on the
+video counters follow the model; the timer ticks on the edge an instruction
+retires and the processor waits a cycle before the next, so it sees the
+sequence-break requests the model's would). From reset through `Hello`,
+`Load World`, `Start` and Genera's first 70M instructions (timer and
+interrupts, both 82586 initializations): 260M instructions, 158 opcodes,
+no difference, video memory identical (85 minutes at ~51K instructions/s).
+`obj_free/Vxl_machine` runs it as on the
 MiSTer (microseconds of the 50 MHz clock, SCSI commands running while the FEP
 polls, memory cleared from junk, the dot clock running) and saves the screen.
 

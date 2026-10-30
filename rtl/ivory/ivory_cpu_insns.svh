@@ -1043,6 +1043,8 @@
           fp <= nfp;
           cr <= ncr;
           lp <= nfp + {24'd0, ncr[7:0]};
+          // the caller's frame is reloaded into the stack cache
+          if (nfp < stack_cache_lower_bound) stack_cache_lower_bound <= nfp;
           cnt <= '0;
           st <= S_RET_VALUES;
         end
@@ -1442,12 +1444,18 @@
           if (r < 10'o1000 && (r[6:0] == 7'o006 || r[6:0] == 7'o052)) begin
             bar[r[8:7]] <= stripcdr(pop_w);
             st <= S_RETIRE;
-          end else if (r < 10'o1000 && (r[6:0] == 7'o032 || r[6:0] == 7'o033)) st <= S_RETIRE;   // map cache
+          end else if (r < 10'o1000 && (r[6:0] == 7'o032 || r[6:0] == 7'o033)) begin
+            // invalidate-map / load-map n: the entry for BARn's page
+            map_vpn <= bar[r[8:7]][31:8];
+            map_data <= pop_w[31:0];
+            if (r[6:0] == 7'o032) map_inval <= 1'b1; else map_load <= 1'b1;
+            st <= S_RETIRE;
+          end
           else if (r >= 10'o1000) begin
             if (r == 10'o1000) swrite(sp, pop_w, S_RETIRE);
             else begin
-              if (r == 10'o1007) pht_base <= pop_w[31:0];
-              else if (r == 10'o1010) pht_mask <= pop_w[31:0];
+              if (r == 10'o1007) begin pht_base <= pop_w[31:0]; map_flush <= 1'b1; end
+              else if (r == 10'o1010) begin pht_mask <= pop_w[31:0]; map_flush <= 1'b1; end
               else if (irw_reg(r)) irw[r[4:0]] <= pop_w;
               else scratch[r[8:0]] <= pop_w;
               st <= S_RETIRE;
@@ -1467,7 +1475,7 @@
               10'o023: preempt_register <= pop_w[31:0];
               10'o024: icache_control <= pop_w[31:0];
               10'o025: prefetcher_control <= pop_w[31:0];
-              10'o026: map_cache_control <= pop_w[31:0];
+              10'o026: begin map_cache_control <= pop_w[31:0]; map_flush <= 1'b1; end
               10'o027: memory_control <= pop_w[31:0];
               10'o034: stack_cache_overflow_limit <= pop_w[31:0];
               10'o040: entry_max_args <= pop_w[31:0];

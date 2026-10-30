@@ -75,7 +75,8 @@ module xl_machine #(
   import ivory_pkg::*;
 
   // ---------------------------------------------------------------- processor
-  logic        mem_req, mem_we, mem_phys, mem_ack, mem_buserr;
+  // The processor with its MMU; every bus address is physical.
+  logic        mem_req, mem_we, mem_ack, mem_buserr;
   logic [31:0] mem_addr;
   word_t       mem_wdata, mem_rdata;
   logic        cop_req, cop_we, cop_ack;
@@ -84,17 +85,17 @@ module xl_machine #(
   logic [31:0] usec;
   logic        mem_ready /*verilator public_flat_rd*/;
   logic        retire_counted;
+  logic        hp_sb, lp_sb;
 
-  ivory_cpu cpu (
-    .clk, .reset, .run(mem_ready),
-    .dbg_we(1'b0), .dbg_sel(4'd0), .dbg_data('0),
-    .mem_req, .mem_we, .mem_phys, .mem_addr, .mem_wdata, .mem_ack, .mem_rdata,
-    .mem_fault(12'd0), .mem_buserr,
+  ivory_core core (
+    .clk, .reset, .run(mem_ready), .hold(LOCKSTEP && retire),
+    .bus_req(mem_req), .bus_we(mem_we), .bus_addr(mem_addr), .bus_wdata(mem_wdata),
+    .bus_ack(mem_ack), .bus_rdata(mem_rdata), .bus_buserr(mem_buserr),
     .cop_req, .cop_we, .cop_reg, .cop_wdata, .cop_ack, .cop_rdata, .cop_err(1'b0),
-    .hp_sb(1'b0), .lp_sb(1'b0), .reset_req(1'b0), .hp_sb_taken(), .lp_sb_taken(),
+    .hp_sb, .lp_sb, .reset_req(1'b0), .hp_sb_taken(), .lp_sb_taken(),
     .usec_clock(usec_now),
     .retire, .retire_counted, .halted,
-    .trap_mode(trap_mode), .eos(), .zos(), .insn_count, .halt_reason, .dbg_pc(cpu_pc)
+    .trap_mode(trap_mode), .insn_count, .halt_reason, .dbg_pc(cpu_pc)
   );
   logic [1:0]  trap_mode;
   logic [31:0] cpu_pc;
@@ -130,20 +131,17 @@ module xl_machine #(
   wire [31:0] usec_now = LOCKSTEP ? {2'b00, ticks[31:2]} : usec;
 
   // ---------------------------------------------------------------- address decode
-  // VMA=PMA: VMA 0xF8000000 + x is physical x; other virtual addresses need
-  // the page tables, which the FEP doesn't use (not yet implemented: they
-  // take a bus error).
   logic        iob_dma_busy;
   wire         req = mem_req && !(LOCKSTEP && iob_dma_busy);
-  wire         pmap = mem_phys || mem_addr[31:27] == 5'h1F;
-  wire  [31:0] pa = mem_phys ? mem_addr : {5'd0, mem_addr[26:0]};
-  wire         sel_ram   = pmap && pa < 32'h0040_0000;
-  wire         sel_prom  = pmap && pa[31:16] == 16'h07FE;
-  wire         sel_nvram = pmap && pa[31:11] == 21'(32'h0900_0000 >> 11);
-  wire         sel_mb    = pmap && pa[31:4] == 28'h0A0_0000;
-  wire         sel_vme   = pmap && pa[31:12] == 20'h88000;
-  wire         sel_iob   = pmap && pa[31:28] == 4'h4;
-  wire         sel_none  = !(sel_ram || sel_prom || sel_nvram || sel_mb || sel_vme || sel_iob);
+  wire  [31:0] pa = mem_addr;
+  wire         sel_ram   = pa < 32'h0040_0000;
+  wire         sel_prom  = pa[31:16] == 16'h07FE;
+  wire         sel_pit   = pa[31:2] == 30'(32'h0800_0000 >> 2);
+  wire         sel_nvram = pa[31:11] == 21'(32'h0900_0000 >> 11);
+  wire         sel_mb    = pa[31:4] == 28'h0A0_0000;
+  wire         sel_vme   = pa[31:12] == 20'h88000;
+  wire         sel_iob   = pa[31:28] == 4'h4;
+  wire         sel_none  = !(sel_ram || sel_prom || sel_pit || sel_nvram || sel_mb || sel_vme || sel_iob);
 
   logic        dev_ack;
   logic        buf_req, buf_we, buf_ack;
@@ -184,9 +182,29 @@ module xl_machine #(
 
   // Merlin-II registers (words 0x0A000000 + 0, 4, 8, C): control (bit 1 =
   // run light), cache control, ECO levels (one nibble per slot: main board 1,
-  // I/O board 0 5, F = empty; the reference XL1201's), status
+  // I/O board 0 5, F = empty; the reference XL1201's), interrupts (reads give
+  // the pending sources, writes set the mask; i-sys/io-register-definitions)
   localparam logic [31:0] ECO_REGISTER = 32'hFFF5_FFF1;
-  logic [31:0] mb_reg [4];
+  logic [31:0] mb_reg [3];
+  logic [31:0] int_mask;
+
+  // 82C54 timer (1 MHz; in lockstep, every 4 instructions as in the model,
+  // on the edge the instruction retires so the next one sees its outputs)
+  logic [2:0]  pit_out;
+  xl_pit pit (
+    .clk, .reset,
+    .tick(LOCKSTEP ? retire && ticks[1:0] == 2'd3 : usec_tick),
+    .we(req && sel_pit && mem_we && !dev_ack), .reg_n(pa[1:0]), .wdata(mem_wdata[7:0]),
+    .out(pit_out)
+  );
+
+  // Interrupt sources: 0 timer 2 (periodic), 1 timers 1 and 0 (interval; the
+  // only low-priority one), 8 SCSI controller, 18 Ethernet
+  logic        scsi_irq, ether_irq;
+  wire  [31:0] int_pending = {13'd0, ether_irq, 9'd0, scsi_irq, 6'd0, pit_out[0], pit_out[2]};
+  wire  [31:0] int_on = int_pending & int_mask;
+  assign hp_sb = (int_on & ~32'd2) != 32'd0;
+  assign lp_sb = int_on[1];
   // VME interface (VIC068 registers at 0x88000200+n): reads return what was
   // written, in the first 1K words
   logic [31:0] vme [1024];
@@ -204,7 +222,7 @@ module xl_machine #(
   xl_iob #(.NT(NT), .LOCKSTEP(LOCKSTEP)) iob (
     .clk, .reset, .tick(dev_tick), .ticks,
     .cpu_req(req && sel_iob), .cpu_we(mem_we), .cpu_addr(pa[27:0]), .cpu_wdata(mem_wdata[31:0]),
-    .cpu_ack(iob_ack), .cpu_rdata(iob_rdata), .dma_busy(iob_dma_busy),
+    .cpu_ack(iob_ack), .cpu_rdata(iob_rdata), .dma_busy(iob_dma_busy), .scsi_irq, .ether_irq,
     .buf_req, .buf_we, .buf_addr, .buf_be, .buf_wdata, .buf_ack, .buf_rdata,
     .key_strobe, .key_down, .key_code, .mouse_strobe, .mouse_buttons, .mouse_dx, .mouse_dy,
     .img_mounted, .img_readonly, .img_size, .sd_lba, .sd_blk_cnt, .sd_rd, .sd_wr, .sd_ack,
@@ -241,15 +259,18 @@ module xl_machine #(
     dbg[7] <= {mounts, resets, prom_entries};
   end
 
-  // The simple targets (PROM, main board, VME, nothing) answer a cycle after
-  // the request; writes take effect then.
-  wire  sel_simple = sel_prom || sel_mb || sel_vme || sel_none;
+  // The simple targets (PROM, timer, main board, VME, nothing) answer a cycle
+  // after the request; writes take effect then.
+  wire  sel_simple = sel_prom || sel_pit || sel_mb || sel_vme || sel_none;
   always_ff @(posedge clk) begin
     dev_ack <= req && sel_simple && !dev_ack;
     if (reset) begin
-      for (int i = 0; i < 4; i++) mb_reg[i] <= 32'd0;
-    end else if (req && sel_mb && mem_we && !dev_ack && pa[1:0] == 2'd0 && pa[3:2] != 2'd2)
-      mb_reg[pa[3:2]] <= mem_wdata[31:0];
+      for (int i = 0; i < 3; i++) mb_reg[i] <= 32'd0;
+      int_mask <= 32'd0;
+    end else if (req && sel_mb && mem_we && !dev_ack && pa[1:0] == 2'd0) begin
+      if (pa[3:2] == 2'd3) int_mask <= mem_wdata[31:0];
+      else if (pa[3:2] != 2'd2) mb_reg[pa[3:2]] <= mem_wdata[31:0];
+    end
   end
 
   always_comb begin
@@ -259,7 +280,8 @@ module xl_machine #(
     if (sel_ram) mem_rdata = ram_rdata;
     else if (sel_prom) mem_rdata = prom_hi ? fixnum(32'd0) : prom_q;
     else if (sel_nvram) mem_rdata = fixnum({24'd0, nv_rdata});
-    else if (sel_mb) mem_rdata = fixnum(pa[1:0] != 2'd0 ? 32'd0 : pa[3:2] == 2'd2 ? ECO_REGISTER : mb_reg[pa[3:2]]);
+    else if (sel_mb) mem_rdata = fixnum(pa[1:0] != 2'd0 ? 32'd0 : pa[3:2] == 2'd3 ? int_pending :
+                                        pa[3:2] == 2'd2 ? ECO_REGISTER : mb_reg[pa[3:2]]);
     else if (sel_vme) mem_rdata = fixnum(vme_hi ? 32'd0 : vme_q);
     else if (sel_iob) mem_rdata = fixnum(iob_rdata);
   end
@@ -279,11 +301,8 @@ module xl_machine #(
   initial trace_mem = $test$plusargs("memtrace") != 0;
   always_ff @(posedge clk)
     if (trace_mem && mem_ack)
-      $display("mem %s %s%08x %010x%s", mem_we ? "W" : "R", mem_phys ? "p" : "v", mem_addr,
+      $display("mem %s %08x %010x%s", mem_we ? "W" : "R", mem_addr,
                mem_we ? mem_wdata : mem_rdata, mem_buserr ? " BUS ERROR" : "");
-  always_ff @(posedge clk)
-    if (mem_req && !pmap && !dev_ack)
-      $display("xl_machine: virtual address %08x needs translation (not implemented)", mem_addr);
 `endif
 
 endmodule

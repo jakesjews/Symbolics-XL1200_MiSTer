@@ -166,6 +166,11 @@
     retire_counted <= 1'b0;
     hp_sb_taken <= 1'b0;
     lp_sb_taken <= 1'b0;
+    map_flush <= 1'b0;
+    map_load <= 1'b0;
+    map_inval <= 1'b0;
+    // a PHT search loaded the map cache (MMU)
+    if (map_reload) irw[IRW_COUNT_MAP_RELOADS] <= fixnum(irw[IRW_COUNT_MAP_RELOADS][31:0] + 32'd1);
     scratch_rd <= scratch[scratch_rd_ix];
     // a write to the buffered instruction word forgets it (before the next fetch can use it)
     if (mem_req && mem_we && mem_addr == ib_addr) ib_valid <= 1'b0;
@@ -216,7 +221,7 @@
         S_HALT: halted <= 1'b1;
 
         // ---------------------------------------------------------------- step()
-        S_FETCH: begin
+        S_FETCH: if (!hold) begin
           inst_pc <= pc;
           restart_sp <= sp;
           pc_changed <= 1'b0;
@@ -357,13 +362,15 @@
         end
         S_MEM_W: if (mem_ack) begin
           mem_req <= 1'b0;
+          m_trans <= mem_transport;
           if (mem_buserr) begin
             if (in_trap) halt(8'd1);
             else begin
-              tr_args[0] <= mkw(DTP_PHYSICAL_ADDRESS, m_addr);
+              tr_args[0] <= mkw(DTP_PHYSICAL_ADDRESS, mem_bus_pa);
               pre_trap(TV_MEMORY_BUS_ERROR, 3'd1);
             end
-          end else if (mem_fault != 12'd0) begin
+          end else if (mem_fault == 12'hFFF) halt(8'd5);   // PHT search did not terminate
+          else if (mem_fault != 12'd0) begin
             if (in_trap) halt(8'd2);
             else begin
               tr_args[0] <= mkw(DTP_LOCATIVE, m_addr);
@@ -388,6 +395,12 @@
           act = cycle_action(mr_cyc, action_column(wtype(m_rd)));
           if (act == A_TRAP) begin
             err_d(E_MEMORY_DATA_ERROR, mr_final, {4'd0, mr_cyc});
+          end else if ((act == A_IND || act == A_MTRAP ||
+                        (cycle_transport(mr_cyc) && is_pointer_type(wtype(m_rd)) && wtype(m_rd) != DTP_NULL)) &&
+                       m_trans && oldspace_address(m_rd[31:0])) begin
+            // the transport trap takes precedence over the monitor trap
+            tr_args[0] <= mkw(DTP_LOCATIVE, mr_final);
+            pre_trap(TV_TRANSPORT, 3'd1);
           end else if (act == A_MTRAP) begin
             tr_args[0] <= mkw(DTP_LOCATIVE, mr_final);
             pre_trap(TV_MONITOR, 3'd1);
@@ -417,6 +430,10 @@
           act = cycle_action(mw_cyc, action_column(wtype(m_rd)));
           if (act == A_TRAP) begin
             err_d(E_MEMORY_DATA_ERROR, mr_final, {4'd0, mw_cyc});
+          end else if ((act == A_IND || act == A_MTRAP) && m_trans && oldspace_address(m_rd[31:0])) begin
+            // forwarding and monitor pointers are checked before indirection
+            tr_args[0] <= mkw(DTP_LOCATIVE, mr_final);
+            pre_trap(TV_TRANSPORT, 3'd1);
           end else if (act == A_MTRAP) begin
             tr_args[0] <= mkw(DTP_LOCATIVE, mr_final);
             pre_trap(TV_MONITOR, 3'd1);
@@ -556,7 +573,9 @@
 
         // ---------------------------------------------------------------- traps
         S_ERR: begin
-          tr_args[0] <= fixnum(error_microstate(err_cond, err_detail_valid, err_detail));
+          tr_args[0] <= fixnum(chip_revision == 32'd4
+                               ? {21'd0, rev4_microstate(error_microstate(err_cond, err_detail_valid, err_detail))}
+                               : error_microstate(err_cond, err_detail_valid, err_detail));
           tr_args[1] <= mkw(DTP_LOCATIVE, err_vma);
           pre_trap(TV_ERROR, 3'd2);
         end

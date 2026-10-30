@@ -9,7 +9,7 @@
 // or, in lockstep simulation, once per instruction as the reference model
 // does (LOCKSTEP: the console byte rate and the video counters then follow
 // the model, and dma_busy tells the machine to hold the processor while
-// console DMA lands).
+// console DMA lands and while the 82586 works).
 module xl_iob #(
   parameter int NT = 2,
   parameter bit LOCKSTEP = 1'b0,
@@ -28,6 +28,8 @@ module xl_iob #(
   output logic        cpu_ack,
   output logic [31:0] cpu_rdata,
   output logic        dma_busy,
+  output logic        scsi_irq,     // interrupt sources (Merlin-II interrupt register bits 8, 18)
+  output logic        ether_irq,
 
   // buffer memory (xl_mem)
   output logic        buf_req,
@@ -115,7 +117,19 @@ module xl_iob #(
     .dma_req(sdma_req), .dma_we(sdma_we), .dma_wdata(sdma_wdata), .dma_ack(sdma_ack), .dma_rdata(sdma_rdata),
     .img_mounted, .img_readonly, .img_size, .sd_lba, .sd_blk_cnt, .sd_rd, .sd_wr, .sd_ack,
     .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
-    .busy(disk_busy), .dbg(dbg_scsi), .dbg_blocks
+    .busy(disk_busy), .irq(scsi_irq), .dbg(dbg_scsi), .dbg_blocks
+  );
+
+  // ---------------------------------------------------------------- 82586 Ethernet (no network)
+  // Its pins are a latch at 0x04016000 that reads back in bits 7:5.
+  logic        eth_pins_we, eth_busy, eth_req, eth_we, eth_hi, eth_ack;
+  logic [7:0]  eth_pins;
+  logic [14:0] eth_word;
+  logic [15:0] eth_wdata;
+  xl_i82586 ether (
+    .clk, .reset, .pins_we(eth_pins_we), .pins(eth_pins), .busy(eth_busy), .irq(ether_irq),
+    .m_req(eth_req), .m_we(eth_we), .m_word(eth_word), .m_hi(eth_hi), .m_wdata(eth_wdata),
+    .m_ack(eth_ack), .m_rdata(buf_rdata)
   );
 
   logic       con_rx;          // a byte from the processor to the console
@@ -169,8 +183,8 @@ module xl_iob #(
   logic [7:0]  polled_latch;
 
   // ---------------------------------------------------------------- buffer memory
-  // Clients: console DMA, SCSI DMA, the processor (in that order).
-  typedef enum logic [1:0] { BC_NONE, BC_CON, BC_SCSI, BC_CPU } bclient_t;
+  // Clients: console DMA, SCSI DMA, the 82586, the processor (in that order).
+  typedef enum logic [2:0] { BC_NONE, BC_CON, BC_SCSI, BC_ETH, BC_CPU } bclient_t;
   bclient_t    bc;
   logic        con_dma;          // a console byte to store
   logic [15:0] con_dma_word;
@@ -195,6 +209,10 @@ module xl_iob #(
         buf_addr = con_dma_word; buf_be = 4'b0001 << con_dma_lane; buf_wdata = {4{con_dma_byte}};
       end
       BC_SCSI: buf_we = sdma_we;
+      BC_ETH: begin
+        buf_we = eth_we; buf_addr = {1'b0, eth_word}; buf_be = eth_hi ? 4'b1100 : 4'b0011;
+        buf_wdata = {eth_wdata, eth_wdata};
+      end
       BC_CPU: begin
         buf_we = cpu_we; buf_addr = cpu_addr[15:0]; buf_be = 4'hF; buf_wdata = cpu_wdata;
       end
@@ -203,7 +221,8 @@ module xl_iob #(
   end
   assign sdma_ack = (bc == BC_SCSI && buf_ack) || (sdma_req && bc == BC_NONE && s_hit);
   assign sdma_rdata = (bc == BC_SCSI) ? buf_rdata[8 * dma_byte_addr[1:0] +: 8] : sr_data[8 * dma_byte_addr[1:0] +: 8];
-  assign dma_busy = con_dma || bc == BC_CON;
+  assign eth_ack = bc == BC_ETH && buf_ack;
+  assign dma_busy = con_dma || bc == BC_CON || eth_busy;
 
   always_ff @(posedge clk) begin
     if (reset) begin
@@ -216,6 +235,7 @@ module xl_iob #(
         BC_NONE:
           if (con_dma) bc <= BC_CON;
           else if (sdma_req && !s_hit) bc <= BC_SCSI;
+          else if (eth_req && !eth_ack) bc <= BC_ETH;
           else if (cpu_buf && !cpu_buf_done) bc <= BC_CPU;
         default:
           if (buf_ack) begin
@@ -256,6 +276,7 @@ module xl_iob #(
     con_pop <= 1'b0;
     sync_ir_we <= 1'b0;
     sync_cmd_we <= 1'b0;
+    eth_pins_we <= 1'b0;
     if (reset) begin
       ist <= I_IDLE;
       for (int i = 0; i < 64; i++) duscc[i] <= 8'h00;
@@ -272,6 +293,7 @@ module xl_iob #(
       dma_byte_addr <= '0;
       {reg_4800, reg_5800, reg_28000} <= '0;
       video_control <= '0;
+      eth_pins <= '0;
       polled_latch <= '0;
       con_dma <= 1'b0;
       con_wait <= '0;
@@ -322,6 +344,7 @@ module xl_iob #(
             if (!cpu_we) begin
               // ---- register reads
               if (is_8bit) cpu_rdata <= {24'd0, polled_latch};
+              else if (off == 28'h4016000) cpu_rdata <= {16'd0, IDPROM[7:0], eth_pins[7:5], 5'd0};
               else if (off[27:5] == 23'(28'h4016000 >> 5)) cpu_rdata <= {16'd0, IDPROM[8 * off[4:0] +: 8], 8'd0};
               else if (off >= 28'h1008000 && off < 28'h1008006) cpu_rdata <= {16'd0, IDPROM[8 * (5'd16 + 5'(off[2:0])) +: 8], 8'd0};
               else case (off)
@@ -389,6 +412,7 @@ module xl_iob #(
                 end
                 // SCSI DMA: 0x0401A000 = buffer window in 4K-word pages (start
                 // page bits 2:0), 0x0401B800 = low 12 bits of the word address
+                28'h4016000: begin eth_pins <= cpu_wdata[7:0]; eth_pins_we <= 1'b1; end
                 28'h401A000: scsi_window <= cpu_wdata;
                 28'h401B800: dma_byte_addr <= {1'b0, scsi_window[2:0], cpu_wdata[11:0], 2'b00};
                 28'h402C000: video_control <= cpu_wdata;

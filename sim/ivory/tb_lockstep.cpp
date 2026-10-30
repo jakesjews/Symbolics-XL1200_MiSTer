@@ -1,9 +1,10 @@
 // Lockstep test: the RTL Ivory and the C++ model each run the XL1200 (their
 // own Machine: boot PROM, memory, NVRAM, I/O board, disk) from reset, and after
 // every step their registers and every RAM word either of them wrote must agree.
-//   ./obj_dir/Vivory_cpu PROM.mem DISK.dd [STEPS] [TYPE-AT TEXT]
+//   ./obj_dir/Vivory_core PROM.mem DISK.dd [STEPS] [TYPE-AT TEXT]
+//   LOCKSTEP_FROM=N  the C++ model alone runs the first N steps (see below)
 // The disk image is copied twice (one copy per machine); TEXT is typed on both
-// consoles from step TYPE-AT ('|' is Return).
+// consoles from step TYPE-AT ('|' is Return, {w N} waits N million steps).
 #include <cstdio>
 #include <cstdlib>
 #include <chrono>
@@ -12,16 +13,16 @@
 #include <set>
 #include <string>
 #include <unistd.h>
-#include "Vivory_cpu.h"
-#include "Vivory_cpu___024root.h"
+#include "Vivory_core.h"
+#include "Vivory_core___024root.h"
 #include "verilated.h"
 #include "machine.h"
 
 const char* ivory_opcode_name(int op);
 
-#define R(x) top->rootp->ivory_cpu__DOT__##x
+#define R(x) top->rootp->ivory_core__DOT__cpu__DOT__##x
 
-static Vivory_cpu* top;
+static Vivory_core* top;
 static Machine* dbus;            // the RTL's machine
 static uint64_t cycles = 0;
 static bool mem_acked = false, cop_acked = false;
@@ -73,8 +74,7 @@ static void load_rtl(Ivory& c) {
   R(icount) = c.icount; R(trap_count) = c.trap_count;
 }
 
-// The FEP runs in the VMA=PMA zone and on physical addresses; translation of
-// other virtual addresses (map cache, PHT) isn't in the RTL yet.
+// For showing instruction words: the VMA=PMA zone and physical addresses.
 static bool physical(uint32_t vma, bool phys, uint32_t& pa) {
   if (phys) { pa = vma; return true; }
   if (vma >= VMA_PMA_BASE) { pa = vma - VMA_PMA_BASE; return true; }
@@ -83,22 +83,17 @@ static bool physical(uint32_t vma, bool phys, uint32_t& pa) {
 
 static void tick() {
   // Respond to requests made at the last edge; acknowledgements last one cycle.
-  if (mem_acked) { top->mem_ack = 0; mem_acked = false; }
-  else if (top->mem_req) {
-    uint32_t pa;
-    bool we = top->mem_we, buserr = false;
+  if (mem_acked) { top->bus_ack = 0; mem_acked = false; }
+  else if (top->bus_req) {
+    // the RTL's bus is physical (ivory_mmu translates)
+    bool we = top->bus_we, buserr = false;
     W rd = 0;
-    if (!physical(top->mem_addr, top->mem_phys, pa)) {
-      printf("RTL used virtual address %08x, which needs translation (pc=%08llx)\n", top->mem_addr,
-             (unsigned long long)R(pc));
-      exit(1);
-    }
     try {
-      if (we) dbus->phys_write(pa, top->mem_wdata);
-      else rd = dbus->phys_read(pa);
+      if (we) dbus->phys_write(top->bus_addr, top->bus_wdata);
+      else rd = dbus->phys_read(top->bus_addr);
     } catch (BusError&) { buserr = true; }
-    top->mem_rdata = rd; top->mem_fault = 0; top->mem_buserr = buserr;
-    top->mem_ack = 1; mem_acked = true;
+    top->bus_rdata = rd; top->bus_buserr = buserr;
+    top->bus_ack = 1; mem_acked = true;
   }
   if (cop_acked) { top->cop_ack = 0; cop_acked = false; }
   else if (top->cop_req) {
@@ -155,12 +150,56 @@ int main(int argc, char** argv) {
   set_up(*dbus, argv[1], (dir / "rtl.dd").string());
   ref.init();   // reset: PC at the PROM entry, FEP mode
 
-  top = new Vivory_cpu;
+  top = new Vivory_core;
   top->reset = 1; top->clk = 0; top->eval();
   tick();
   top->reset = 0;
+
+  size_t typed = 0;
+  uint64_t next_key = type_at;
+  // the same keys reach both consoles before the same step
+  auto type_keys = [&](uint64_t n) {
+    if (n >= next_key && typed < text.size()) {
+      if (text[typed] == '{') {   // {w N}: wait N million steps
+        size_t end = text.find('}', typed);
+        next_key = n + strtoull(text.c_str() + typed + 2, nullptr, 0) * 1000000;
+        typed = end == std::string::npos ? text.size() : end + 1;
+      } else {
+        char c[2] = {text[typed] == '|' ? '\r' : text[typed], 0};
+        rbus.iob.console.type(c);
+        dbus->iob.console.type(c);
+        next_key = n + (text[typed] == '|' ? 3000000 : 200000);
+        typed++;
+      }
+    }
+  };
+
+  // LOCKSTEP_FROM=N: a second C++ processor runs the RTL's machine for the
+  // first N steps; then the RTL takes over from its registers.  Both map
+  // caches start empty there (the RTL's MMU is cleared at reset).
+  uint64_t from = getenv("LOCKSTEP_FROM") ? strtoull(getenv("LOCKSTEP_FROM"), nullptr, 0) : 0;
+  if (from) {
+    Ivory shadow(dbus);
+    shadow.init();
+    for (uint64_t n = 0; n < from; n++) {
+      type_keys(n);
+      try {
+        ref.step();
+        shadow.step();
+      } catch (ProcessorHalt& h) {
+        printf("halted while fast-forwarding at step %llu: %s\n", (unsigned long long)n, h.why.c_str());
+        return 1;
+      }
+      rbus.tick(1);
+      dbus->tick(1);
+    }
+    ref.flush_map();
+    ref.ib_valid = false;   // the RTL starts with neither
+    printf("fast-forwarded %llu steps\n", (unsigned long long)from);
+  }
   load_rtl(ref);   // after reset, which sets the registers to their power-up values
   top->run = 1;
+  top->hold = 0;
 
   std::vector<uint32_t> rlog, dlog;
   rbus.write_log = &rlog;
@@ -168,23 +207,14 @@ int main(int argc, char** argv) {
   std::deque<std::pair<uint64_t, uint64_t>> history;   // (step, pc) of recent steps
   uint64_t opcount[257] = {};                          // coverage; [256] = full-word instructions
   std::set<uint32_t> pcs;
-  size_t typed = 0;
-  uint64_t next_key = type_at;
   auto t0 = std::chrono::steady_clock::now();
   int status = 0;
 
-  for (uint64_t n = 0; n < steps; n++) {
+  for (uint64_t n = from; n < steps; n++) {
     uint64_t pc0 = ref.pc;
     rlog.clear();
     dlog.clear();
-    // the same keys reach both consoles before the same step
-    if (n >= next_key && typed < text.size()) {
-      char c[2] = {text[typed] == '|' ? '\r' : text[typed], 0};
-      rbus.iob.console.type(c);
-      dbus->iob.console.type(c);
-      next_key = n + (text[typed] == '|' ? 3000000 : 200000);
-      typed++;
-    }
+    type_keys(n);
     try {
       ref.step();
     } catch (ProcessorHalt& h) {
@@ -242,6 +272,11 @@ int main(int argc, char** argv) {
     chk("alu_control", ref.alu_control, R(alu_control));
     chk("rotate_latch", ref.rotate_latch, R(rotate_latch));
     chk("preempt", ref.preempt_register, R(preempt_register));
+    chk("sclb", ref.stack_cache_lower_bound, R(stack_cache_lower_bound));
+    chk("pht_base", ref.pht_base, R(pht_base));
+    chk("pht_mask", ref.pht_mask, R(pht_mask));
+    chk("eos", ref.ephemeral_oldspace, R(ephemeral_oldspace));
+    chk("zos", ref.zone_oldspace, R(zone_oldspace));
     for (int i = 0; i < 32; i++)
       if (W* f = irw_field(ref, i)) {
         char name[16];
@@ -274,8 +309,8 @@ int main(int argc, char** argv) {
     }
     if ((n + 1) % 1000000 == 0) {
       double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-      printf("%llu steps ok (%.0f steps/s, %.1f cycles/step)\n", (unsigned long long)(n + 1), (n + 1) / s,
-             (double)cycles / (n + 1));
+      printf("%llu steps ok (%.0f steps/s, %.1f cycles/step)\n", (unsigned long long)(n + 1), (n + 1 - from) / s,
+             (double)cycles / (n + 1 - from));
       fflush(stdout);
     }
   }

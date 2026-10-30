@@ -6,9 +6,11 @@
 // implements); the Verilator testbench in sim/ runs both in lockstep.
 //
 // Memory is one 40-bit word per transaction.  Physical-address accesses
-// (DTP-PHYSICAL-ADDRESS) are marked; for the others the memory system answers
-// with the trap vector to take, if any (page not resident, write fault,
-// transport, ...).
+// (DTP-PHYSICAL-ADDRESS) are marked; the others are translated by
+// ivory_mmu, which answers with the trap vector to take, if any (page not
+// resident, page fault request, write fault), and the page's transport-trap
+// bit.  The map-cache internal registers (PHT base and mask, map cache
+// control, load and invalidate map) drive the MMU.
 //
 // Subroutines: states that end by returning use a small return stack
 // (call/ret tasks).  Levels: MEM (raw access) < MRD/MWR/PUSH/POP/OPV <
@@ -20,6 +22,8 @@ module ivory_cpu
   input  logic        clk,
   input  logic        reset,
   input  logic        run,            // 0 holds the processor before its first instruction
+  input  logic        hold,           // 1 holds it before the next instruction (lockstep:
+                                      // the devices tick after each instruction)
   input  logic        dbg_we,         // while held: write a starting register
   input  logic [3:0]  dbg_sel,        // 0 pc, 1 sp, 2 fp, 3 lp, 4 cont, 5 cr,
                                       // 7 chip revision, 8 control stack limit, 9 extra limit
@@ -34,6 +38,17 @@ module ivory_cpu
   input  word_t       mem_rdata,
   input  logic [11:0] mem_fault,      // with mem_ack: 0, or the trap vector to take
   input  logic        mem_buserr,     // with mem_ack: nothing at this address
+  input  logic [31:0] mem_bus_pa,     // with mem_buserr: the physical address
+  input  logic        mem_transport,  // with mem_ack: the page's transport-trap bit
+
+  output logic [31:0] pht_base_o,     // to the MMU
+  output logic [31:0] pht_mask_o,
+  output logic        map_flush,
+  output logic        map_load,
+  output logic        map_inval,
+  output logic [23:0] map_vpn,
+  output logic [31:0] map_data,
+  input  logic        map_reload,
 
   output logic        cop_req,
   output logic        cop_we,
@@ -154,6 +169,7 @@ module ivory_cpu
   // MEM subroutine
   logic [31:0] m_addr;
   logic        m_we, m_phys;
+  logic        m_trans;               // the page accessed has transport traps enabled
   word_t       m_wd, m_rd;
   // MRD / MWR subroutines
   word_t       mr_a;                  // address word (locative-like or physical)
@@ -204,6 +220,8 @@ module ivory_cpu
   // ---------------------------------------------------------------------------
   wire [1:0] mode = cr[31:30];
   assign trap_mode = mode;
+  assign pht_base_o = pht_base;
+  assign pht_mask_o = pht_mask;
   assign eos = ephemeral_oldspace;
   assign zos = zone_oldspace;
   assign insn_count = icount;
@@ -362,19 +380,97 @@ module ivory_cpu
     return {25'd0, cond} + 32'd15;
   endfunction
 
-  // PHT hash box (spec 2.3.2), for %read-internal-register PHT-HASH
-  function automatic logic [31:0] pht_hash(logic [31:0] vma);
-    logic [31:0] h;
-    h = '0;
-    h[3]  = vma[12] ^ vma[27]; h[4]  = vma[11] ^ vma[28]; h[5]  = vma[10] ^ vma[29];
-    h[6]  = vma[9]  ^ vma[30]; h[7]  = vma[8]  ^ vma[31]; h[8]  = vma[13] ^ vma[20];
-    h[9]  = vma[14] ^ vma[22]; h[10] = vma[15] ^ vma[21]; h[11] = vma[16] ^ vma[26];
-    h[12] = vma[17] ^ vma[25]; h[13] = vma[18] ^ vma[24]; h[14] = vma[19] ^ vma[23];
-    h[15] = vma[12] ^ vma[16]; h[16] = vma[11] ^ vma[17]; h[17] = vma[10] ^ vma[18];
-    h[18] = vma[9]  ^ vma[19]; h[19] = vma[8]  ^ vma[20]; h[20] = vma[13] ^ vma[25];
-    h[21] = vma[14] ^ vma[26]; h[22] = vma[15] ^ vma[27]; h[23] = vma[21] ^ vma[31];
-    h[24] = vma[22] ^ vma[30]; h[25] = vma[23] ^ vma[29];
-    return h;
+  // Rev-5 microstate -> a rev-4 microstate with the same trap descriptor in
+  // Genera's DBG:*TRAP-DISPATCH-TABLES* (tools/errortable.py; emu/cpu_core.cpp)
+  function automatic logic [10:0] rev4_microstate(logic [31:0] m);
+    case (m[6:0])
+      7'd0: return 11'd0;
+      7'd1: return 11'd1828;
+      7'd2: return 11'd1820;
+      7'd3: return 11'd1872;
+      7'd4: return 11'd1876;
+      7'd5: return 11'd71;
+      7'd6: return 11'd1288;
+      7'd7: return 11'd152;
+      7'd8: return 11'd1832;
+      7'd9: return 11'd1824;
+      7'd10: return 11'd1848;
+      7'd11: return 11'd1840;
+      7'd12: return 11'd160;
+      7'd13: return 11'd159;
+      7'd14: return 11'd1466;
+      7'd15: return 11'd87;
+      7'd16: return 11'd1544;
+      7'd17: return 11'd1664;
+      7'd18: return 11'd1044;
+      7'd19: return 11'd2007;
+      7'd20: return 11'd1997;
+      7'd21: return 11'd71;
+      7'd22: return 11'd71;
+      7'd23: return 11'd71;
+      7'd24: return 11'd1423;
+      7'd25: return 11'd72;
+      7'd26: return 11'd1214;
+      7'd27: return 11'd2020;
+      7'd28: return 11'd1508;
+      7'd29: return 11'd69;
+      7'd30: return 11'd1369;
+      7'd31: return 11'd2043;
+      7'd32: return 11'd155;
+      7'd33: return 11'd68;
+      7'd34: return 11'd1899;
+      7'd35: return 11'd1903;
+      7'd36: return 11'd181;
+      7'd37: return 11'd1035;
+      7'd38: return 11'd286;
+      7'd39: return 11'd1;
+      7'd40: return 11'd1;
+      7'd41: return 11'd1;
+      7'd42: return 11'd1;
+      7'd43: return 11'd1;
+      7'd44: return 11'd1;
+      7'd45: return 11'd1;
+      7'd46: return 11'd1;
+      7'd47: return 11'd1;
+      7'd48: return 11'd1;
+      7'd49: return 11'd143;
+      7'd50: return 11'd1782;
+      7'd51: return 11'd1982;
+      7'd52: return 11'd86;
+      7'd53: return 11'd143;
+      7'd54: return 11'd71;
+      7'd55: return 11'd71;
+      7'd56: return 11'd71;
+      7'd57: return 11'd71;
+      7'd58: return 11'd71;
+      7'd59: return 11'd71;
+      7'd60: return 11'd71;
+      7'd61: return 11'd77;
+      7'd62: return 11'd78;
+      7'd63: return 11'd1288;
+      7'd64: return 11'd1032;
+      7'd65: return 11'd1044;
+      7'd66: return 11'd1044;
+      7'd67: return 11'd1210;
+      7'd68: return 11'd1312;
+      7'd69: return 11'd1320;
+      7'd70: return 11'd1214;
+      7'd71: return 11'd1036;
+      7'd72: return 11'd122;
+      7'd73: return 11'd1616;
+      7'd74: return 11'd143;
+      7'd75: return 11'd1414;
+      7'd76: return 11'd1186;
+      7'd77: return 11'd52;
+      7'd78: return 11'd1555;
+      7'd79: return 11'd1225;
+      7'd80: return 11'd1600;
+      7'd81: return 11'd1136;
+      7'd82: return 11'd1088;
+      7'd83: return 11'd1060;
+      7'd84: return 11'd143;
+      default: return 11'd0;
+    endcase
   endfunction
 
   // Array element extraction for aref (byte-packed or not)

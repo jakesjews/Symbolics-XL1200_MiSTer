@@ -78,6 +78,14 @@ public:
   bool halted = false;
   std::string halt_reason;
   bool pushing_trap_frame = false;
+  int fault_log = 0, sclb_log = 0;
+  uint32_t last_vma = 0;
+  // the last instruction word fetched; a processor write to its address
+  // (virtual or physical, by number) forgets it
+  bool ib_valid = false;
+  uint32_t ib_addr = 0;
+  W ib_word = 0;
+  void cpu_write(uint32_t a) { if (a == ib_addr) ib_valid = false; }
 
   // ---- Architectural state ----
   uint64_t pc = 0;           // halfword address: word<<1 | odd
@@ -173,6 +181,7 @@ private:
   void check_stack_overflow();
   void halt(const std::string& why);
   int error_microstate(int cond);
+  int rev5_microstate(int cond);
   int err_detail = -1;       // data type or memory cycle refining the next error trap
 public:
   bool log_errors = false;   // report error traps on stderr

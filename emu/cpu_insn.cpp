@@ -56,7 +56,12 @@ void Ivory::step() {
 
     uint32_t waddr = (uint32_t)(pc >> 1);
     bool odd = pc & 1;
-    W w = fetch_word(waddr);
+    // The last instruction word is kept: the second halfword instruction of a
+    // word doesn't fetch (or translate) it again (as the RTL).
+    W w = ib_valid && ib_addr == waddr ? ib_word : fetch_word(waddr);
+    ib_valid = true;
+    ib_addr = waddr;
+    ib_word = w;
     int t = wtype(w), cdr = wcdr(w);
     // sequential successor per the cdr-code sequencing rules
     switch (cdr) {
@@ -100,6 +105,9 @@ void Ivory::step() {
     try {
       W a = mkw(DTP_PHYSICAL_ADDRESS, be.pa);
       if (trace && tracef) fprintf(tracef, "  BUS ERROR pa=%08x %s\n", be.pa, be.write ? "write" : "read");
+      if (log_errors)
+        fprintf(stderr, "[cpu] bus error pa %08x (last vma %08x) at pc %08x.%d insn %llu\n", be.pa, last_vma,
+                (uint32_t)(pc >> 1), (int)(pc & 1), (unsigned long long)icount);
       take_pre_trap(TV_MEMORY_BUS_ERROR, 1, &a);
     } catch (InstructionAbort&) {
     } catch (BusError& be2) {
@@ -1110,7 +1118,13 @@ void Ivory::exec_op(int op, int operand) {
   case 0104: case 0105: {  // return-multiple, return-kludge
     bool spop = (operand_mode == 2 && operand_off == 0);
     a1 = operand_value(false);
-    if (!is_fixnum(a1)) { sp = restart_sp; error_trap(E_ONE_OPERAND_FIXNUM_TYPE, 0); }
+    if (!is_fixnum(a1)) {
+      if (log_errors)
+        fprintf(stderr, "[cpu] return-multiple operand %02o:%08x (mode %d off %d) at pc %08x.%d insn %llu sp %08x fp %08x\n",
+                wtag(a1), wdata(a1), operand_mode, operand_off, (uint32_t)(pc >> 1), (int)(pc & 1),
+                (unsigned long long)icount, sp, fp);
+      sp = restart_sp; error_trap(E_ONE_OPERAND_FIXNUM_TYPE, 0);
+    }
     do_return(op == 0104 ? 1 : 2, (int)wdata(a1), spop);
     return;
   }
@@ -1135,7 +1149,11 @@ void Ivory::exec_op(int op, int operand) {
     else a1 = operand_value(true);
     if (wtype(a1) != DTP_LOCATIVE) { sp = restart_sp; error_trap(E_BIND_LOCATIVE_TYPE, 0); }
     uint32_t bsp = wdata(binding_stack_pointer);
-    if (bsp + 2 > wdata(binding_stack_limit)) { sp = restart_sp; error_trap(E_BINDING_STACK_OVERFLOW, 0); }
+    if (bsp + 2 > wdata(binding_stack_limit)) {
+      if (log_errors) fprintf(stderr, "[cpu] binding stack overflow: bsp %08x limit %02o:%08x insn %llu\n", bsp,
+                              wtag(binding_stack_limit), wdata(binding_stack_limit), (unsigned long long)icount);
+      sp = restart_sp; error_trap(E_BINDING_STACK_OVERFLOW, 0);
+    }
     W old = mem_read(mkw(DTP_LOCATIVE, wdata(a1)), CYC_BIND_READ);
     int chain = (cr & CR_CLEANUP_BINDINGS) ? 1 : 0;
     write_raw(bsp + 1, mkwc(chain, DTP_LOCATIVE, wdata(a1)));
@@ -1332,6 +1350,7 @@ void Ivory::exec_op(int op, int operand) {
     write_internal_register(operand, a1);
     return;
   case 0156:  // %coprocessor-read
+    ib_valid = false;
     try {
       push(bus->coproc_read(operand));
     } catch (CoprocError&) {
@@ -1341,6 +1360,7 @@ void Ivory::exec_op(int op, int operand) {
     return;
   case 0157:  // %coprocessor-write
     a1 = pop();
+    ib_valid = false;
     try {
       bus->coproc_write(operand, a1);
     } catch (CoprocError&) {
@@ -1387,7 +1407,7 @@ void Ivory::exec_op(int op, int operand) {
     W m = mem_read(a1, CYC_DATA_READ, &fa);
     if (stripcdr(m) == stripcdr(a2)) {
       W nw = stripcdr(a3) | (m & ((W)3 << 38));
-      if (wtype(a1) == DTP_PHYSICAL_ADDRESS && fa == wdata(a1)) bus->phys_write(fa, nw);
+      if (wtype(a1) == DTP_PHYSICAL_ADDRESS && fa == wdata(a1)) { cpu_write(fa); bus->phys_write(fa, nw); }
       else write_raw(fa, nw);
       push(TW());
     } else {
@@ -1725,6 +1745,8 @@ void Ivory::write_internal_register(int r, W w) {
   case IR_LOAD_MAP0: {
     // Load the map entry for the VMA in BARn from W (PHT1 format).
     uint32_t vpn = wdata(bar[barn]) >> 8;
+    if (log_errors) fprintf(stderr, "[cpu] load map %d: vpn %06x := %08x at insn %llu\n", barn, vpn, wdata(w),
+                            (unsigned long long)icount);
     MapEntry* e = &map[vpn & (MAP_SIZE - 1)];
     e->vpn = vpn;
     e->ppn = wdata(w) >> 8;
@@ -1772,7 +1794,11 @@ void Ivory::write_internal_register(int r, W w) {
   case IR_FP: fp = wdata(w); return;
   case IR_LP: lp = wdata(w); return;
   case IR_SP: sp = wdata(w); return;
-  case IR_STACK_CACHE_LOWER_BOUND: stack_cache_lower_bound = wdata(w); return;
+  case IR_STACK_CACHE_LOWER_BOUND:
+    if (log_errors && sclb_log++ < 200)
+      fprintf(stderr, "[cpu] stack cache lower bound := %08x at pc %08x insn %llu fp %08x sp %08x\n", wdata(w),
+              (uint32_t)(pc >> 1), (unsigned long long)icount, fp, sp);
+    stack_cache_lower_bound = wdata(w); return;
   case IR_CONTINUATION: cont = stripcdr(w); return;
   case IR_ALU_AND_ROTATE_CONTROL: alu_control = wdata(w); return;
   case IR_CONTROL_REGISTER: cr = wdata(w); return;
@@ -1782,7 +1808,9 @@ void Ivory::write_internal_register(int r, W w) {
   case IR_PREEMPT_REGISTER: preempt_register = wdata(w); return;
   case IR_ICACHE_CONTROL: icache_control = wdata(w); return;
   case IR_PREFETCHER_CONTROL: prefetcher_control = wdata(w); return;
-  case IR_MAP_CACHE_CONTROL: map_cache_control = wdata(w); flush_map(); return;
+  case IR_MAP_CACHE_CONTROL:
+    if (log_errors) fprintf(stderr, "[cpu] map cache control := %08x at insn %llu\n", wdata(w), (unsigned long long)icount);
+    map_cache_control = wdata(w); flush_map(); return;
   case IR_MEMORY_CONTROL: memory_control = wdata(w); return;
   case IR_STACK_CACHE_OVERFLOW_LIMIT: stack_cache_overflow_limit = wdata(w); return;
   case IR_ENTRY_MAXIMUM_ARGUMENTS: entry_max_args = wdata(w); return;

@@ -95,6 +95,11 @@ def build():
     for _ in range(12):
         a.i('push', '#', 0)
 
+    # Main-board memory cache on (Merlin-II cache control 0x0A000004, mode
+    # field <1:0> = 2, enabled): the FEP never sets it, and Genera warns when
+    # it isn't.
+    write_imm(0x0A000004, 2)
+
     # SCSI controller: out of reset, reset command, timeout, source ID, DMA mode
     for v in (0x8F, 0x86, 0xB7):
         write_imm(IOB_CTL, v)
@@ -244,6 +249,10 @@ def build():
     a.const((EVEN_PC, ENTRY_VMA)); a.i('%write-internal-register', 0o12)
     push((3 << 30) | 2 | (1 << 18)); a.i('%write-internal-register', 0o14)
     loc(STACK_BASE + 1); a.i('%write-internal-register', 1)    # FP
+    # The stack cache starts at the frame (spec: after loading a stack, the
+    # lower bound is FP); the FEP compares it with *boot-stack-base* to tell
+    # whether it is running on its own stack.
+    loc(STACK_BASE + 1); a.i('%write-internal-register', 5)    # stack cache lower bound
     loc(STACK_BASE + 3); a.i('%write-internal-register', 2)    # LP
     loc(STACK_BASE + 2); a.i('%write-internal-register', 3)    # SP
     a.i('%jump', 'LP', 0)

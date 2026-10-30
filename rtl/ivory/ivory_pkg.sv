@@ -216,4 +216,27 @@ package ivory_pkg;
     return row[col*3 +: 3];
   endfunction
 
+  // Table 13's last column: cycle types whose pointer data is checked for
+  // oldspace (the transport trap)
+  function automatic logic cycle_transport(logic [3:0] cycle);
+    return cycle == CYC_DATA_READ || cycle == CYC_BIND_READ || cycle == CYC_BIND_READ_NO_MONITOR ||
+           cycle == CYC_HEADER || cycle == CYC_SCAVENGE;
+  endfunction
+
+  // PHT hash box (spec 2.3.2): %read-internal-register PHT-HASH and the MMU's
+  // first probe.  The result is a word offset (bucket number << 3).
+  function automatic logic [31:0] pht_hash(logic [31:0] vma);
+    logic [31:0] h;
+    h = '0;
+    h[3]  = vma[12] ^ vma[27]; h[4]  = vma[11] ^ vma[28]; h[5]  = vma[10] ^ vma[29];
+    h[6]  = vma[9]  ^ vma[30]; h[7]  = vma[8]  ^ vma[31]; h[8]  = vma[13] ^ vma[20];
+    h[9]  = vma[14] ^ vma[22]; h[10] = vma[15] ^ vma[21]; h[11] = vma[16] ^ vma[26];
+    h[12] = vma[17] ^ vma[25]; h[13] = vma[18] ^ vma[24]; h[14] = vma[19] ^ vma[23];
+    h[15] = vma[12] ^ vma[16]; h[16] = vma[11] ^ vma[17]; h[17] = vma[10] ^ vma[18];
+    h[18] = vma[9]  ^ vma[19]; h[19] = vma[8]  ^ vma[20]; h[20] = vma[13] ^ vma[25];
+    h[21] = vma[14] ^ vma[26]; h[22] = vma[15] ^ vma[27]; h[23] = vma[21] ^ vma[31];
+    h[24] = vma[22] ^ vma[30]; h[25] = vma[23] ^ vma[29];
+    return h;
+  endfunction
+
 endpackage
