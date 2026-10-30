@@ -179,10 +179,13 @@ int main(int argc, char** argv) {
     cpu.trace = trace_from == 0;
   }
   bool in_fep = false;
+  const bool progress = getenv("XLEMU_PROGRESS") != nullptr;
   try {
     while (cpu.icount < limit && !cpu.halted) {
       cpu.step();
       m.tick(1);
+      if (progress && cpu.icount % 1000000000 == 0)
+        fprintf(stderr, "[progress] %llu instructions\n", (unsigned long long)cpu.icount);
       if (cpu.tracef && !cpu.trace && cpu.icount >= trace_from) cpu.trace = true;
       if (typed && *typed && cpu.icount >= type_at) {
         // One key every 200k instructions; '|' types Return and then waits;

@@ -587,13 +587,47 @@ Published numbers for real machines:
 - The real Ivory: four-stage pipeline, simple instructions (push, add, eq)
   in one cycle, a 32-word instruction cache filled by its own prefetcher, a
   128-word top-of-stack cache, a 32-word scratchpad, a 16-entry TLB.
+- Its memory interface (Genera *Internals*, "Ivory Memory Operations"):
+  pipelined, up to four requests outstanding, one word per processor cycle
+  from interleaved memory; used for instruction fetch, map cache fills, the
+  stack cache, method lookup and lists. The block subprimitives copy an array
+  at "asymptotically approaching two cycles per element" and sum one at one
+  element per cycle: a cycle-level check that doesn't depend on the clock.
+- Clock: the first Ivory ran at "in the vicinity of 150 ns" a cycle, the
+  second at ~100 ns (NASA spaceborne VHSIC multiprocessor paper, 1988, in the
+  addendum); the XL1200's own clock is not yet confirmed.
 
-Genera ships the suite: `sys:examples;gabriel-benchmarks.lisp`,
-`(gabriel:run-series)`. On the MiSTer (Oct 2026) compiled `(tak 18 12 6)`
-takes 0.437 s, the 3600's time; the RTL Ivory averages ~29 cycles an
-instruction at 50 MHz, two thirds of them waiting ~7 cycles per memory
-access (`PROFILE=1` on `sim/system`), where the real chip's stack cache, TLB
-and instruction cache answer in a cycle.
+Genera ships the suite: `sys:examples;gabriel-benchmarks.lisp`;
+`(gabriel::run-series-to-file "FEP7:>gabriel.text")` (not exported) writes the
+times to a FEP file. Baseline on the MiSTer (Oct 2026, build `output_files8`,
+4 MW, FPA on), CPU seconds against the 3600 + IFU:
+
+| Benchmark | MiSTer | 3600 | 3600 / MiSTer |
+|---|---|---|---|
+| Boyer | 6.92 | 9.40 | 1.36 |
+| Browse | 11.20 | 21.43 | 1.91 |
+| Destructive | 1.29 | 2.18 | 1.69 |
+| Traverse init / run | 4.22 / 24.85 | 6.37 / 35.34 | 1.51 / 1.42 |
+| Tak / Stak / Ctak / Takl | 0.37 / 1.05 / 5.96 / 3.39 | 0.43 / 2.30 / 5.04 / 4.95 | 1.16 / 2.18 / 0.85 / 1.46 |
+| Deriv / Dderiv | 1.79 / 2.05 | 3.79 / 3.89 | 2.11 / 1.90 |
+| Div2 iterative / recursive | 1.32 / 1.48 | 1.51 / 2.50 | 1.14 / 1.69 |
+| FFT | 2.24 | 3.87 | 1.73 |
+| Puzzle | 26.52 | 11.04 | 0.42 |
+| Triang | 83.28 | 116.99 | 1.40 |
+
+Geometric mean 1.41x the 3600, against ~6x for a real Ivory: about 4x slow,
+as fib shows ((fib 30) 17.50 s, (fib 36) 312.76 s, 4.27x and 4.23x the
+XL1201's). Genera's elapsed time for (fib 36) agreed with the host's clock
+(the result appeared between 306.7 and 326.9 s), so the microsecond clock
+keeps real time. Puzzle (2-D arrays) and Ctak (catch/throw) are the
+outliers. The suite took 15.5 minutes; it nearly exhausts the bench disk's
+paging space (Genera warns that a Start GC :Immediately will soon not fit).
+
+The RTL Ivory averages ~29 cycles an instruction at 50 MHz, two thirds of
+them waiting ~7 cycles per memory access (`PROFILE=1` on `sim/system`),
+where the real chip's stack cache, TLB and instruction cache answer in a
+cycle; and at least five states (fetch, fetch wait, decode, execute, retire)
+even with no memory access.
 
 ## RTL Ivory (`rtl/ivory/`)
 
@@ -767,3 +801,12 @@ memory is shown even while the FEP has the display off.
 - Test tools: `tools/mister/run.sh load|shot|type` (copy and start the core,
   take a MiSTer screenshot, type or move the mouse through a uinput device
   made by `tools/mister/kbd.py`). Screenshots need direct video off.
+- JTAG: the MiSTer's USB-Blaster (the DE10-Nano's USB port) is plugged into
+  the Ubuntu server; `tools/mister/jtag.sh chain|load SOF` runs `jtagconfig`
+  or `quartus_pgm` in the Quartus container (`--privileged -v
+  /dev/bus/usb`). The chain is the HPS (4BA00477) then the 5CSEBA6, so the
+  FPGA is device 2. A load takes ~5 s against ~1 min to copy and load an
+  .rbf; afterwards the script restarts MiSTer's main program, which finds the
+  core already configured, sets up video and mounts the disks. SignalTap
+  (`quartus_stp`) works through the same cable when a bug only shows on the
+  hardware.

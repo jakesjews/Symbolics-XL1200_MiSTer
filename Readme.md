@@ -50,21 +50,55 @@ function keys: [docs/keyboard.md](docs/keyboard.md).
 
 In the order they'll be done. Bugs come first whenever they turn up.
 
-1. JTAG (connected: the MiSTer's USB-Blaster on the Ubuntu server, reached
-   from the Quartus container with `--privileged -v /dev/bus/usb`): a script
-   for loading `.sof` files, SignalTap when a bug only shows on the hardware.
-2. Benchmarks on the MiSTer, as the baseline for the speed work: `(fib 30)`
-   (4.097 s on an XL1201), Genera's Gabriel suite (`(gabriel:run-series)`,
-   against the 3600's table), with the model's instruction counts.
-3. Speed, measured after each step (`PROFILE=1` on `sim/system` counts
-   cycles by state):
-   - The memory path: a cache hit costs ~7 cycles (MMU translation 3, the bus
-     to `xl_mem` and back, handshakes); aim for ~3.
-   - A stack cache in block RAM next to the processor (the Ivory's 128-word
-     top-of-stack cache), invalidated when Genera changes mappings.
-   - Instruction prefetch or cache (the Ivory's 32-word instruction cache).
-   - de Kleer's prime-implicate tests on the XL1200 (needs the Building
+1. Benchmarks on the MiSTer, as the baseline for the speed work: `(fib 30)`
+   (4.097 s on an XL1201), Genera's Gabriel suite
+   (`(gabriel::run-series)`, against the 3600's table), with the model's
+   instruction counts (instructions per second of the real machine, per
+   benchmark).
+2. A compatibility pass on the MiSTer before the speed work, so the rewrite
+   starts from a known-good machine: Zmacs (edit and save a file), Document
+   Examiner, the Inspector, the Debugger, Peek; a full GC (`Start GC
+   :Immediately`) and ephemeral GC flips; Save World and booting the saved
+   world; bignums, ratios, double floats and complex numbers through the FPA;
+   an overnight run. Anything that breaks goes into the model's lockstep.
+   Lockstep only proves the RTL matches our model, so build a regression
+   suite with its own expected answers, in place before the speed work:
+   - Instruction tests on the RTL processor alone (`sim/ivory`, seconds):
+     each opcode's edge cases (overflow, type traps, cdr codes, trap frames),
+     later the pipeline's hazards (dependent instructions, stack cache spill
+     and refill, traps mid-instruction); expected values from the spec and
+     the VLM, written into the tests. Mine the Ivory Design Verification
+     document (1987) for Symbolics' own chip tests.
+   - A Lisp test file (arithmetic of every number type, lists, arrays,
+     strings, closures, special binding, unwind-protect, errors, GC flips,
+     process switches) writing a results file. Golden output from Symbolics'
+     VLM (`tools/world/`); the same file on the model, the free-running RTL
+     in Verilator and the MiSTer. The free bench (`sim/system/tb_free.cpp`)
+     needs the model's state handover (`transfer.h`): the model boots Genera
+     and loads the tests, the RTL runs them.
+   - Gabriel and fib as speed regressions: cycle counts in Verilator, times
+     on the MiSTer.
+3. Speed the way the real Ivory gets it, measured after each step
+   (`PROFILE=1` on `sim/system` counts cycles by state) and against the
+   published times. The RTL's structure follows the chip, not the model:
+   lockstep compares state at each retired instruction, the model changes
+   only where the chip's structures show through to software, and where
+   lockstep can't follow, it gives way, not the RTL.
+   - The 128-word stack cache: one-cycle hits, filled and emptied over the
+     memory interface, invalidated when Genera changes mappings.
+   - The 32-word instruction cache and its prefetcher, fetching ahead of
+     execution.
+   - The TLB in front of the map cache (16 entries) and a pipelined memory
+     interface (the Internals manual: up to four requests outstanding, one
+     word per cycle); today a cache hit costs ~7 cycles.
+   - Fewer states per simple instruction, overlapping fetch, decode and
+     execute like the 4-stage pipeline (push, add, eq in one cycle).
+   - Check against the Internals manual's block-transfer rates (an array
+     copy approaching two cycles per element, an array sum one per cycle),
+     Gabriel, fib, and de Kleer's prime-implicate tests (needs the Building
      Problem Solvers code).
+   - Pace the core to the real chip's cycles at the real clock, once the
+     clock is pinned down.
 4. Check the device models against their manuals
    (`research/downloads/xl1200-documentation-addendum`): the 82586 (Intel
    reference manual), the DUSCC (SCN26562/68562 users' guide, AN416, AN419),
@@ -95,8 +129,10 @@ Documentation still wanted:
 - The 1990 XL1200 performance white paper Symbolics offered at launch;
   Weste, "Lisp chips increase power with symbolic processing", Computer
   Design 26:18 (1987).
-- `(gabriel:run-series)` output from a real XL1200, XL1201 or MacIvory III.
-- Ivory instruction timings and rev 4/4A errata.
+- `(gabriel::run-series)` output from a real XL1200, XL1201 or MacIvory III.
+- Ivory instruction timings and rev 4/4A errata; the XL1200's processor
+  clock (a 1988 paper gives ~100 ns cycles for the second Ivory; the
+  MacIvory III's oscillator suggests 30.75 MHz).
 
 How the core is built and what has been found out about the machine:
 [docs/NOTES.md](docs/NOTES.md).
