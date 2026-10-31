@@ -110,7 +110,7 @@ pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
-	.outclk_0(clk_sys),    // 30.77 MHz: processor and boards (the Merlin-II's 61.5 MHz halved)
+	.outclk_0(clk_sys),    // 35 MHz: processor and boards (the pace of a real XL1201, docs/ivory.md)
 	.outclk_1(clk_vid)     // 80 MHz: the console's dot clock
 );
 
@@ -170,7 +170,7 @@ wire  [7:0] ddr_be;
 wire white, hs, vs, hblank, vblank;
 wire run_light, disk_light;
 
-xl_machine #(.NT(NT), .CLK_HZ(30_769_231), .PROM_FILE("rtl/xl/boot_prom.mem")) machine
+xl_machine #(.NT(NT), .CLK_HZ(35_000_000), .PROM_FILE("rtl/xl/boot_prom.mem")) machine
 (
 	.clk(clk_sys),
 	.clk_vid(clk_vid),
@@ -229,7 +229,7 @@ xl_machine #(.NT(NT), .CLK_HZ(30_769_231), .PROM_FILE("rtl/xl/boot_prom.mem")) m
 // With the debug line on, the same words go out on the UART (/dev/ttyS1 on
 // the MiSTer, 115200 8N1) twice a second.
 wire [31:0] dbg[8];
-xl_debug_uart #(.CLK_HZ(30_769_231)) debug_uart
+xl_debug_uart #(.CLK_HZ(35_000_000)) debug_uart
 (
 	.clk(clk_sys),
 	.enable(status[7]),

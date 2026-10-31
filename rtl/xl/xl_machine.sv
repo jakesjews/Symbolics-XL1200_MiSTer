@@ -11,7 +11,7 @@ module xl_machine #(
   parameter int    NT = 2,                 // SCSI disk targets
   parameter bit    LOCKSTEP = 1'b0,
   parameter bit    MEM_CLEAR = 1'b1,       // clear DDR3 memory at power-up
-  parameter int    CLK_HZ = 30_769_231,   // the Merlin-II's 61.5 MHz halved, as the PLL makes it (1200/39)
+  parameter int    CLK_HZ = 35_000_000,   // the pace of a real XL1201 on fib (docs/ivory.md)
   parameter        PROM_FILE = "boot_prom.mem"
 ) (
   input  logic        clk,
