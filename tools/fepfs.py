@@ -16,7 +16,8 @@ Layout and sources: docs/NOTES.md, "FEP file system layout".
         Ivory world load file WORLD (GENERA_8_3.ILOD from the Genera 8.3 CD)
         and a paging file (>Page.page, the rest of the disk) to the root
         directory; --text FILE (repeatable) adds a text file before the
-        paging file, e.g. a Lisp source to compile in Genera
+        paging file, e.g. a Lisp source to compile in Genera; --blocks N
+        first makes the disk N blocks (the label and free map grown)
 """
 import argparse, io, os, shutil, struct, sys, time
 
@@ -228,6 +229,50 @@ class FEPFS:
         for b in sorted(self.map_dirty):
             self.disk.write(self.map_blocks[b], self.map_words[b])
 
+    def resize(self, capacity):
+        """Make the disk CAPACITY blocks: the label's cylinder count, the image's
+        size, and a bigger free map (FREE-PAGES.FEP, one bit a block), written
+        afresh in one run with the old one's blocks freed."""
+        L = self.label
+        per_cyl = L[L_NHEADS] * L[L_NPPT]
+        if capacity <= self.capacity:
+            sys.exit(f"the disk already has {self.capacity} blocks")
+        if capacity % per_cyl:
+            sys.exit(f"the capacity must be a multiple of {per_cyl} blocks (a cylinder)")
+        now = int(time.time()) + UT_EPOCH
+        self.load_free_map()
+        old_blocks = self.map_blocks
+        nmap = -(-capacity // (32 * WORDS))
+        words = [list(w) for w in self.map_words] + [[0] * WORDS for _ in range(nmap - len(self.map_words))]
+        for d in range(self.capacity, min(capacity, len(words) * 32 * WORDS)):   # past the old end: free now
+            b, i = divmod(d, 32 * WORDS)
+            words[b][i // 32] &= ~(1 << (i % 32))
+        self.capacity = capacity
+        L[L_NCYL] = capacity // per_cyl
+        for d in range(3):                       # the label and its copies
+            if get_string(self.disk.read(d), (ID, ID + 1)) == 'LABL':
+                self.disk.write(d, L)
+        self.disk.f.truncate(capacity * self.disk.stride)
+        self.disk.size_changed()
+        self.map_words, self.map_dirty = words, set()
+        runs = self.allocate(nmap)
+        if len(runs) != 1:
+            sys.exit(f"no run of {nmap} free blocks for the free map")
+        (_, dpn), = runs
+        for d in old_blocks:
+            b, i = divmod(d, 32 * WORDS)
+            self.map_words[b][i // 32] &= ~(1 << (i % 32))
+        self.map_blocks = list(range(dpn, dpn + nmap))
+        for b in range(nmap):
+            self.disk.write(self.map_blocks[b], self.map_words[b])
+        self.map_dirty = set()
+        e = self.system_file('FREE-PAGES')
+        hdr = e.header
+        hdr[F_NENTRIES], hdr[F_MAP], hdr[F_MAP + 1] = 1, nmap, dpn
+        hdr[F_LENGTH], hdr[TIMESTAMP] = nmap * BLOCK, now
+        self.disk.write(e.dpn, hdr)
+        print(f"{self.disk.path}: {capacity} blocks ({L[L_NCYL]} cylinders), free map {nmap} blocks at {dpn}")
+
     def next_sequence_number(self):
         """The sequence-number file's word 0 is the highest number handed out."""
         dpn = self.blocks(self.system_file('SEQUENCE-NUMBER').header)[0]
@@ -397,6 +442,8 @@ def cmd_mkworld(args):
 def build_world_disk(args, name, typ, size):
     disk = Disk(args.out, args.stride, write=True)
     fs = FEPFS(disk)
+    if args.blocks:
+        fs.resize(args.blocks)
     if not args.no_grow and disk.nblocks < fs.capacity:
         disk.f.truncate(fs.capacity * disk.stride)
         disk.size_changed()
@@ -453,6 +500,8 @@ def main():
                         "'rest' (the default) uses all the free space, 0 adds none")
     s.add_argument('--no-grow', action='store_true',
                    help="keep the template's size instead of the label's disk size")
+    s.add_argument('--blocks', type=int, metavar='N',
+                   help="make the disk N blocks (a bigger label and free map) before adding files")
     s.add_argument('--force', action='store_true', help="add WORLD even if it doesn't look like one")
     s.set_defaults(fn=cmd_mkworld)
     args = p.parse_args()
