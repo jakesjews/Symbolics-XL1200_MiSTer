@@ -12,7 +12,9 @@
 // board's DMA stays in its buffer memory), so nothing else can make a line
 // stale.  Its RAMs are read from the requester's address, which is a
 // register on its side, so a read hit is answered in the cycle the request
-// appears, with no state change.
+// appears, with no state change.  A miss is answered with the word asked
+// for as its beat of the line's burst arrives; the rest of the line lands
+// while the processor goes on (the port is sampled again once it has).
 //
 // Power-up: DDR3 holds whatever the last core left there; while `init` is
 // high the memory clears main and buffer memory to zero words (as the
@@ -63,7 +65,7 @@ module xl_mem #(
   localparam int CLEAR_BURST = 16;
 
   typedef enum logic [3:0] {
-    M_CLEAR, M_IDLE, M_LOOKUP, M_MISS, M_FILL, M_FILLED, M_WRITE, M_BUF_RD, M_BUF_WAIT, M_BUF_WR
+    M_CLEAR, M_IDLE, M_LOOKUP, M_MISS, M_FILL, M_WRITE, M_BUF_RD, M_BUF_WAIT, M_BUF_WR
   } mstate_t;
   mstate_t st /*verilator public_flat_rd*/ = M_CLEAR;
 
@@ -87,7 +89,6 @@ module xl_mem #(
   logic              a_we;
   logic [RAM_AW-1:0] a_addr;
   logic [39:0]       a_wd;
-  logic [39:0]       fill_word;
   logic [1:0]        beat;
   logic              b_we;
   logic [15:0]       b_addr;
@@ -175,7 +176,7 @@ module xl_mem #(
     buf_rdata = ddr_dout[31:0];
     case (st)
       M_IDLE: cpu_ack = cpu_req && !buf_req && !cpu_we && hit;   // a read hit, answered now
-      M_FILLED: begin cpu_ack = 1'b1; cpu_rdata = fill_word; end
+      M_FILL: begin cpu_ack = ddr_dout_ready && beat == a_addr[1:0]; cpu_rdata = ddr_dout[39:0]; end
       M_WRITE:  cpu_ack = !ddr_busy;
       M_BUF_WAIT: buf_ack = ddr_dout_ready;
       M_BUF_WR: buf_ack = !ddr_busy;
@@ -224,12 +225,9 @@ module xl_mem #(
         M_MISS: if (!ddr_busy) begin beat <= 2'd0; st <= M_FILL; end
 
         M_FILL: if (ddr_dout_ready) begin
-          if (beat == a_addr[1:0]) fill_word <= ddr_dout[39:0];
           beat <= beat + 2'd1;
-          if (beat == 2'd3) st <= M_FILLED;
+          if (beat == 2'd3) st <= M_IDLE;
         end
-
-        M_FILLED: st <= M_IDLE;
 
         M_WRITE: if (!ddr_busy) st <= M_IDLE;
 

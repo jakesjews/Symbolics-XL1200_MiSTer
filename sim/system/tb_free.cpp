@@ -8,8 +8,8 @@
 // No reference model; it prints what the console shows by saving the screen.
 //   ./obj_free/Vxl_machine DISK.dd SECONDS [AT-SECONDS TEXT] [SCREEN.pgm]
 // TEXT is typed from AT-SECONDS of simulated time ('|' is Return, a key
-// every 50 ms, 3 s after a Return); the screen (the 1152 x 880 raster from
-// video memory) is saved every simulated second and at the end.
+// every 50 ms, 3 s after a Return, '~' waits 10 s); the screen (the 1152 x
+// 880 raster from video memory) is saved every simulated second and at the end.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -112,16 +112,28 @@ int main(int argc, char** argv) {
   uint64_t trace_n = tr ? strtoull(tr, nullptr, 0) : 0;
   // XLTRACE_FROM=N: the trace starts at the Nth instruction
   uint64_t trace_from = getenv("XLTRACE_FROM") ? strtoull(getenv("XLTRACE_FROM"), nullptr, 0) : 0;
+  // the processor's state names, from the generated enum (as sim/system/tb_system.cpp)
+  std::vector<std::string> names;
+  {
+    std::ifstream en("../../rtl/ivory/ivory_cpu_state_enum.svh");
+    for (std::string line; std::getline(en, line);)
+      for (size_t k = 0; (k = line.find("S_", k)) != std::string::npos;) {
+        size_t e = line.find_first_of(", \n", k);
+        names.push_back(line.substr(k, e - k));
+        k = e;
+      }
+  }
   // The instruction cache isn't kept coherent with stores (the chip's isn't):
   // report a hit in VMA=PMA space whose word differs from memory
-  const int S_FETCH = 12;   // from rtl/ivory/ivory_cpu_state_enum.svh;
+  const int S_FETCH = (int)(std::find(names.begin(), names.end(), "S_FETCH") - names.begin());
   uint64_t stale = 0;
-  // PROFILE=1: cycles by processor, MMU and memory state (names from the
-  // generated state enum, as sim/system/tb_system.cpp)
+  // PROFILE=1: cycles by processor, MMU and memory state
   bool profile = getenv("PROFILE") != nullptr;
-  // PROFILE_FROM=N: count from the Nth instruction on (a benchmark after a boot)
-  uint64_t profile_from = getenv("PROFILE_FROM") ? strtoull(getenv("PROFILE_FROM"), nullptr, 0) : 0;
-  std::map<int, uint64_t> prof_cpu;
+  // PROFILE_FROM=N: count from the Nth instruction on (a benchmark after a
+  // boot); PROFILE_FROM=typed: from the last key of TEXT
+  bool profile_typed = getenv("PROFILE_FROM") && !strcmp(getenv("PROFILE_FROM"), "typed");
+  uint64_t profile_from = getenv("PROFILE_FROM") && !profile_typed ? strtoull(getenv("PROFILE_FROM"), nullptr, 0) : 0;
+  std::vector<uint64_t> prof_cpu(1024);
   uint64_t prof_mmu[16] = {}, prof_mem[16] = {}, prof_insns0 = 0;
   // XLWATCH=va (hex, VMA=PMA space): report what happens to that instruction word
   uint32_t watch = getenv("XLWATCH") ? (uint32_t)strtoul(getenv("XLWATCH"), nullptr, 16) : 0;
@@ -129,7 +141,8 @@ int main(int argc, char** argv) {
   bool watch_wr = false;
   while (cycles < end) {
     tick();
-    if (profile && top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__icount >= profile_from) {
+    if (profile && (profile_typed ? typed >= text.size() && keys.empty()
+                                  : top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__icount >= profile_from)) {
       if (!prof_insns0) prof_insns0 = top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__icount;
       prof_cpu[top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__st]++;
       prof_mmu[top->rootp->xl_machine__DOT__core__DOT__mmu__DOT__st & 15]++;
@@ -213,13 +226,16 @@ int main(int argc, char** argv) {
       char c = text[typed] == '|' ? '\r' : text[typed];
       uint8_t k;
       bool shift;
-      if (ascii_to_key(c, k, shift)) {
-        if (shift) keys.emplace_back(true, K_LEFT_SHIFT);
-        keys.emplace_back(true, k);
-        keys.emplace_back(false, k);
-        if (shift) keys.emplace_back(false, K_LEFT_SHIFT);
+      if (c == '~') next_key = cycles + 500000000;
+      else {
+        if (ascii_to_key(c, k, shift)) {
+          if (shift) keys.emplace_back(true, K_LEFT_SHIFT);
+          keys.emplace_back(true, k);
+          keys.emplace_back(false, k);
+          if (shift) keys.emplace_back(false, K_LEFT_SHIFT);
+        }
+        next_key = cycles + (c == '\r' ? 150000000 : 2500000);
       }
-      next_key = cycles + (text[typed] == '|' ? 150000000 : 2500000);
       typed++;
     }
     if (cycles >= next_shot) {
@@ -233,18 +249,10 @@ int main(int argc, char** argv) {
   }
   save_screen(screen.c_str());
   if (profile) {
-    std::vector<std::string> names;
-    std::ifstream en("../../rtl/ivory/ivory_cpu_state_enum.svh");
-    for (std::string line; std::getline(en, line);)
-      for (size_t k = 0; (k = line.find("S_", k)) != std::string::npos;) {
-        size_t e = line.find_first_of(", \n", k);
-        names.push_back(line.substr(k, e - k));
-        k = e;
-      }
     uint64_t total = 0;
-    for (auto& [k, v] : prof_cpu) total += v;
+    for (auto v : prof_cpu) total += v;
     std::vector<std::pair<uint64_t, int>> tops;
-    for (auto& [k, v] : prof_cpu) tops.emplace_back(v, k);
+    for (size_t k = 0; k < prof_cpu.size(); k++) if (prof_cpu[k]) tops.emplace_back(prof_cpu[k], (int)k);
     std::sort(tops.rbegin(), tops.rend());
     uint64_t insns = top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__icount - (prof_insns0 ? prof_insns0 - 1 : 0);
     printf("profile: %llu cycles, %llu instructions, %.2f cycles/instruction\n", (unsigned long long)total,
@@ -253,7 +261,7 @@ int main(int argc, char** argv) {
       printf("  cpu %-18s %5.1f%%\n", tops[k].second < (int)names.size() ? names[tops[k].second].c_str() : "?",
              100.0 * tops[k].first / total);
     const char* mmu_names[] = {"IDLE", "W0", "W1", "AGE", "FILL", "HIT", "N1", "N2", "ACCESS", "?", "?", "?", "?", "?", "?", "?"};
-    const char* mem_names[] = {"CLEAR", "IDLE", "LOOKUP", "MISS", "FILL", "FILLED", "WRITE", "BUF_RD", "BUF_WAIT", "BUF_WR", "?", "?", "?", "?", "?", "?"};
+    const char* mem_names[] = {"CLEAR", "IDLE", "LOOKUP", "MISS", "FILL", "WRITE", "BUF_RD", "BUF_WAIT", "BUF_WR", "?", "?", "?", "?", "?", "?", "?"};
     for (int k = 0; k < 16; k++) if (prof_mmu[k]) printf("  mmu %-8s %5.1f%%\n", mmu_names[k], 100.0 * prof_mmu[k] / total);
     for (int k = 0; k < 16; k++) if (prof_mem[k]) printf("  mem %-8s %5.1f%%\n", mem_names[k], 100.0 * prof_mem[k] / total);
   }

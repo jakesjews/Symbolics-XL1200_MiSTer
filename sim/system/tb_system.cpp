@@ -329,7 +329,7 @@ int main(int argc, char** argv) {
              100.0 * top_states[i].first / total);
     const char* mmu_names[] = {"IDLE", "W0", "W1", "AGE", "FILL", "HIT", "N1", "N2", "ACCESS",
                                "?", "?", "?", "?", "?", "?", "?"};
-    const char* mem_names[] = {"CLEAR", "IDLE", "LOOKUP", "MISS", "FILL", "FILLED", "WRITE", "BUF_RD",
+    const char* mem_names[] = {"CLEAR", "IDLE", "LOOKUP", "MISS", "FILL", "WRITE", "BUF_RD",
                                "BUF_WAIT", "BUF_WR", "?", "?", "?", "?", "?", "?"};
     for (int i = 0; i < 16; i++)
       if (prof_mmu[i]) printf("  mmu %-8s %5.1f%%\n", mmu_names[i], 100.0 * prof_mmu[i] / total);
