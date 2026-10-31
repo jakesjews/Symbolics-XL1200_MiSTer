@@ -365,6 +365,19 @@ written straight into `config/XL1200.CFG`), `(nth-value 5
 (decode-universal-time (get-universal-time)))` is 2026.  The image is
 the master `research/media/disks/xl1200-full.vhd`.
 
+The animation world (Genera 8.1.1, System 436.39) takes the same patch:
+`Load File FEP7:>y2k-fix.lisp` traps on each of its `SCT:` patch-section
+functions, which 8.1.1 has in `SI:` (FILES-PATCHED-IN-THIS-PATCH-FILE,
+BEGIN-PATCH-SECTION, PATCH-SECTION-SOURCE-FILE, PATCH-SECTION-ATTRIBUTES;
+Super-D then P in the debugger takes the SI definition permanently), then
+loads ("DOMINO is not a defined system type" is a warning).  8.1.1's Save
+World takes Complete or Incremental first: `Save World Incremental
+FEP7:>animation-mac-6-2-y2k.ilod` writes 3,080 blocks over the parent
+world in under a minute, "Genera 8 3 y2k patches" in its herald, the
+label "436.39, 2 private patches"; No to the boot file, which stays with
+the 8.3 world.  Cold-booted with Clock at "Today" it answers 2026 too, so
+the full disk's both worlds take today's date.
+
 ## Console details found while bringing up the FEP
 
 - Switchpack status: bits 2:1 are the monitor type (STREAM-MONITOR-ID does

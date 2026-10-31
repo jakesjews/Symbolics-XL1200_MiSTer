@@ -58,8 +58,11 @@ WiFi can't carry it, and every XL1200 core has the same Ethernet address.
 The MacIvory factory disk image that circulates holds a Genera file system
 with Joshua, Concordia, Statice, CLIM, the documentation and fonts, the
 animation world and the Y2K patches. The disk tool reads it and puts all of
-it on an XL1200 disk, Y2K patch included, so the OSD's Clock can be "Today":
+it on an XL1200 disk, the Y2K patch loaded into both worlds, so the OSD's
+Clock can be "Today":
 [docs/NOTES.md](docs/NOTES.md#the-macivory-disk-and-the-full-image).
+`Hello` and `Boot` start Genera 8.3; for the animation world type `Hello`,
+`Load World FEP7:>animation-mac-6-2-y2k.ilod`, `Start`.
 
 ## Gotchas
 
