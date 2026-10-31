@@ -920,7 +920,15 @@ would put Genera on the LAN at its own address, a follow-up.
   code: 1 ran past the hour twice, 2 routed twice (0.032 and 0.434 ns),
   4 and 5 (the Mac's CrossOver Quartus, the same 17.0.2 build 602,
   `build-mac.sh`) gave up on congestion in three minutes at 73-74%
-  peak, the design's margin being what it is.
+  peak, the design's margin being what it is.  The site setup and Save
+  World on the network disk (44,564 blocks in six minutes again) gave
+  the network master image; cold-booted from the FEP with Hello and
+  Boot it answers ping 9 s after Boot, without a login.  The MiSTer's
+  main program stays the patched one (`/media/fat/MiSTer`, the official
+  binary as `MiSTer.orig-20261031`, a spare copy `MiSTer.xl1200-enet`
+  for after an update overwrites it); MiSTer.ini can't choose a main
+  program, so its `[XL1200]` section only carries the core's video
+  settings (direct_video 0 while the core is tested from the Mac).
 
 ## RTL Ivory (`rtl/ivory/`)
 
