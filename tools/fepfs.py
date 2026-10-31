@@ -112,11 +112,11 @@ class Entry:
 
 
 class FEPFS:
-    def __init__(self, disk):
+    def __init__(self, disk, label_dpn=0):
         self.disk = disk
-        self.label = disk.read(0)
+        self.label = disk.read(label_dpn)
         if get_string(self.label, (ID, ID + 1)) != 'LABL':
-            sys.exit(f"{disk.path}: block 0 is not a FEPFS label")
+            sys.exit(f"{disk.path}: block {label_dpn} is not a FEPFS label")
         L = self.label
         self.capacity = L[L_NCYL] * L[L_NHEADS] * L[L_NPPT]
 
@@ -369,7 +369,7 @@ def runs_string(runs):
 
 def cmd_ls(args):
     disk = Disk(args.image, args.stride)
-    fs = FEPFS(disk)
+    fs = FEPFS(disk, args.label)
     L = fs.label
     for copy in (1, 2):
         if disk.read(copy) != L:
@@ -410,8 +410,31 @@ def cmd_ls(args):
               f"{len(claimed - used)} blocks of files marked free")
 
 
+def cmd_add(args):
+    """Add files to the root directory of IMAGE: name.type from each file's
+    name; .lisp, .text and .boot files converted to the Lisp Machine character
+    set, everything else (worlds, ibin, an LMFS partition) copied as it is."""
+    disk = Disk(args.image, args.stride, write=True)
+    fs = FEPFS(disk, args.label)
+    for path in args.files:
+        name, _, typ = os.path.basename(path).rpartition('.')
+        if not name or len(typ) > 4 or len(name) > 32:
+            sys.exit(f"{path}: wants name.type, a name of at most 32 characters and a type of at most 4")
+        cdate = int(os.path.getmtime(path)) + UT_EPOCH
+        with open(path, 'rb') as f:
+            if typ.lower() in ('lisp', 'text', 'boot'):
+                data = lispm_text(f.read())
+                version, hdr, runs = fs.add_file(name, typ, io.BytesIO(data), len(data), args.author, args.comment, cdate)
+                size = len(data)
+            else:
+                size = os.path.getsize(path)
+                version, hdr, runs = fs.add_file(name, typ, f, size, args.author, args.comment, cdate)
+        print(f"{args.image}: >{name}.{typ}.{version}, {size} bytes, header {hdr}, data {runs_string(runs)}")
+    disk.f.close()
+
+
 def cmd_get(args):
-    fs = FEPFS(Disk(args.image, args.stride))
+    fs = FEPFS(Disk(args.image, args.stride), args.label)
     e = fs.lookup(args.path)
     left = e.header[F_LENGTH]
     with open(args.out, 'wb') as out:
@@ -573,7 +596,15 @@ def main():
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('-S', '--stride', type=int, default=1536,
                    help="bytes from one block to the next in the image (default 1536)")
+    p.add_argument('-L', '--label', type=int, default=0,
+                   help="block of the disk label (default 0; a MacIvory FEP container has it at 13)")
     sub = p.add_subparsers(dest='cmd', required=True)
+    s = sub.add_parser('add', help="add files to the root directory (worlds, patches, an LMFS partition)")
+    s.add_argument('image')
+    s.add_argument('files', nargs='+', help="name.type each; .lisp/.text/.boot as text")
+    s.add_argument('--author', default='LISPM')
+    s.add_argument('--comment', default='')
+    s.set_defaults(fn=cmd_add)
     s = sub.add_parser('ls', help="show the label, every file and the free space")
     s.add_argument('image')
     s.set_defaults(fn=cmd_ls)
