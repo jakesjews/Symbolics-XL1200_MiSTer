@@ -790,6 +790,14 @@ underflow ("too small in magnitude to be representable as a normalized
 double-precision floating-point number", traps 67108864, exponent -306)
 offering the zero result.
 
+Genera 8.3's own programs, every one Select Help lists, open on the
+saved world and draw their frames: Converse (Select-C), the Document
+Examiner (D), the Editor (E), File System Operations (F, with Local LMFS
+Operations), the Inspector (I), the Listener (L), Zmail (M, "No current
+message sequence"), Notifications (N), Peek (P, its help page), Frame-Up
+(Q, the layout of a dummy program), Terminal (T, "Connect:") and the
+Flavor Examiner (X).
+
 Ephemeral GC: `(time (dotimes (i 50) (make-list 100000)))`, 5M words of
 consing, took 7.4 s (4.1 s in the storage system, 3.8 s of it creating
 and destroying pages) and flipped the ephemeral collector; `Show GC
