@@ -64,13 +64,14 @@ In the order they'll be done. Bugs come first whenever they turn up.
      copy approaching two cycles per element, an array sum one per cycle),
      Gabriel, fib, and de Kleer's prime-implicate tests (needs the Building
      Problem Solvers code).
-   - Land in the real machine's ballpark, not well past it. Standing (Oct
-     2026, build 31 at 50 MHz): `(fib 30)` 2.80 s against the XL1201's
-     4.1 s, Gabriel 6.56x the 3600 against a real Ivory's ~6x (compute-bound
-     code past it, list- and array-bound code under it). The cache work
-     is done; the clock is the one lever left (30.75 MHz assumed for the
-     chip: the Merlin-II's 61.5 MHz oscillator halved), and is set next;
-     no cycle-exact throttling.
+   - No part slower than the real machine; faster is fine. Standing (Oct
+     2026, build 30 at 50 MHz): `(fib 30)` 2.80 s against the XL1201's
+     4.1 s, Gabriel 6.56x the 3600 against a real Ivory's ~6x, but the
+     list-bound benchmarks under it (Boyer 5.5x, Div2 5.2x, Traverse
+     6.0x: DDR misses). Lifting those to the real machine's pace is the
+     speed work left, after the compatibility pass; the clock stays at
+     50 MHz until then (30.77 and 35 MHz were built and dropped: they
+     put list-bound code further behind).
 2. A compatibility pass on the rebuilt core (not on this one: bugs in the
    old state machine aren't worth fixing): Zmacs (edit and save a file), Document
    Examiner, the Inspector, the Debugger, Peek; a full GC (`Start GC

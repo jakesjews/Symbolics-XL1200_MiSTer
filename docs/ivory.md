@@ -425,6 +425,21 @@ latency a miss, not bandwidth, and the rest is the state machine's fixed
 steps an instruction, which a pipeline would overlap. Neither is touched
 by miss-path tuning.
 
+The clock, then. The microsecond clock became a fractional divider (a
+million added a cycle, a tick when the sum passes the rate) so the
+processor can run at any rate, and 30.77 MHz (1200/39, the closest to
+the Merlin-II's 61.5 MHz halved that shares a PLL with the 80 MHz dot
+clock) and 35 MHz (fib 2.5% under the XL1201's time) were built. Both
+were dropped before measuring: the rule settled on (Oct 31 2026) is no
+part of the machine slower than the real one, faster allowed, and at
+50 MHz the list-bound benchmarks already sit at or under a real Ivory's
+~6x (Boyer 5.5x, Div2 5.2x, Traverse 6.0x) while fib is 2.80 s against
+4.10 s. A slower clock scales those down with everything else (a DDR
+miss is nanoseconds, so a little less than linearly). So the clock stays
+at 50 MHz; what is left of the speed work is lifting the list-bound code
+to the real machine (the memory latency: structural), after the
+compatibility pass, and the clock is chosen after that.
+
 ## Order of work
 
 1. Stack cache, verified by a Genera boot, compile-file and fib on the
@@ -433,10 +448,10 @@ by miss-path tuning.
 3. TLB and the pipelined memory interface.
 4. The pipeline.
 5. Checks: block-transfer rates from *Internals*, fib and Gabriel against the
-   XL1201 and the 3600, then the clock: the core should land near the real
-   machine, not well past it; if it comes out clearly faster, the processor
-   runs at the machine cycle instead of 50 MHz, nothing more elaborate. The
-   working assumption (Oct 2026) is 30.75 MHz: the 61.5 MHz oscillator on the
-   Merlin-II divided by two, as inferred for the MacIvory III; fib's
+   XL1201 and the 3600, then the clock: no part of the machine slower than
+   the real one, faster allowed; once the list-bound code is at the real
+   machine's pace, a clock that keeps it there, nothing more elaborate.
+   The chip's own rate is assumed to be 30.75 MHz: the 61.5 MHz oscillator
+   on the Merlin-II divided by two, as inferred for the MacIvory III; fib's
    instruction count against the XL1201's time gives 4.2 cycles an
    instruction at that rate, which fits the chip's pipeline.
