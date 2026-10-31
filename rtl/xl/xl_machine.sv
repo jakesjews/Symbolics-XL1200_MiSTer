@@ -12,6 +12,7 @@ module xl_machine #(
   parameter bit    LOCKSTEP = 1'b0,
   parameter bit    MEM_CLEAR = 1'b1,       // clear DDR3 memory at power-up
   parameter int    CLK_HZ = 50_000_000,   // no part slower than the real machine (docs/ivory.md)
+  parameter bit    NET_SIMU = 1'b0,       // short network mailbox timers (benches)
   parameter        PROM_FILE = "boot_prom.mem"
 ) (
   input  logic        clk,
@@ -40,6 +41,7 @@ module xl_machine #(
   input  logic signed [9:0] mouse_dy,
   input  logic [64:0] rtc,
   input  logic        rtc_back28,
+  input  logic        net_ena,             // the OSD's Network is not Off
 
   // disks
   input  logic [NT-1:0] img_mounted,
@@ -160,7 +162,45 @@ module xl_machine #(
     .cpu_req(req && sel_ram), .cpu_we(mem_we), .cpu_addr(pa[21:0]), .cpu_wdata(mem_wdata),
     .cpu_ack(ram_ack), .cpu_rdata(ram_rdata),
     .buf_req, .buf_we, .buf_addr, .buf_be, .buf_wdata, .buf_ack, .buf_rdata,
-    .ddr_addr, .ddr_burstcnt, .ddr_rd, .ddr_we, .ddr_din, .ddr_be, .ddr_dout, .ddr_dout_ready, .ddr_busy
+    .ddr_addr(m0_addr), .ddr_burstcnt(m0_burstcnt), .ddr_rd(m0_rd), .ddr_we(m0_we), .ddr_din(m0_din),
+    .ddr_be(m0_be), .ddr_dout(ddr_dout), .ddr_dout_ready(m0_dout_ready), .ddr_busy(m0_busy)
+  );
+
+  // The network: the 82586's frames cross a mailbox in DDR3 to Main_MiSTer's
+  // bridge (xl_eth_hps), a second master of the DDR port behind the memory.
+  logic        m0_rd, m0_we, m0_dout_ready, m0_busy;
+  logic [28:0] m0_addr;
+  logic [7:0]  m0_burstcnt, m0_be;
+  logic [63:0] m0_din;
+  logic        m1_rd, m1_we, m1_dout_ready, m1_busy;
+  logic [28:0] m1_addr;
+  logic [7:0]  m1_burstcnt, m1_be;
+  logic [63:0] m1_din;
+  ddram_arb arb (
+    .clk, .reset(power_on),
+    .m0_waitrequest(m0_busy), .m0_burstcount(m0_burstcnt), .m0_address(m0_addr), .m0_read(m0_rd),
+    .m0_write(m0_we), .m0_writedata(m0_din), .m0_byteenable(m0_be), .m0_readdata(), .m0_readdatavalid(m0_dout_ready),
+    .m1_waitrequest(m1_busy), .m1_burstcount(m1_burstcnt), .m1_address(m1_addr), .m1_read(m1_rd),
+    .m1_write(m1_we), .m1_writedata(m1_din), .m1_byteenable(m1_be), .m1_readdata(), .m1_readdatavalid(m1_dout_ready),
+    .s_waitrequest(ddr_busy), .s_burstcount(ddr_burstcnt), .s_address(ddr_addr), .s_read(ddr_rd),
+    .s_write(ddr_we), .s_writedata(ddr_din), .s_byteenable(ddr_be), .s_readdata(ddr_dout), .s_readdatavalid(ddr_dout_ready)
+  );
+  logic        tx_push, tx_stp, tx_enp, tx_crcgen, tx_clr, tx_busy, tx_fifordy;
+  logic [1:0]  tx_be;
+  logic [15:0] tx_d;
+  logic [11:0] tx_len, rx_len;
+  logic        rx_pop, rx_clr, rx_deof, rx_fifordy, rx_crcok, rx_eof, rx_lpbk, rx_prom;
+  logic [15:0] rx_d;
+  logic [47:0] rx_padr;
+  logic [63:0] rx_ladrf;
+  xl_eth_hps #(.CLK_HZ(CLK_HZ), .SIMU(NET_SIMU)) eth (
+    .clk, .rst(reset), .ena(net_ena),
+    .tx_push, .tx_stp, .tx_be, .tx_d, .tx_enp, .tx_len, .tx_crcgen, .tx_clr, .tx_fifordy, .tx_busy,
+    .rx_pop, .rx_clr, .rx_d, .rx_deof, .rx_fifordy, .rx_len, .rx_crcok, .rx_eof,
+    .rx_lpbk, .rx_prom, .rx_padr, .rx_ladrf,
+    .avl_waitrequest(m1_busy), .avl_address(m1_addr), .avl_read(m1_rd), .avl_write(m1_we),
+    .avl_writedata(m1_din), .avl_byteenable(m1_be), .avl_burstcount(m1_burstcnt),
+    .avl_readdata(ddr_dout), .avl_readdatavalid(m1_dout_ready)
   );
   // boot PROM: the stand-in (tools/bootprom.py) in its first 512 words; the
   // rest reads as fixnum 0
@@ -226,6 +266,8 @@ module xl_machine #(
     .cpu_req(req && sel_iob), .cpu_we(mem_we), .cpu_addr(pa[27:0]), .cpu_wdata(mem_wdata[31:0]),
     .cpu_ack(iob_ack), .cpu_rdata(iob_rdata), .dma_busy(iob_dma_busy), .scsi_irq, .ether_irq,
     .buf_req, .buf_we, .buf_addr, .buf_be, .buf_wdata, .buf_ack, .buf_rdata,
+    .tx_push, .tx_stp, .tx_be, .tx_d, .tx_enp, .tx_len, .tx_clr, .tx_busy,
+    .rx_pop, .rx_clr, .rx_d, .rx_deof, .rx_fifordy, .rx_len, .rx_lpbk, .rx_prom, .rx_padr, .rx_ladrf,
     .key_strobe, .key_down, .key_code, .mouse_strobe, .mouse_buttons, .mouse_dx, .mouse_dy,
     .img_mounted, .img_readonly, .img_size, .sd_lba, .sd_blk_cnt, .sd_rd, .sd_wr, .sd_ack,
     .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .disk_busy(disk_light),

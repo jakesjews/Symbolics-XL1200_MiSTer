@@ -133,6 +133,7 @@ int main(int argc, char** argv) {
   top->power_on = 1;
   top->reset = 1;
   top->rtc_back28 = 0;
+  top->net_ena = 0;
   set_rtc();
   for (int i = 0; i < 4; i++) tick();
   // mount the image (hps_io: img_size, then a one-cycle img_mounted)

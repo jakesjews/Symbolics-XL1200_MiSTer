@@ -40,6 +40,26 @@ module xl_iob #(
   input  logic        buf_ack,
   input  logic [31:0] buf_rdata,
 
+  // the 82586's wire (xl_eth_hps)
+  output logic        tx_push,
+  output logic        tx_stp,
+  output logic [1:0]  tx_be,
+  output logic [15:0] tx_d,
+  output logic        tx_enp,
+  output logic [11:0] tx_len,
+  output logic        tx_clr,
+  input  logic        tx_busy,
+  output logic        rx_pop,
+  output logic        rx_clr,
+  input  logic [15:0] rx_d,
+  input  logic        rx_deof,
+  input  logic        rx_fifordy,
+  input  logic [11:0] rx_len,
+  output logic        rx_lpbk,
+  output logic        rx_prom,
+  output logic [47:0] rx_padr,
+  output logic [63:0] rx_ladrf,
+
   // console
   input  logic        key_strobe,
   input  logic        key_down,
@@ -120,16 +140,19 @@ module xl_iob #(
     .busy(disk_busy), .irq(scsi_irq), .dbg(dbg_scsi), .dbg_blocks
   );
 
-  // ---------------------------------------------------------------- 82586 Ethernet (no network)
+  // ---------------------------------------------------------------- 82586 Ethernet
   // Its pins are a latch at 0x04016000 that reads back in bits 7:5.
   logic        eth_pins_we, eth_busy, eth_req, eth_we, eth_hi, eth_ack;
   logic [7:0]  eth_pins;
   logic [14:0] eth_word;
+  logic [1:0]  eth_be;
   logic [15:0] eth_wdata;
   xl_i82586 ether (
     .clk, .reset, .pins_we(eth_pins_we), .pins(eth_pins), .busy(eth_busy), .irq(ether_irq),
-    .m_req(eth_req), .m_we(eth_we), .m_word(eth_word), .m_hi(eth_hi), .m_wdata(eth_wdata),
-    .m_ack(eth_ack), .m_rdata(buf_rdata)
+    .m_req(eth_req), .m_we(eth_we), .m_word(eth_word), .m_hi(eth_hi), .m_be(eth_be), .m_wdata(eth_wdata),
+    .m_ack(eth_ack), .m_rdata(buf_rdata),
+    .tx_push, .tx_stp, .tx_be, .tx_d, .tx_enp, .tx_len, .tx_crcgen(), .tx_clr, .tx_busy,
+    .rx_pop, .rx_clr, .rx_d, .rx_deof, .rx_fifordy, .rx_len, .rx_lpbk, .rx_prom, .rx_padr, .rx_ladrf
   );
 
   logic       con_rx;          // a byte from the processor to the console
@@ -210,7 +233,7 @@ module xl_iob #(
       end
       BC_SCSI: buf_we = sdma_we;
       BC_ETH: begin
-        buf_we = eth_we; buf_addr = {1'b0, eth_word}; buf_be = eth_hi ? 4'b1100 : 4'b0011;
+        buf_we = eth_we; buf_addr = {1'b0, eth_word}; buf_be = eth_hi ? {eth_be, 2'b00} : {2'b00, eth_be};
         buf_wdata = {eth_wdata, eth_wdata};
       end
       BC_CPU: begin

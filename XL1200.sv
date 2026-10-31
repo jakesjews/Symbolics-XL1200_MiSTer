@@ -47,6 +47,7 @@ localparam CONF_STR = {
 	"O[5:3],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer,HV-Integer;",
 	"O[6],Clock,28 years back,Today;",
 	"O[7],Debug line,Off,On;",
+	"O[10:8],Network,eth0,Off,eth1,macvlan,tap0;",
 	"-;",
 	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
@@ -196,6 +197,7 @@ xl_machine #(.NT(NT), .CLK_HZ(50_000_000), .PROM_FILE("rtl/xl/boot_prom.mem")) m
 	.mouse_dy(mouse_dy),
 	.rtc(rtc),
 	.rtc_back28(~status[6]),
+	.net_ena(status[10:8] != 3'd1),
 
 	.img_mounted(img_mounted),
 	.img_readonly(img_readonly),

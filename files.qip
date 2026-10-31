@@ -6,6 +6,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/ivory/ivory_icache.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/ivory/ivory_core.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_mem.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_scsi.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/ddram_arb.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_eth_hps.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_i82586.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_pit.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_fpa_unit.sv

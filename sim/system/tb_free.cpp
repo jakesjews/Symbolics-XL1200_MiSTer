@@ -87,6 +87,7 @@ int main(int argc, char** argv) {
   top->power_on = 1;
   top->reset = 1;
   top->rtc_back28 = 1;
+  top->net_ena = getenv("XLNET") != nullptr;
   {
     time_t t = time(nullptr);
     struct tm tm;
