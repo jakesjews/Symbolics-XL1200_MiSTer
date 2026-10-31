@@ -49,7 +49,9 @@ module ivory_cpu
   output logic [31:0] ic_fill_va,
   output logic [31:0] ic_fill_pa,
   output word_t       ic_fill_word,
-  output logic [31:0] fetch_pc,
+  output logic [31:0] ic_pc_a,        // the cache looks up pc_a (next_pc) when ic_sel_a, else pc_b (pc)
+  output logic [31:0] ic_pc_b,
+  output logic        ic_sel_a,
   output logic        icache_on,
   output logic        pf_on,
   output logic [3:0]  pf_high,
@@ -197,9 +199,13 @@ module ivory_cpu
   endfunction
   // the window checks the states share (a task inlines at every call)
   logic        sp_in_window, spm1_in_window, spp1_in_window;
+  logic [31:0] sp_p1;
+  logic        push_trig;            // a push to sp_p1 overflows the stack cache: SP<6:2> at the limit's
+  assign sp_p1 = sp + 32'd1;
   assign sp_in_window = in_window(sp);
   assign spm1_in_window = in_window(sp - 32'd1);
-  assign spp1_in_window = in_window(sp + 32'd1);
+  assign spp1_in_window = in_window(sp_p1);
+  assign push_trig = (sp_p1 & 32'h7C) == (stack_cache_overflow_limit & 32'h7C);
   // the dump quantum register (01031): 32 at reset and for values the cache can't dump
   function automatic logic [31:0] sc_quantum();
     logic [31:0] q;
@@ -292,8 +298,10 @@ module ivory_cpu
   assign insn_count = icount;
   assign halt_reason = halt_code;
   assign dbg_pc = pc[32:1];
-  // the cache lookup address: in the retire cycle, the next instruction's
-  assign fetch_pc = (st == S_RETIRE && !pc_changed) ? next_pc[32:1] : pc[32:1];
+  // the cache lookup: in the retire cycle, the next instruction's PC
+  assign ic_pc_a = next_pc[32:1];
+  assign ic_pc_b = pc[32:1];
+  assign ic_sel_a = st == S_RETIRE && !pc_changed;
   assign icache_on = icache_control[0];
   assign pf_on = prefetcher_control[0];
   assign pf_high = prefetcher_control[8:5];

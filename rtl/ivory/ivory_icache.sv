@@ -22,7 +22,12 @@ module ivory_icache
   input  logic        pf_enable,    // prefetcher control bit 0
   input  logic [3:0]  pf_high,      // prefetcher control bits 8:5: words to run ahead of the PC
 
-  input  logic [31:0] fetch_pc,      // the processor's PC, word address
+  // the lookup: pc_b is the processor's PC, pc_a the next instruction's in
+  // the retire cycle (sel_a); both are registers, so the words can live in
+  // block RAM read from them
+  input  logic [31:0] pc_a,
+  input  logic [31:0] pc_b,
+  input  logic        sel_a,
   output logic        hit            /*verilator public_flat_rd*/,
   output word_t       word           /*verilator public_flat_rd*/,
 
@@ -43,13 +48,22 @@ module ivory_icache
   input  logic        pf_err
 );
 
-  word_t       data [32] /*verilator public_flat_rd*/;
+  word_t       data_a [32] /*verilator public_flat_rd*/;   // two copies: one a read port each
+  word_t       data_b [32];
   logic [26:0] tag  [32] /*verilator public_flat_rd*/;
   logic [31:0] valid /*verilator public_flat_rd*/;
 
+  wire [31:0] fetch_pc = sel_a ? pc_a : pc_b;
   wire [4:0] ix = fetch_pc[4:0];
-  assign word = data[ix];
-  assign hit = enable && valid[ix] && tag[ix] == fetch_pc[31:5];
+  assign word = sel_a ? data_a[pc_a[4:0]] : data_b[pc_b[4:0]];
+  logic        d_we;
+  logic [4:0]  d_ix;
+  word_t       d_w;
+  // no hit on a word whose data is still landing (d_we: written at the end
+  // of this cycle), which the retire-cycle lookup of a prefetched word can
+  // reach
+  assign hit = enable && valid[ix] && tag[ix] == fetch_pc[31:5] && !(d_we && d_ix == ix);
+  always_ff @(posedge clk) if (d_we) begin data_a[d_ix] <= d_w; data_b[d_ix] <= d_w; end
 
   // A prefetched word that arrives in the processor's fill cycle waits a cycle
   logic        pend /*verilator public_flat_rd*/;
@@ -63,13 +77,15 @@ module ivory_icache
   wire [31:0] ahead = s_va - fetch_pc;
   wire        fence = wcdr(pf_rdata) == CDR_NIL;
 
+  // the word lands a cycle after its tag and valid bit (hit waits for it)
   task automatic install(input logic [31:0] va, input word_t w);
-    data[va[4:0]] <= w;
+    d_we <= 1'b1; d_ix <= va[4:0]; d_w <= w;
     tag[va[4:0]] <= va[31:5];
     valid[va[4:0]] <= 1'b1;
   endtask
 
   always_ff @(posedge clk) begin
+    d_we <= 1'b0;
     if (reset) begin
       valid <= '0;
       stream <= 1'b0;

@@ -101,10 +101,10 @@
   // push); S_PUSH otherwise
   task automatic push_now(input word_t w, input state_t r);
     if (spp1_in_window) begin
-      sc_we <= 1'b1; sc_wa <= sp[6:0] + 7'd1; sc_wd <= setcdr(w, CDR_NEXT);
-      sp <= sp + 32'd1;
-      tos <= setcdr(w, CDR_NEXT); tos_sp <= sp + 32'd1; tos_valid <= 1'b1; tos_reload <= 1'b0;
-      if (((sp + 32'd1) & 32'h7C) == (stack_cache_overflow_limit & 32'h7C)) begin
+      sc_we <= 1'b1; sc_wa <= sp_p1[6:0]; sc_wd <= setcdr(w, CDR_NEXT);
+      sp <= sp_p1;
+      tos <= setcdr(w, CDR_NEXT); tos_sp <= sp_p1; tos_valid <= 1'b1; tos_reload <= 1'b0;
+      if (push_trig) begin
         sc_a <= stack_cache_lower_bound;
         sc_end <= stack_cache_lower_bound + sc_quantum();
         sc_busy <= 1'b1;
@@ -609,24 +609,23 @@
         // ---------------------------------------------------------------- push / pop
         S_PUSH: begin
           if (spp1_in_window) begin
-            sc_we <= 1'b1; sc_wa <= sp[6:0] + 7'd1; sc_wd <= p_w;
-            sp <= sp + 32'd1;
-            tos <= p_w; tos_sp <= sp + 32'd1; tos_valid <= 1'b1; tos_reload <= 1'b0;
-            // stack cache overflow: SP<6:2> reaches the overflow limit's
-            if (((sp + 32'd1) & 32'h7C) == (stack_cache_overflow_limit & 32'h7C)) begin
+            sc_we <= 1'b1; sc_wa <= sp_p1[6:0]; sc_wd <= p_w;
+            sp <= sp_p1;
+            tos <= p_w; tos_sp <= sp_p1; tos_valid <= 1'b1; tos_reload <= 1'b0;
+            if (push_trig) begin
               sc_a <= stack_cache_lower_bound;
               sc_end <= stack_cache_lower_bound + sc_quantum();
               sc_busy <= 1'b1;
               st <= S_SC_DUMP;   // returns to our caller
             end else ret();
           end else begin
-            mem_wr_mem(sp + 32'd1, p_w, 1'b0);
+            mem_wr_mem(sp_p1, p_w, 1'b0);
             tos_valid <= 1'b0;
             call(S_MEM_W, S_PUSH_DONE);
           end
         end
         S_PUSH_DONE: begin
-          sp <= sp + 32'd1;
+          sp <= sp_p1;
           ret();
         end
         // dump the quantum lowest words of the cache to memory and raise the bounds

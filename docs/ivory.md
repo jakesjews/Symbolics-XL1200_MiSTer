@@ -280,7 +280,15 @@ state); push and binary arithmetic with their operands at hand done from
 S_EXEC; the conditional branches decided in S_EXEC from the top-of-stack
 register (`brc`). A trap in the first version: the popping compares did
 `sp - 1` and `push` in one cycle, which S_PUSH honoured a cycle later and
-`push_now` didn't; they now `write_tos`. The `decode` task runs in the fetch cycle (`fetch` task, called
+`push_now` didn't; they now `write_tos`. Build 15 of that didn't fit
+either (82%), so: `push_now` only in the four hot states (push from
+S_EXEC, the arithmetic result, zerop, the compares), the `sp + 1` adder
+and the overflow trigger as shared wires, and the instruction cache's
+words back in block RAM, duplicated so the retire-cycle lookup reads from
+`next_pc` and the ordinary one from `pc` (both registers); a word's data
+lands a cycle after its tag, so a hit waits for it (a prefetched word can be
+fetched that very cycle: found as a trap inside a trap). 103.1M (6.8).
+The `decode` task runs in the fetch cycle (`fetch` task, called
 from `S_FETCH` and from `S_RETIRE`, whose cache lookup uses the next PC
 through `fetch_pc`); the operand pre-read sets `sc_ra` in `decode` and
 `opval` takes `sc_q` (`opv_pre`), or the immediate, in one cycle.

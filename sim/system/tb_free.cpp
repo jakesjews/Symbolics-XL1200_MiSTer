@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
       watch_wr = wr;
       {
         static uint64_t last_d = ~0ull; static uint32_t last_t = ~0u; static int last_v = -1;
-        uint64_t d = r.xl_machine__DOT__core__DOT__icache__DOT__data[watch & 31];
+        uint64_t d = r.xl_machine__DOT__core__DOT__icache__DOT__data_a[watch & 31];
         uint32_t t = r.xl_machine__DOT__core__DOT__icache__DOT__tag[watch & 31];
         int v = (r.xl_machine__DOT__core__DOT__icache__DOT__valid >> (watch & 31)) & 1;
         if (d != last_d || t != last_t || v != last_v) {

@@ -48,7 +48,8 @@ module ivory_core
   logic [11:0] mem_fault;
   logic        ic_hit, ic_fill, icache_on, pf_on;
   logic [3:0]  pf_high;
-  logic [31:0] fetch_pc, ic_fill_va, ic_fill_pa;
+  logic [31:0] ic_pc_a, ic_pc_b, ic_fill_va, ic_fill_pa;
+  logic        ic_sel_a;
   word_t       ic_word, ic_fill_word;
   logic        pf_busy, pf_req /*verilator public_flat_rd*/, port_ack /*verilator public_flat_rd*/;
   logic [31:0] pf_addr /*verilator public_flat_rd*/;
@@ -61,7 +62,8 @@ module ivory_core
     .dbg_we(1'b0), .dbg_sel(4'd0), .dbg_data('0),
     .mem_req, .mem_we, .mem_phys, .mem_addr, .mem_wdata, .mem_ack, .mem_rdata,
     .mem_fault, .mem_buserr, .mem_bus_pa, .mem_transport, .mem_pa,
-    .ic_hit, .ic_word, .ic_fill, .ic_fill_va, .ic_fill_pa, .ic_fill_word, .fetch_pc,
+    .ic_hit, .ic_word, .ic_fill, .ic_fill_va, .ic_fill_pa, .ic_fill_word,
+    .ic_pc_a, .ic_pc_b, .ic_sel_a,
     .icache_on, .pf_on, .pf_high,
     .pht_base_o(pht_base), .pht_mask_o(pht_mask),
     .map_flush, .map_load, .map_inval, .map_vpn, .map_data, .map_reload,
@@ -73,7 +75,7 @@ module ivory_core
 
   ivory_icache icache (
     .clk, .reset, .enable(icache_on), .pf_enable(pf_on), .pf_high,
-    .fetch_pc, .hit(ic_hit), .word(ic_word),
+    .pc_a(ic_pc_a), .pc_b(ic_pc_b), .sel_a(ic_sel_a), .hit(ic_hit), .word(ic_word),
     .fill(ic_fill), .fill_va(ic_fill_va), .fill_pa(ic_fill_pa), .fill_word(ic_fill_word),
     .snoop(mem_req && mem_we && (!mem_phys || mem_addr[31:27] == 5'd0)),
     .snoop_va(mem_phys ? {5'h1F, mem_addr[26:0]} : mem_addr),
