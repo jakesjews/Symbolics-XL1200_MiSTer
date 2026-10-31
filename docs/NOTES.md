@@ -676,7 +676,12 @@ Gabriel's geometric mean against the 3600 went 1.41x, 2.31x, 4.73x,
 4.97x, 6.4x (a real Ivory ~6x), then 6.55x with the DDR cache answering
 misses early and posting writes (build 27: Stak and the recursive Div2
 11-13% faster), the compute-bound benchmarks past the real machine and
-Puzzle (2.4x: Genera 8.3's version does more work) the outlier.
+Puzzle (2.4x: Genera 8.3's version does more work) the outlier. Builds
+28-31 (the prefetcher waiting for the memory, a miss passing the write
+queue, a valid bit per cached word, the framework's YC and ALSA paths
+compiled out) measured the same, 6.56x and 2.80 s, and the speed work
+stops there: build 31 is the core going forward, and the clock is the
+one lever left.
 
 Before it, the RTL Ivory averaged ~29 cycles an instruction at 50 MHz, two thirds of
 them waiting ~7 cycles per memory access (`PROFILE=1` on `sim/system`),
@@ -800,6 +805,15 @@ after every instruction and reports the first difference.
 `obj_free/Vxl_machine` runs it as on the
 MiSTer (microseconds of the 50 MHz clock, SCSI commands running while the FEP
 polls, memory cleared from junk, the dot clock running) and saves the screen.
+It types TEXT from a given second (`|` Return, `~` a 10 s wait) and
+profiles cycles by state (`PROFILE=1`, from an instruction count or
+`PROFILE_FROM=typed`, the last key). At about 50 wall seconds per
+simulated second (one thread; `--threads` makes it several times slower)
+a Genera boot plus one Gabriel benchmark is a 3-4 hour run on the Ubuntu
+server: `Hello|Load World FEP7:>Genera-8-3.ilod|~~Start|` and twelve
+`~`, then `Login Lisp-Machine|~`, the load of the benchmarks' ibin and
+`~~~`, then `(gabriel::run-one 'gabriel::boyer)|`; Genera's Listener is
+up by 150 s of simulated time (Oct 2026).
 
 ## Debug line
 

@@ -279,8 +279,7 @@ list- and memory-heavy ones lag (Triang 4.5x, Boyer 4.0x, Traverse 4.0x,
 Ctak 3.9x, Div2 recursive 3.9x, Puzzle 1.8x): a DDR cache miss costs more
 here than the Merlin-II's memory did. So on the broad suite the core is
 still slower than the real XL1200 on average, and only fib-like code is
-past it; the clock decision waits for step 5 on hardware and the
-FrameThrower.
+past it; the clock decision waits for step 5 on hardware.
 
 Measured in the free-running simulation of the FEP boot (instructions in
 14 simulated seconds; the stack cache, instruction cache and TLB alone:
@@ -358,8 +357,7 @@ mean 6.39x the 3600: Deriv 8.6x, Stak 8.5x, Browse 8.4x, FFT 8.3x, Tak
 Puzzle 2.4x. The suite's average is now a real Ivory's; the compute-bound
 code is past it by up to 40% and the list- and array-bound code under it
 by as much, so what is left of the speed work is evening those out (the
-memory path), not more peak; the clock decision stays deferred to after
-the FrameThrower.
+memory path), not more peak; the clock decision comes after that.
 
 The array elements were the last inlined shifters: `aref-1`'s and
 `fast-aref-1`'s extraction and `aset-1`'s insert go through the rotator
@@ -403,7 +401,26 @@ every miss waited for the whole queue to drain, and a prefetch issued
 while a line was still landing held the port. So the prefetcher waits for
 the memory's busy signal (build 28), and a miss passes the queue unless a
 queued write is to its line, the addresses in flops for the compare, 16
-entries (build 29).
+entries (build 29). Builds 28 and 29 both failed to route (the fitter
+gives up from congestion at about 80% of the logic, by placement luck),
+so the two went into one build with a third change, a valid bit per word
+of a cache line so that a write installs its word instead of only
+updating a hit (build 30). On the MiSTer (Oct 31 2026): Genera boots,
+`(fib 30)` 2.80 s, geometric mean 6.56x, Traverse 5.93 s, every
+benchmark within 4% of build 27. The three changes measured nothing, and
+the memory-path work ends there; they stay in because they are verified,
+and can be reverted if the logic is ever wanted. Build 31 is the same
+RTL with the framework's YC/composite encoder and ALSA audio path
+compiled out (`MISTER_DISABLE_YC`, `MISTER_DISABLE_ALSA` in the qsf,
+540 ALMs): 32,941 ALMs, 79%, 0.25 ns of slack, the core going forward.
+
+What is left is structural, not the cache. A Boyer profile in the
+free-running simulation (6.3 cycles an instruction over 540M
+instructions) has the processor in S_MEM_W 37% of the cycles, S_RETIRE
+16% and S_EXEC 13%, with the DDR cache idle 81% of the time: the wait is
+latency a miss, not bandwidth, and the rest is the state machine's fixed
+steps an instruction, which a pipeline would overlap. Neither is touched
+by miss-path tuning.
 
 ## Order of work
 

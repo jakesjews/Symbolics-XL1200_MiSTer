@@ -39,6 +39,7 @@ function keys: [docs/keyboard.md](docs/keyboard.md).
 - With no disk mounted the machine halts; mounting one starts it.
 - Genera 8.3 doesn't accept dates after 1999, so leave the OSD's Clock at "28 years back".
 - To compile files, log in first (`Login Lisp-Machine`) and leave free space on the FEP disk (`tools/fepfs.py mkworld --paging`).
+- No composite or S-Video output, and no Linux audio over HDMI: both are compiled out to make room for the machine.
 
 ## Troubleshooting
 
@@ -65,12 +66,12 @@ In the order they'll be done. Bugs come first whenever they turn up.
      Gabriel, fib, and de Kleer's prime-implicate tests (needs the Building
      Problem Solvers code).
    - Land in the real machine's ballpark, not well past it. Standing (Oct
-     2026, build 27 at 50 MHz): `(fib 30)` 2.79 s against the XL1201's
-     4.1 s, Gabriel 6.55x the 3600 against a real Ivory's ~6x (compute-bound
-     code past it, list- and array-bound code under it). The clock is
-     the lever (30.75 MHz assumed for the chip: the Merlin-II's 61.5 MHz
-     oscillator halved), to be set after the FrameThrower; no cycle-exact
-     throttling.
+     2026, build 31 at 50 MHz): `(fib 30)` 2.80 s against the XL1201's
+     4.1 s, Gabriel 6.56x the 3600 against a real Ivory's ~6x (compute-bound
+     code past it, list- and array-bound code under it). The cache work
+     is done; the clock is the one lever left (30.75 MHz assumed for the
+     chip: the Merlin-II's 61.5 MHz oscillator halved), and is set next;
+     no cycle-exact throttling.
 2. A compatibility pass on the rebuilt core (not on this one: bugs in the
    old state machine aren't worth fixing): Zmacs (edit and save a file), Document
    Examiner, the Inspector, the Debugger, Peek; a full GC (`Start GC
@@ -113,8 +114,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
 8. Network: the 82586 to a real network. Cores can't reach the MiSTer's
    Ethernet themselves; MiSTer's main program bridges it for a few cores
    (Minimig, NeXT, Sun), so this needs a change there.
-9. Color and FrameThrower graphics.
-10. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
+9. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
 
 Documentation still wanted:
 - The Merlin-II boot PROMs (a dump; the CY7C291 PROMs' data sheet is in the
