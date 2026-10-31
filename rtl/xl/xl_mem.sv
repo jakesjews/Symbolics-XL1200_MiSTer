@@ -17,8 +17,9 @@
 // while the processor goes on (the port is sampled again once it has).
 // Writes are posted: acknowledged in the cycle they appear (the cached
 // word updated on a hit) and queued for DDR3, which takes them while the
-// memory is idle; a miss waits for the queue to drain, so DDR3 has every
-// write before a read of it.
+// memory is idle; a miss to a line with a write queued waits for the queue
+// to drain, so DDR3 has the write before the read; one to any other line
+// goes ahead of the queue.
 //
 // Power-up: DDR3 holds whatever the last core left there; while `init` is
 // high the memory clears main and buffer memory to zero words (as the
@@ -94,16 +95,26 @@ module xl_mem #(
   logic [RAM_AW-1:0] a_addr;
   logic [1:0]        beat;
 
-  // The write queue: {address, word}, read from its registered pointer
-  localparam int WQ_AW = 5;
-  logic [RAM_AW+39:0] wq [1 << WQ_AW];
+  // The write queue: the words in a RAM read from the registered pointer,
+  // the addresses in flops (every queued line is compared with a miss)
+  localparam int WQ_AW = 4;
+  logic [39:0]        wq_d [1 << WQ_AW];
+  logic [RAM_AW-1:0]  wq_a [1 << WQ_AW];
+  logic [(1 << WQ_AW)-1:0] wq_v;
   logic [WQ_AW:0]     wq_wp, wq_rp;
   wire                wq_empty = wq_wp == wq_rp;
   wire                wq_full = wq_wp == {~wq_rp[WQ_AW], wq_rp[WQ_AW-1:0]};
-  wire [RAM_AW+39:0]  wq_head = wq[wq_rp[WQ_AW-1:0]];
+  wire [39:0]         wq_head_d = wq_d[wq_rp[WQ_AW-1:0]];
+  wire [RAM_AW-1:0]   wq_head_a = wq_a[wq_rp[WQ_AW-1:0]];
   wire                wq_push = st == M_IDLE && cpu_req && cpu_we && !buf_req && !wq_full;
   wire                wq_pop = st == M_IDLE && !wq_empty && !ddr_busy;
-  always_ff @(posedge clk) if (wq_push) wq[wq_wp[WQ_AW-1:0]] <= {cpu_addr, cpu_wdata};
+  always_ff @(posedge clk) if (wq_push) wq_d[wq_wp[WQ_AW-1:0]] <= cpu_wdata;
+  logic               wq_same;        // a queued write is to the line on the port
+  always_comb begin
+    wq_same = 1'b0;
+    for (int k = 0; k < (1 << WQ_AW); k++)
+      if (wq_v[k] && wq_a[k][RAM_AW-1:2] == cpu_addr[RAM_AW-1:2]) wq_same = 1'b1;
+  end
   logic              b_we;
   logic [15:0]       b_addr;
   logic [3:0]        b_be;
@@ -150,9 +161,9 @@ module xl_mem #(
   // DDR3 commands
   always_comb begin
     ddr_rd = 1'b0; ddr_we = 1'b0;
-    ddr_addr = RAM_BASE + 29'(wq_head[RAM_AW+39:40]);
+    ddr_addr = RAM_BASE + 29'(wq_head_a);
     ddr_burstcnt = 8'd1;
-    ddr_din = {24'd0, wq_head[39:0]};
+    ddr_din = {24'd0, wq_head_d};
     ddr_be = 8'hFF;
     case (st)
       M_IDLE: ddr_we = !wq_empty;                 // drain the write queue
@@ -209,9 +220,17 @@ module xl_mem #(
       clr_tag <= '0;
       wq_wp <= '0;
       wq_rp <= '0;
+      wq_v <= '0;
     end else begin
-      if (wq_push) wq_wp <= wq_wp + 1'd1;
-      if (wq_pop) wq_rp <= wq_rp + 1'd1;
+      if (wq_push) begin
+        wq_wp <= wq_wp + 1'd1;
+        wq_a[wq_wp[WQ_AW-1:0]] <= cpu_addr;
+        wq_v[wq_wp[WQ_AW-1:0]] <= 1'b1;
+      end
+      if (wq_pop) begin
+        wq_rp <= wq_rp + 1'd1;
+        wq_v[wq_rp[WQ_AW-1:0]] <= 1'b0;
+      end
       case (st)
         M_CLEAR: begin
           if (!clr_tag[LINE_AW]) clr_tag <= clr_tag + 1'd1;
@@ -232,7 +251,7 @@ module xl_mem #(
           if (buf_req) begin
             b_we <= buf_we; b_addr <= buf_addr; b_be <= buf_be; b_wd <= buf_wdata;
             st <= buf_we ? M_BUF_WR : M_BUF_RD;
-          end else if (cpu_req && !cpu_we && !hit && wq_empty) begin
+          end else if (cpu_req && !cpu_we && !hit && !wq_same) begin
             a_addr <= cpu_addr;
             st <= M_MISS;
           end
