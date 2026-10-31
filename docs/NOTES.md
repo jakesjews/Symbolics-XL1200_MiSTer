@@ -316,6 +316,41 @@ World files:
   blocks as they are); whether 14,986 paging blocks are enough for Genera is
   unknown.
 
+### The MacIvory disk and the full image
+
+The collection's `MacIvory_Virginal_9GB.img.7z` (the loper-os factory disk,
+9,105,018,880 bytes) is an Apple partition map with four HFS Standard
+volumes: "Mac-OS-8" (the Mac system, the MacIvory software) and "FEP0",
+"FEP1", "FEP2", each holding one 2,145,117,440-byte Mac file "MacIvory
+FEPn" (hfsutils reads them: `hmount`, `hcopy -r "FEP0:MacIvory FEP0"`;
+7-Zip can't, it only reads HFS+).  That file is a FEP file system with
+the same FEPD/FEPF structures as an XL disk, 1280-byte blocks at stride
+1280, every 32-bit word byte-swapped (`swap32.py`), and the LABL at block
+13 instead of 0: `fepfs.py -S 1280 -L 13 ls` lists it.  FEP0 has the
+I328 (MacIvory) FEP, two 500,000-block paging files, `Genera-8-3.ilod`
+(the distribution world, 44,402 blocks), `Genera-8-3-Y2K-fixed.ilod`
+(2,072 blocks: a layered world over it, which `Boot.boot` loads), the
+netboot core, `animation-mac-6-2.ilod` (78,919 blocks), a `patches`
+directory (Y2K-fix, kbd-repeat, comm-chip-hung-fix, fepfs-patch,
+copy-world-patch, doc-on-*), and `fspt.fspt`, 16 bytes of text
+"fep1:>lmfs.file": the file system partition table naming the LMFS
+partition, which is FEP1's one file, `lmfs.file.1`, 770,000 blocks
+(985.6 MB; the 198 MB of files the collection's recovery toolkit lists:
+Joshua, Concordia, Statice, CLIM, DNA, documentation, fonts).  FEP2 is
+empty.  A partition's FEPF has no byte length (`get` copies its blocks).
+
+The full image, `research/media/disks/xl1200-full.vhd` (1,150,000 blocks,
+1.77 GB): `mkworld` with the CD's world, `--standalone --internet`, 120,000
+paging blocks, then `fepfs.py add` of the MacIvory LMFS partition (it
+becomes `>lmfs.file.2`; the template's 20,000-block `lmfs.file.1` stays
+unused), an `fspt.fspt` saying "fep7:>lmfs.file" (newest), the animation
+world, and the XL1201 patches from Douglas Fields' GitHub
+`LispEngineer/genera-patches` (`y2k-fix.lisp`/`.ibin`, Reti's private
+patch of 2000-01-01 for TIME:READ-CALENDAR-CLOCK and the who-line's
+two-digit year; `calendar-clock-y2k-fix`, `kbd-repeat`,
+`comm-chip-hung-fix`, `fepfs-patch`, `copy-world-patch`), kept in
+`research/downloads/genera-patches` (gitignored).
+
 ## Console details found while bringing up the FEP
 
 - Switchpack status: bits 2:1 are the monitor type (STREAM-MONITOR-ID does
