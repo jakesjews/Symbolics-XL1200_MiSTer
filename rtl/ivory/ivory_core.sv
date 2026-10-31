@@ -16,6 +16,7 @@ module ivory_core
   input  logic        bus_ack   /*verilator public_flat_rd*/,
   input  word_t       bus_rdata,
   input  logic        bus_buserr,
+  input  logic        bus_busy,     // the memory is still filling a line: a prefetch now would wait
 
   output logic        cop_req,
   output logic        cop_we,
@@ -79,7 +80,7 @@ module ivory_core
     .fill(ic_fill), .fill_va(ic_fill_va), .fill_pa(ic_fill_pa), .fill_word(ic_fill_word),
     .snoop(mem_req && mem_we && (!mem_phys || mem_addr[31:27] == 5'd0)),
     .snoop_va(mem_phys ? {5'h1F, mem_addr[26:0]} : mem_addr),
-    .cpu_req(mem_req), .pf_busy, .pf_req, .pf_addr,
+    .cpu_req(mem_req), .mem_busy(bus_busy), .pf_busy, .pf_req, .pf_addr,
     .pf_ack(port_ack && pf_busy), .pf_rdata(mem_rdata), .pf_err(mem_buserr)
   );
   assign mem_ack = port_ack && !pf_busy;

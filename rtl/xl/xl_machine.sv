@@ -83,14 +83,14 @@ module xl_machine #(
   logic [9:0]  cop_reg;
   word_t       cop_wdata, cop_rdata;
   logic [31:0] usec;
-  logic        mem_ready /*verilator public_flat_rd*/;
+  logic        mem_ready /*verilator public_flat_rd*/, mem_busy;
   logic        retire_counted;
   logic        hp_sb, lp_sb;
 
   ivory_core core (
     .clk, .reset, .run(mem_ready), .hold(LOCKSTEP && retire),
     .bus_req(mem_req), .bus_we(mem_we), .bus_addr(mem_addr), .bus_wdata(mem_wdata),
-    .bus_ack(mem_ack), .bus_rdata(mem_rdata), .bus_buserr(mem_buserr),
+    .bus_ack(mem_ack), .bus_rdata(mem_rdata), .bus_buserr(mem_buserr), .bus_busy(mem_busy),
     .cop_req, .cop_we, .cop_reg, .cop_wdata, .cop_ack, .cop_rdata, .cop_err(1'b0),
     .hp_sb, .lp_sb, .reset_req(1'b0), .hp_sb_taken(), .lp_sb_taken(),
     .usec_clock(usec_now),
@@ -154,7 +154,7 @@ module xl_machine #(
   logic [39:0] ram_rdata;
   logic [3:0] mem_state;
   xl_mem #(.CLEAR(MEM_CLEAR)) mem (
-    .clk, .init(power_on), .ready(mem_ready), .dbg_state(mem_state),
+    .clk, .init(power_on), .ready(mem_ready), .busy(mem_busy), .dbg_state(mem_state),
     .cpu_req(req && sel_ram), .cpu_we(mem_we), .cpu_addr(pa[21:0]), .cpu_wdata(mem_wdata),
     .cpu_ack(ram_ack), .cpu_rdata(ram_rdata),
     .buf_req, .buf_we, .buf_addr, .buf_be, .buf_wdata, .buf_ack, .buf_rdata,

@@ -11,8 +11,11 @@
 // The processor looks the next instruction's word up from its PC register
 // (the words are in flops, read from that register, so a hit answers in the
 // fetch cycle) and installs the word it fetched on a miss (fill).  The prefetcher
-// takes the memory port when the processor isn't asking for it (cpu_req);
-// ivory_core arbitrates with pf_busy.
+// takes the memory port when the processor isn't asking for it (cpu_req)
+// and the memory isn't finishing a line (mem_busy: the miss was answered
+// with its word early, and a prefetch queued now would hold the port while
+// the processor's next request waits behind it); ivory_core arbitrates
+// with pf_busy.
 module ivory_icache
   import ivory_pkg::*;
 (
@@ -40,6 +43,7 @@ module ivory_icache
   input  logic [31:0] snoop_va,
 
   input  logic        cpu_req,      // the processor wants the memory port
+  input  logic        mem_busy,     // the memory is finishing a line: a prefetch would only queue ahead of the processor
   output logic        pf_busy       /*verilator public_flat_rd*/,   // a prefetch owns the port until its ack
   output logic        pf_req,
   output logic [31:0] pf_addr,      // physical
@@ -129,7 +133,7 @@ module ivory_icache
             if (pf_err || fence || pf_va[7:0] == 8'hFF) stream <= 1'b0;
           end
         end
-      end else if (stream && pf_enable && enable && !cpu_req && !fill && ahead < {28'd0, pf_high}) begin
+      end else if (stream && pf_enable && enable && !cpu_req && !mem_busy && !fill && ahead < {28'd0, pf_high}) begin
         pf_busy <= 1'b1;
         pf_req <= 1'b1;
         pf_addr <= s_pa;

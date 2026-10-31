@@ -33,6 +33,7 @@ module xl_mem #(
   input  logic              clk,
   input  logic              init,       // power-up: clear, then ready
   output logic              ready,
+  output logic              busy,       // a line is being fetched (or clearing): a request now would wait
 
   // processor: main memory
   input  logic              cpu_req,
@@ -196,6 +197,7 @@ module xl_mem #(
   end
 
   assign ready = st != M_CLEAR;
+  assign busy = st != M_IDLE;
   assign dbg_state = st;
 
   always_ff @(posedge clk) begin
