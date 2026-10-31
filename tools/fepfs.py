@@ -297,6 +297,7 @@ class FEPFS:
         set_string(ws, (ID, ID + 1), 'FEPD')
         ws[HVERSION], ws[NPAGES], ws[SEQUENCE] = 1, 1, hdr[SEQUENCE]
         ws[D_PAGE] = len(pages)
+        self.disk.write(page, ws)                # valid (empty) before the directory names it
         hdr[F_MAP + 2 * n], hdr[F_MAP + 2 * n + 1] = 1, page
         hdr[F_NENTRIES] = n + 1
         hdr[TIMESTAMP] = now
@@ -463,7 +464,7 @@ def build_world_disk(args, name, typ, size):
         print(f"{args.out}: >{name}.{typ}.{version}, {len(data)} bytes of text, header {hdr}, "
               f"data {runs_string(runs)}")
     # Load World pages to the declared paging files, FEPn:>Page.page by default.
-    paging = fs.free_blocks() - 1 if args.paging == 'rest' else int(args.paging)
+    paging = fs.free_blocks() - 4 if args.paging == 'rest' else int(args.paging)   # a header, and a directory page if one is needed
     if paging > 0:
         version, hdr, runs = fs.add_file('Page', 'page', None, paging * BLOCK, args.author, '',
                                          int(time.time()) + UT_EPOCH)
