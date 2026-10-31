@@ -412,7 +412,10 @@ the memory-path work ends there; they stay in because they are verified,
 and can be reverted if the logic is ever wanted. Build 31 is the same
 RTL with the framework's YC/composite encoder and ALSA audio path
 compiled out (`MISTER_DISABLE_YC`, `MISTER_DISABLE_ALSA` in the qsf,
-540 ALMs): 32,941 ALMs, 79%, 0.25 ns of slack, the core going forward.
+540 ALMs): 32,941 ALMs, 79%, 0.25 ns of slack. The trim was for the
+FrameThrower's headroom; with that dropped the YC encoder is back in
+(the framework stays as shipped until the core is accurate and solid)
+and only the ALSA path, which this core has no use for, stays out.
 
 What is left is structural, not the cache. A Boyer profile in the
 free-running simulation (6.3 cycles an instruction over 540M

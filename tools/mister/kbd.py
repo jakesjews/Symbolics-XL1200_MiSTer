@@ -9,7 +9,8 @@ TEXT is typed as on a PC keyboard; {name} presses a key: {enter}, {f1}..{f12},
 {delete}, {up}, {down}, {left}, {right}.  '(' and ')' are typed as '[' and ']',
 which the core maps to the Symbolics ( and ) keys (docs/keyboard.md).
 {m DX DY} moves the mouse; {click L}, {click M}, {click R} click a button;
-{wait S} pauses S seconds.
+{wait S} pauses S seconds.  {ctrl x}, {meta x}, {ctrl meta x} are chords
+(Control is the left Control key, Meta the left Alt, Super the left Windows).
 """
 import fcntl, os, struct, sys, time
 
@@ -32,6 +33,7 @@ NAMED = {"enter": 28, "esc": 1, "backspace": 14, "tab": 15, "home": 102, "end": 
          "pagedown": 109, "insert": 110, "delete": 111, "up": 103, "down": 108, "left": 105, "right": 106}
 NAMED.update({f"f{i}": 58 + i for i in range(1, 11)})
 NAMED.update({"f11": 87, "f12": 88})
+MODS = {"ctrl": 29, "meta": 56, "super": 125}   # Left Control, Left Alt (Meta), Left Windows (Super)
 
 
 def emit(fd, etype, code, value):
@@ -78,6 +80,23 @@ def main():
                 press(fd, BUTTONS[word[1]])
             elif word[0] == "wait":
                 time.sleep(float(word[1]))
+            elif word[0] in MODS:   # {ctrl x}, {meta x}, {ctrl meta x}: a chord
+                held = [MODS[w] for w in word[:-1]]
+                for m in held:
+                    emit(fd, EV_KEY, m, 1)
+                    emit(fd, EV_SYN, 0, 0)
+                    time.sleep(0.03)
+                k = word[-1]
+                if k in NAMED:
+                    press(fd, NAMED[k])
+                elif k in SHIFTED:
+                    press(fd, KEYS[SHIFTED[k]], True)
+                else:
+                    press(fd, KEYS[k])
+                for m in reversed(held):
+                    emit(fd, EV_KEY, m, 0)
+                    emit(fd, EV_SYN, 0, 0)
+                    time.sleep(0.03)
             else:
                 press(fd, NAMED[word[0]])
             i = j + 1

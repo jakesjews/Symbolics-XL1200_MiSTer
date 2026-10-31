@@ -39,7 +39,6 @@ function keys: [docs/keyboard.md](docs/keyboard.md).
 - With no disk mounted the machine halts; mounting one starts it.
 - Genera 8.3 doesn't accept dates after 1999, so leave the OSD's Clock at "28 years back".
 - To compile files, log in first (`Login Lisp-Machine`) and leave free space on the FEP disk (`tools/fepfs.py mkworld --paging`).
-- No composite or S-Video output, and no Linux audio over HDMI: both are compiled out to make room for the machine.
 
 ## Troubleshooting
 

@@ -679,9 +679,9 @@ misses early and posting writes (build 27: Stak and the recursive Div2
 Puzzle (2.4x: Genera 8.3's version does more work) the outlier. Builds
 28-31 (the prefetcher waiting for the memory, a miss passing the write
 queue, a valid bit per cached word, the framework's YC and ALSA paths
-compiled out) measured the same, 6.56x and 2.80 s, and the speed work
-stops there: build 31 is the core going forward, and the clock is the
-one lever left.
+compiled out; the YC encoder is back in since, only ALSA stays out)
+measured the same, 6.56x and 2.80 s, and the speed work stops there;
+the clock is the one lever left.
 
 Before it, the RTL Ivory averaged ~29 cycles an instruction at 50 MHz, two thirds of
 them waiting ~7 cycles per memory access (`PROFILE=1` on `sim/system`),
