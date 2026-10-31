@@ -22,7 +22,8 @@ with keyboard and mouse.
 
 1. Copy `XL1200_*.rbf` to `_Computer` on the SD card.
 2. Build the disk: `python3 tools/fepfs.py mkworld FEPDISK.dd GENERA_8_3.ILOD boot0.vhd --blocks 240000 --paging 120000 --standalone`
-   (a 300 MB disk with the world, Symbolics' standalone site, paging space and room for a saved world).
+   (a 300 MB disk with the world, Symbolics' standalone site, paging space and room for a saved world);
+   add `--internet A.B.C.D` for the [network](#network).
 3. Copy it to `games/XL1200/boot0.vhd`.
 4. Copy `XL1200.mgl` to `_Computer` and start the core from it; it mounts the disk
    and the FEP prompt appears. (Or load the core and mount the image from the OSD
@@ -39,6 +40,20 @@ with keyboard and mouse.
 
 The Symbolics keys (Select, Function, Abort, Help, ...) are on the PC's
 function keys: [docs/keyboard.md](docs/keyboard.md).
+
+## Network
+
+Genera's Ethernet goes out of the MiSTer's wired port: MiSTer's main
+program carries the frames, as it does for the Sun, NeXT and Amiga cores,
+so there is nothing to run. Build the disk with `--internet A.B.C.D` (a
+free address on your LAN) and Genera comes up on it; the OSD's Network
+option picks the port (eth0 by default) or turns it off. Verified: Genera
+answers ping, and its FTP server answers connections (it refuses hosts it
+doesn't know; Genera 8.3 has no telnet server). Needs a MiSTer main program
+with the XL1200 bridge, which is in
+[tools/mister/Main_MiSTer-xl1200-enet.patch](tools/mister/Main_MiSTer-xl1200-enet.patch)
+until it is merged upstream. WiFi can't carry it, and every XL1200 core has
+the same Ethernet address, so run one per LAN.
 
 ## Gotchas
 
@@ -59,6 +74,7 @@ function keys: [docs/keyboard.md](docs/keyboard.md).
 - "Unable to change site to Standalone. The directory >sys does not exist": step 6 hasn't been done on this disk.
 - A full GC freezes Genera: the paging file is smaller than physical memory (4M words); build the disk with `--blocks 240000`.
 - No picture on direct video: the display has to take an 80 MHz, 54 kHz signal.
+- Genera doesn't answer ping: a cable in the MiSTer's port, the main program with the bridge (`[a2065] Opened eth0` in its output), and the disk built with `--internet`.
 
 ## To do
 
@@ -124,9 +140,11 @@ In the order they'll be done. Bugs come first whenever they turn up.
    quality of life patches (dates past 1999), and the applications:
    Illustrate and TeX (distribution tapes), the Genera 8.1.1 animation world
    from the MacIvory disk (its graphics want color hardware).
-8. Network: the 82586 to a real network. Cores can't reach the MiSTer's
-   Ethernet themselves; MiSTer's main program bridges it for a few cores
-   (Minimig, NeXT, Sun), so this needs a change there.
+8. Network, what's left after the [wired port](#network): the bridge into
+   MiSTer's main program upstream (a pull request); WiFi through a tap
+   interface with proxy ARP on the MiSTer; namespace entries for the hosts
+   Genera should talk to (its FTP and file servers refuse strangers), from
+   `mkworld`; an Ethernet address per core.
 9. Disk throughput: the SCSI model moves one 1280-byte block a request
    through MiSTer's image path (three 512-byte sectors into a 2 KB staging
    buffer, one round trip to the main program each), so Save World wrote at

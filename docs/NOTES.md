@@ -909,6 +909,18 @@ would put Genera on the LAN at its own address, a follow-up.
   unconnected, so the bridge took each frame as carrying an FCS and cut
   four bytes (the unit bench wires the chip to the bridge directly and
   could not see it; `verilator -Wwarn-UNDRIVEN` on `xl_machine` does).
+- With the wire (build 36: seed 2, 82% ALMs, 0.434 ns slack, the router
+  20 minutes): Genera answers the Mac's ping 39 s after `Start`, before
+  its herald is up (5 of 5, 7-87 ms round trip; replies 98 bytes); its
+  FTP server takes the Mac's connection and answers "421 FTP permission
+  denied to INTERNET|192.168.50.80" (the Mac is no namespace host) and
+  logs the broken connection; port 23 is refused because Genera 8.3 has
+  no telnet server (`sys.sct` defines the login protocols for the
+  client only), the UDP TIME port doesn't answer.  Seeds of the same
+  code: 1 ran past the hour twice, 2 routed twice (0.032 and 0.434 ns),
+  4 and 5 (the Mac's CrossOver Quartus, the same 17.0.2 build 602,
+  `build-mac.sh`) gave up on congestion in three minutes at 73-74%
+  peak, the design's margin being what it is.
 
 ## RTL Ivory (`rtl/ivory/`)
 
