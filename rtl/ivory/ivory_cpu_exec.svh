@@ -25,8 +25,19 @@
 
             // numeric
             8'o300, 8'o301, 8'o202, 8'o203, 8'o204, 8'o205, 8'o206, 8'o207,
-            8'o210, 8'o211, 8'o212, 8'o213, 8'o215, 8'o216, 8'o217, 8'o232:
-              opval(!(op == 8'o300 || op == 8'o301), S_ARITH_1);
+            8'o210, 8'o211, 8'o212, 8'o213, 8'o215, 8'o216, 8'o217, 8'o232: begin
+              // both operands at hand: the top of the stack popped and the
+              // operand (an immediate or the pre-read) into a2, to S_ARITH_2
+              if (tos_ok && omode == 2'd3) begin
+                a2 <= fixnum(!(op == 8'o300 || op == 8'o301) ? {{24{ooff[7]}}, ooff} : {24'd0, ooff});
+                pop_now();
+                st <= S_ARITH_2;
+              end else if (tos_ok && opv_pre && !(omode == 2'd2 && ooff == 8'd0)) begin
+                a2 <= sc_q;
+                pop_now();
+                st <= S_ARITH_2;
+              end else opval(!(op == 8'o300 || op == 8'o301), S_ARITH_1);
+            end
             8'o114: opval(1'b0, S_UMINUS_1);
             8'o143, 8'o144: begin                                     // increment, decrement
               if (omode == 2'd3) err(E_I_STAGE, inst_pc[32:1]);
@@ -41,7 +52,11 @@
             8'o016: opval(1'b0, S_DFLOAT_1);                          // %double-float-op
 
             // data movement
-            8'o100: opval(1'b0, S_PUSHI_1);                           // push
+            8'o100: begin                                             // push
+              if (omode == 2'd3) push_now(fixnum({24'd0, ooff}), S_RETIRE);
+              else if (opv_pre && !(omode == 2'd2 && ooff == 8'd0)) push_now(sc_q, S_RETIRE);
+              else opval(1'b0, S_PUSHI_1);
+            end
             8'o340: begin                                             // pop
               if (omode == 2'd3) err(E_I_STAGE, inst_pc[32:1]);
               else begin addr <= oaddr; pop(S_POPI_1); end
@@ -92,7 +107,7 @@
             8'o174: begin branch(operand); st <= S_RETIRE; end        // branch
             8'o060, 8'o061, 8'o062, 8'o063, 8'o064, 8'o065, 8'o066, 8'o067,
             8'o070, 8'o071, 8'o072, 8'o073, 8'o074, 8'o075, 8'o076, 8'o077:
-              read_tos(S_BRC_1);
+              if (tos_ok) brc(tos_q); else read_tos(S_BRC_1);
             8'o175: read_tos(S_LOOPDEC_1);                           // loop-decrement-tos
             8'o375: read_tos(S_LOOPINC_1);                           // loop-increment-tos-less-than
 

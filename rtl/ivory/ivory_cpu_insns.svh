@@ -129,7 +129,7 @@
         S_MEM_RGETF_CAR: push(cc_r, S_MEM_RGETF_PUSH);
         S_MEM_RGETF_PUSH: push(t2, S_RETIRE);
         S_PUSH_NIL: push(NIL_W, S_RETIRE);
-        S_PUSH_T: push(T_W, S_RETIRE);
+        S_PUSH_T: push_now(T_W, S_RETIRE);
 
         // ---------------------------------------------------------------- predicates
         S_EQ_1: begin a2 <= opv; read_tos(S_EQ_2); end
@@ -164,8 +164,9 @@
               8'o262, 8'o266: res = $signed(m_rd[31:0]) > $signed(a2[31:0]);
               default: res = (m_rd[31:0] & a2[31:0]) != 32'd0;   // logtest
             endcase
-            if (op == 8'o260 || op == 8'o261 || op == 8'o262 || op == 8'o273) sp <= sp - 32'd1;
-            push(boolw(res), S_RETIRE);
+            // the popping compares replace the top of the stack with the result
+            if (op == 8'o260 || op == 8'o261 || op == 8'o262 || op == 8'o273) write_tos(boolw(res), S_RETIRE);
+            else push_now(boolw(res), S_RETIRE);
           end
         end
 
@@ -190,7 +191,7 @@
             a1 <= opv; fpa_two <= 1'b0; fpa_fix <= 1'b0;
             st <= S_FPA_Y;
           end else if (!is_fixnum(opv)) arith_exc(3'd1, opv, '0);
-          else push(boolw(op == 8'o034 ? opv[31:0] == 32'd0 :
+          else push_now(boolw(op == 8'o034 ? opv[31:0] == 32'd0 :
                           op == 8'o035 ? opv[31] : !opv[31] && opv[31:0] != 32'd0), S_RETIRE);
         end
 
@@ -227,17 +228,17 @@
               8'o232: begin   // ash
                 if (y >= 0) begin
                   if (y >= 32) begin
-                    if (x == 0) push(fixnum(32'd0), S_RETIRE);
+                    if (x == 0) push_now(fixnum(32'd0), S_RETIRE);
                     else arith_exc(3'd2, pop_w, a2);
                   end else begin
                     r = x <<< y[4:0];
                     if (r != {{32{r[31]}}, r[31:0]}) arith_exc(3'd2, pop_w, a2);
-                    else push(fixnum(r[31:0]), S_RETIRE);
+                    else push_now(fixnum(r[31:0]), S_RETIRE);
                   end
                 end else begin
                   if (y <= -32) r = x < 0 ? -64'sd1 : 64'sd0;
                   else r = x >>> (-y);
-                  push(fixnum(r[31:0]), S_RETIRE);
+                  push_now(fixnum(r[31:0]), S_RETIRE);
                 end
               end
               default: begin
@@ -253,7 +254,7 @@
                 endcase
                 ovf = r != {{32{r[31]}}, r[31:0]};
                 if (ovf) arith_exc(3'd2, pop_w, a2);
-                else push(fixnum(r[31:0]), S_RETIRE);
+                else push_now(fixnum(r[31:0]), S_RETIRE);
               end
             endcase
           end
@@ -405,7 +406,7 @@
         end
 
         // ---------------------------------------------------------------- data movement
-        S_PUSHI_1: push(opv, S_RETIRE);
+        S_PUSHI_1: push_now(opv, S_RETIRE);
         S_POPI_1: swrite(addr, pop_w, S_RETIRE);
         S_MOVEM_1: swrite(addr, m_rd, S_RETIRE);
         S_PUSHNIL_1: begin
@@ -680,27 +681,7 @@
         end
 
         // ---------------------------------------------------------------- branches
-        S_BRC_1: begin
-          logic c;
-          logic [31:0] n;
-          c = (wtype(m_rd) != DTP_NIL) != op[3];
-          case (op[2:0])
-            3'd0: n = 32'd1;
-            3'd1: n = c ? 32'd1 : 32'd2;
-            3'd2: n = c ? 32'd2 : 32'd1;
-            3'd3: n = 32'd2;
-            3'd4: n = 32'd0;
-            3'd5: n = c ? 32'd0 : 32'd1;
-            3'd6: n = c ? 32'd1 : 32'd0;
-            default: n = 32'd1;
-          endcase
-          if (c && operand == 10'd0) err(E_BRANCH_DOT, 32'd0);
-          else begin
-            sp <= sp - n;
-            if (c) branch(operand);
-            st <= S_RETIRE;
-          end
-        end
+        S_BRC_1: brc(m_rd);
         S_LOOPDEC_1: begin
           if (is_fixnum(m_rd) && m_rd[31:0] != 32'h80000000) begin
             if ($signed(m_rd[31:0] - 32'd1) > 0) branch(operand);

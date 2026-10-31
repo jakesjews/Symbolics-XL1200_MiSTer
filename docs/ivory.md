@@ -272,7 +272,15 @@ the same as before: the memory accesses kept their timing.
 Measured in the free-running simulation of the FEP boot (instructions in
 14 simulated seconds; the stack cache, instruction cache and TLB alone:
 57.7M, 12.1 cycles an instruction): step 1, 68.6M (10.2); step 2, 75.6M
-(9.3); step 3, 86.7M (8.1); step 4, 96.0M (7.3). The `decode` task runs in the fetch cycle (`fetch` task, called
+(9.3); step 3, 86.7M (8.1); step 4, 96.0M (7.3); step 5, 105.3M (6.65).
+Step 5 as built: `push_now` (a push into the stack cache in the current
+state, S_PUSH otherwise) for push, zerop, the compares, the arithmetic
+results and T; `pop_now` (the top-of-stack register popped in the current
+state); push and binary arithmetic with their operands at hand done from
+S_EXEC; the conditional branches decided in S_EXEC from the top-of-stack
+register (`brc`). A trap in the first version: the popping compares did
+`sp - 1` and `push` in one cycle, which S_PUSH honoured a cycle later and
+`push_now` didn't; they now `write_tos`. The `decode` task runs in the fetch cycle (`fetch` task, called
 from `S_FETCH` and from `S_RETIRE`, whose cache lookup uses the next PC
 through `fetch_pc`); the operand pre-read sets `sc_ra` in `decode` and
 `opval` takes `sc_q` (`opv_pre`), or the immediate, in one cycle.
