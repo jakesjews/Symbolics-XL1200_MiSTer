@@ -3,7 +3,7 @@
 #include <fstream>
 #include <map>
 // The RTL XL1200 as it runs on the MiSTer: device time in microseconds of the
-// 35 MHz clock, SCSI commands running while the processor polls, memory
+// 50 MHz clock, SCSI commands running while the processor polls, memory
 // cleared at power-up (DDR3 starts with junk), the display clock running.
 // No reference model; it prints what the console shows by saving the screen.
 //   ./obj_free/Vxl_machine DISK.dd SECONDS [AT-SECONDS TEXT] [SCREEN.pgm]
@@ -28,7 +28,7 @@
 static Vxl_machine* top;
 static DdrModel ddr;
 static SdModel<Vxl_machine> sd;
-static const double CLK_HZ = 35000000.0;  // the machine's clock, as XL1200.sv sets it
+static const double CLK_HZ = 50000000.0; // the machine's clock, as XL1200.sv sets it
 static uint64_t cycles = 0;            // clock cycles
 static const uint32_t RAM_BASE = 0x06000000, BUF_BASE = 0x06400000;
 static std::deque<std::pair<bool, uint8_t>> keys;
