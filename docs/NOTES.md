@@ -351,6 +351,20 @@ two-digit year; `calendar-clock-y2k-fix`, `kbd-repeat`,
 `comm-chip-hung-fix`, `fepfs-patch`, `copy-world-patch`), kept in
 `research/downloads/genera-patches` (gitignored).
 
+On the MiSTer (Oct 31 2026, build 36) it boots and Genera mounts the
+MacIvory LMFS as `XL1200:>` (192,490 records, 23% used; `>sys>site>`
+holds the MacIvory's 146 system files), once the `fspt.fspt` was written
+without its trailing Return: with it Genera parsed the partition's type
+as "fileδ" (longer than 4 characters) and entered the debugger at the
+first LMFS access, though the MacIvory's own table has the same byte.
+`Copy File FEP7:>sys-translations.text XL1200:>sys>site>sys.translations`,
+`Load File FEP7:>y2k-fix.lisp` ("Genera 8 3 y2k patches" in the herald),
+`Save World FEP7:>Genera-8-3-full.ilod` (44,706 blocks, six minutes) and
+its boot file; cold-booted with the OSD's Clock at "Today" (status bit 6,
+written straight into `config/XL1200.CFG`), `(nth-value 5
+(decode-universal-time (get-universal-time)))` is 2026.  The image is
+the master `research/media/disks/xl1200-full.vhd`.
+
 ## Console details found while bringing up the FEP
 
 - Switchpack status: bits 2:1 are the monitor type (STREAM-MONITOR-ID does

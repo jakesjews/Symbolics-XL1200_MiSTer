@@ -82,7 +82,7 @@ MacIvory's files as `XL1200:>` and the herald lists the Y2K patch.
 - **The core writes to the disk image, so give it a copy.**
 - Images must be SCSI2SD dumps: each 1280-byte block in 1536 bytes.
 - With no disk mounted the machine halts; mounting one starts it.
-- Genera 8.3 doesn't accept dates after 1999, so leave the OSD's Clock at "28 years back".
+- Genera 8.3 doesn't accept dates after 1999, so leave the OSD's Clock at "28 years back"; with the Y2K patch loaded ([the full disk](#the-full-disk) has it) Clock can be "Today".
 - Save World shows "System Shutdown ..." with the clock stopped for several minutes while it writes; wait for "Saved to".
 - To compile files, log in first (`Login Lisp-Machine`).
 
