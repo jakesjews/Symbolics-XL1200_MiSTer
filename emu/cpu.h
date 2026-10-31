@@ -185,6 +185,8 @@ private:
   int err_detail = -1;       // data type or memory cycle refining the next error trap
 public:
   bool log_errors = false;   // report error traps on stderr
+  uint64_t opstats[258] = {};   // instructions by opcode (256: full-word, 257: entry) since opstats_clear()
+  void opstats_clear() { for (auto& n : opstats) n = 0; }
 private:
 
   // ---- calling ----

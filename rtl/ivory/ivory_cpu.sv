@@ -29,7 +29,7 @@ module ivory_cpu
                                       // 7 chip revision, 8 control stack limit, 9 extra limit
   input  word_t       dbg_data,
 
-  output logic        mem_req,
+  output logic        mem_req,        // driven from the registered request (m_*) in S_MEM_W
   output logic        mem_we,
   output logic        mem_phys,       // a physical address (DTP-PHYSICAL-ADDRESS): no translation
   output logic [31:0] mem_addr,
@@ -169,6 +169,7 @@ module ivory_cpu
   logic        opv_sign;              // OPV: sign-extend an immediate
   word_t       opv;                   // OPV result
   logic        opv_popped;
+  logic        opv_pre;               // the operand was read from the stack cache at decode
   word_t       a1, a2, a3, val, t0, t1, t2;
   logic [31:0] addr, cnt, x0, x1;
   logic [63:0] q64;
@@ -178,19 +179,27 @@ module ivory_cpu
   // Stack cache (docs/ivory.md): 128 words shadowing [lower bound, +127],
   // read combinationally from a registered address, written a cycle after
   // the state that asks for it
+  // Two copies of the data: one read for the operand pre-read and the TOS
+  // reload (sc_ra), one by the memory-access stage from the request's
+  // address (m_addr); both written together.
   word_t       sc_data [128]    /*verilator public_flat_rw*/;
+  word_t       sc_data2 [128];
   logic [6:0]  sc_ra, sc_wa;
   logic        sc_we;
-  word_t       sc_wd, sc_q;
-  logic        sc_hit;                // the access just started is answered by the cache
+  word_t       sc_wd, sc_q, sc_q_m;
   logic        sc_busy;               // dumping or refilling: a fault halts
   logic [31:0] sc_a, sc_end;          // dump / refill cursor and end
   assign sc_q = sc_data[sc_ra];
-  always_ff @(posedge clk) if (sc_we) sc_data[sc_wa] <= sc_wd;
+  always_ff @(posedge clk) if (sc_we) begin sc_data[sc_wa] <= sc_wd; sc_data2[sc_wa] <= sc_wd; end
 
   function automatic logic in_window(logic [31:0] a);
     return (a - stack_cache_lower_bound) < 32'd128;
   endfunction
+  // the window checks the states share (a task inlines at every call)
+  logic        sp_in_window, spm1_in_window, spp1_in_window;
+  assign sp_in_window = in_window(sp);
+  assign spm1_in_window = in_window(sp - 32'd1);
+  assign spp1_in_window = in_window(sp + 32'd1);
   // the dump quantum register (01031): 32 at reset and for values the cache can't dump
   function automatic logic [31:0] sc_quantum();
     logic [31:0] q;
@@ -198,11 +207,35 @@ module ivory_cpu
     return (q == 32'd0 || q > 32'd128) ? 32'd32 : q;
   endfunction
 
-  // MEM subroutine
+  // The top of the stack in a register (the chip keeps a copy of it in its
+  // scratchpad): tos is the word at tos_sp; after a pop the new top is read
+  // from the cache in the next cycle (tos_reload), when sc_q has it
+  word_t       tos;
+  logic [31:0] tos_sp;
+  logic        tos_valid, tos_reload;
+  word_t       tos_q;
+  logic        tos_ok;
+  assign tos_q = tos_reload ? sc_q : tos;
+  assign tos_ok = sp_in_window && (tos_reload || (tos_valid && tos_sp == sp));
+
+  // The memory-access stage (S_MEM_W): the request, registered by the
+  // state that makes it; decided and issued there, once for all callers
   logic [31:0] m_addr;
   logic        m_we, m_phys;
+  logic        m_through;             // a memory cycle's write: memory as well as the cache
+  logic        m_bypass;              // never the cache (dump, refill, a push outside the window)
+  logic        m_first;               // the request hasn't been looked at yet
+  logic        m_wait;                // waiting for the memory
+  logic        m_cached;
   logic        m_trans;               // the page accessed has transport traps enabled
   word_t       m_wd, m_rd;
+  assign sc_q_m = sc_data2[m_addr[6:0]];
+  assign m_cached = !m_phys && !m_bypass && in_window(m_addr);
+  assign mem_req = st == S_MEM_W && (m_first ? !m_cached || (m_we && m_through) : m_wait);
+  assign mem_we = m_we;
+  assign mem_addr = m_addr;
+  assign mem_wdata = m_wd;
+  assign mem_phys = m_phys;
   // MRD / MWR subroutines
   word_t       mr_a;                  // address word (locative-like or physical)
   logic [3:0]  mr_cyc;
@@ -259,7 +292,8 @@ module ivory_cpu
   assign insn_count = icount;
   assign halt_reason = halt_code;
   assign dbg_pc = pc[32:1];
-  assign fetch_pc = pc[32:1];
+  // the cache lookup address: in the retire cycle, the next instruction's
+  assign fetch_pc = (st == S_RETIRE && !pc_changed) ? next_pc[32:1] : pc[32:1];
   assign icache_on = icache_control[0];
   assign pf_on = prefetcher_control[0];
   assign pf_high = prefetcher_control[8:5];

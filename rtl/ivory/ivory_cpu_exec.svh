@@ -19,7 +19,7 @@
             8'o260, 8'o264, 8'o261, 8'o265, 8'o262, 8'o266,
             8'o273, 8'o277: opval(1'b1, S_NUMCMP_1);                  // =, <, >, logtest
             8'o040, 8'o041, 8'o042, 8'o043, 8'o044, 8'o045, 8'o046, 8'o047:
-              sread(sp, S_TYPEMEM_1);                                 // type-member-n
+              read_tos(S_TYPEMEM_1);                                 // type-member-n
             8'o002: opval(1'b1, S_ENDP_1);
             8'o034, 8'o035, 8'o036: opval(1'b1, S_ZEROP_1);           // zerop, minusp, plusp
 
@@ -48,7 +48,7 @@
             end
             8'o341: begin                                             // movem
               if (omode == 2'd3) err(E_I_STAGE, inst_pc[32:1]);
-              else begin addr <= oaddr; sread(sp, S_MOVEM_1); end
+              else begin addr <= oaddr; read_tos(S_MOVEM_1); end
             end
             8'o101: opval(1'b0, S_PUSHNIL_1);                         // push-n-nils
             8'o150: begin                                             // push-address
@@ -61,7 +61,7 @@
             end
             8'o152: begin                                             // set-sp-to-address-save-tos
               if (omode == 2'd3) err(E_I_STAGE, inst_pc[32:1]);
-              else begin addr <= oaddr; sread(sp, S_SSTS_1); end
+              else begin addr <= oaddr; read_tos(S_SSTS_1); end
             end
             8'o102: begin                                             // push-address-sp-relative
               x0 <= sp;
@@ -92,9 +92,9 @@
             8'o174: begin branch(operand); st <= S_RETIRE; end        // branch
             8'o060, 8'o061, 8'o062, 8'o063, 8'o064, 8'o065, 8'o066, 8'o067,
             8'o070, 8'o071, 8'o072, 8'o073, 8'o074, 8'o075, 8'o076, 8'o077:
-              sread(sp, S_BRC_1);
-            8'o175: sread(sp, S_LOOPDEC_1);                           // loop-decrement-tos
-            8'o375: sread(sp, S_LOOPINC_1);                           // loop-increment-tos-less-than
+              read_tos(S_BRC_1);
+            8'o175: read_tos(S_LOOPDEC_1);                           // loop-decrement-tos
+            8'o375: read_tos(S_LOOPINC_1);                           // loop-increment-tos-less-than
 
             // blocks
             8'o120, 8'o121, 8'o122, 8'o123, 8'o124, 8'o125, 8'o126, 8'o127,
@@ -192,7 +192,7 @@
             end
             8'o342: begin                                             // %merge-cdr-no-pop
               if (omode == 2'd3) err(E_I_STAGE, inst_pc[32:1]);
-              else begin addr <= oaddr; sread(sp, S_MERGE_1); end
+              else begin addr <= oaddr; read_tos(S_MERGE_1); end
             end
             8'o052, 8'o053: begin                                     // %generic/%message-dispatch
               if (cr[7:0] < 8'd4) begin

@@ -71,6 +71,8 @@ static void usage() {
   exit(1);
 }
 
+const char* ivory_opcode_name(int op);   // emu/cpu_insn.cpp
+
 int main(int argc, char** argv) {
   // Boot from reset through the boot PROM stand-in (tools/bootprom.py), which
   // loads the FEP kernel from the disk; -k loads a kernel file directly instead.
@@ -199,7 +201,14 @@ int main(int argc, char** argv) {
         } else {
           char c[2] = {*typed == '|' ? '\r' : *typed, 0};
           m.iob.console.type(c);
-          if (*typed == '|') wait = type_gap;
+          if (*typed == '|') {
+            wait = type_gap;
+            // XLEMU_OPSTATS: the opcode histogram covers the last command typed
+            if (getenv("XLEMU_OPSTATS")) {
+              cpu.opstats_clear();
+              fprintf(stderr, "[opstats] cleared at instruction %llu\n", (unsigned long long)cpu.icount);
+            }
+          }
           typed++;
         }
         type_at = cpu.icount + wait;
@@ -226,6 +235,16 @@ int main(int argc, char** argv) {
   fprintf(stderr, "FPA %s, %llu operations\n", (cpu.fp_coprocessor_present & 1) ? "enabled" : "disabled",
           (unsigned long long)m.fpa.operations);
   if (getenv("XLEMU_BT")) backtrace(cpu, m);
+  if (getenv("XLEMU_OPSTATS")) {
+    std::vector<std::pair<uint64_t, int>> v;
+    uint64_t total = 0;
+    for (int i = 0; i < 258; i++) { v.emplace_back(cpu.opstats[i], i); total += cpu.opstats[i]; }
+    std::sort(v.rbegin(), v.rend());
+    fprintf(stderr, "[opstats] %llu instructions since the last Return\n", (unsigned long long)total);
+    for (int i = 0; i < 40 && v[i].first; i++)
+      fprintf(stderr, "[opstats] %6.2f%%  %s\n", 100.0 * v[i].first / total,
+              v[i].second == 256 ? "full-word" : v[i].second == 257 ? "entry" : ivory_opcode_name(v[i].second));
+  }
   if (cpu.tracef) fclose(cpu.tracef);
   if (videofile) {
     // Video memory is 2048 x 1024 x 1 bit; bit 0 of each word is the leftmost pixel.

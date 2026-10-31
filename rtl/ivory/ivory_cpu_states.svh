@@ -35,36 +35,22 @@
     rsp <= rsp - 3'd1;
   endtask
 
-  // Start a memory access now; S_MEM_W waits for it.  (S_MEM starts one from
-  // m_addr, m_we, m_wd and m_phys a cycle later.)  A virtual address the
-  // stack cache shadows is read from the cache and written to it; a memory
-  // cycle's write (through) goes to memory as well, a stack write doesn't.
+  // Register a memory access; S_MEM_W decides it (the stack cache or the
+  // memory) and waits for it.  A memory cycle's write (through) goes to
+  // memory as well as the cache, a stack write doesn't; the _mem variants
+  // never touch the cache.
   task automatic mem_rd_mem(input logic [31:0] a, input logic phys);
-    m_addr <= a; m_we <= 1'b0; m_phys <= phys;
-    mem_req <= 1'b1; mem_we <= 1'b0; mem_addr <= a; mem_phys <= phys;
-    sc_hit <= 1'b0;
+    m_addr <= a; m_we <= 1'b0; m_phys <= phys; m_bypass <= 1'b1; m_first <= 1'b1;
   endtask
   task automatic mem_wr_mem(input logic [31:0] a, input word_t w, input logic phys);
-    m_addr <= a; m_we <= 1'b1; m_wd <= w; m_phys <= phys;
-    mem_req <= 1'b1; mem_we <= 1'b1; mem_addr <= a; mem_wdata <= w; mem_phys <= phys;
-    sc_hit <= 1'b0;
+    m_addr <= a; m_we <= 1'b1; m_wd <= w; m_phys <= phys; m_bypass <= 1'b1; m_first <= 1'b1;
   endtask
   task automatic mem_rd(input logic [31:0] a, input logic phys);
-    if (!phys && in_window(a)) begin
-      m_addr <= a; m_we <= 1'b0; m_phys <= 1'b0;
-      sc_ra <= a[6:0];
-      sc_hit <= 1'b1;
-    end else mem_rd_mem(a, phys);
+    m_addr <= a; m_we <= 1'b0; m_phys <= phys; m_bypass <= 1'b0; m_first <= 1'b1;
   endtask
   task automatic mem_wr(input logic [31:0] a, input word_t w, input logic phys, input logic through);
-    if (!phys && in_window(a)) begin
-      sc_we <= 1'b1; sc_wa <= a[6:0]; sc_wd <= w;
-      if (through) mem_wr_mem(a, w, 1'b0);
-      else begin
-        m_addr <= a; m_we <= 1'b1; m_wd <= w; m_phys <= 1'b0;
-        sc_hit <= 1'b1;
-      end
-    end else mem_wr_mem(a, w, phys);
+    m_addr <= a; m_we <= 1'b1; m_wd <= w; m_phys <= phys; m_through <= through; m_bypass <= 1'b0;
+    m_first <= 1'b1;
   endtask
   // read_raw / write_raw: virtual address, page attributes checked outside the stack window
   task automatic sread(input logic [31:0] a, input state_t r);
@@ -93,6 +79,20 @@
     mw_a <= a; mw_cyc <= cyc; mw_v <= v; mw_preserve <= pres;
     call(S_MWR, r);
   endtask
+  // the top of the stack: the register when it holds it, else the cache
+  task automatic read_tos(input state_t r);
+    if (tos_ok) begin
+      m_rd <= tos_q; m_trans <= 1'b0;
+      st <= r;
+    end else sread(sp, r);
+  endtask
+  task automatic write_tos(input word_t w, input state_t r);
+    if (sp_in_window) begin
+      sc_we <= 1'b1; sc_wa <= sp[6:0]; sc_wd <= w;
+      tos <= w; tos_sp <= sp; tos_valid <= 1'b1; tos_reload <= 1'b0;
+      st <= r;
+    end else swrite(sp, w, r);
+  endtask
   task automatic push(input word_t w, input state_t r);
     p_w <= setcdr(w, CDR_NEXT);
     call(S_PUSH, r);
@@ -104,9 +104,26 @@
   task automatic pop(input state_t r);
     call(S_POP, r);
   endtask
+  // operand_value: an immediate, the operand read ahead from the stack
+  // cache in the fetch cycle (opv_pre), or S_OPV
   task automatic opval(input logic sgn, input state_t r);
-    opv_sign <= sgn;
-    call(S_OPV, r);
+    if (omode == 2'd3) begin
+      opv <= fixnum(sgn ? {{24{ooff[7]}}, ooff} : {24'd0, ooff});
+      opv_popped <= 1'b0;
+      st <= r;
+    end else if (opv_pre) begin
+      opv <= sc_q;
+      opv_popped <= omode == 2'd2 && ooff == 8'd0;
+      if (omode == 2'd2 && ooff == 8'd0) begin
+        sp <= sp - 32'd1;
+        tos_valid <= 1'b0;
+        if (spm1_in_window) begin sc_ra <= sp[6:0] - 7'd1; tos_reload <= 1'b1; end
+      end
+      st <= r;
+    end else begin
+      opv_sign <= sgn;
+      call(S_OPV, r);
+    end
   endtask
   task automatic carcdr(input word_t x, input logic car, input state_t r);
     cc_x <= x; cc_car <= car;
@@ -180,6 +197,134 @@
     endcase
   endfunction
 
+  // Decode the instruction word w at ipc and start it: the next PC from the
+  // cdr code, a packed half-word instruction to S_ENTRY or S_EXEC, a
+  // full-word instruction done here (execute_fullword).  Runs in the fetch
+  // cycle (cache hit) or the cycle after the word arrived, with the return
+  // stack empty.
+  task automatic call0(input state_t target, input state_t r);
+    rstack[0] <= r;
+    rsp <= 3'd1;
+    st <= target;
+  endtask
+  task automatic decode(input word_t w, input logic [32:0] ipc);
+    logic [17:0] h;
+    logic [31:0] oa;
+    opv_pre <= 1'b0;
+    case (wcdr(w))
+      2'd0: next_pc <= ipc + 33'd1;
+      2'd2: next_pc <= ipc - 33'd1;
+      2'd3: next_pc <= ipc + (ipc[0] ? 33'd3 : 33'd2);
+      default: next_pc <= ipc;
+    endcase
+    if (wcdr(w) == CDR_NIL) begin
+      err(E_I_STAGE, ipc[32:1]);
+    end else if (wtype(w) >= DTP_PACKED_INSTRUCTION_60) begin
+      if (!ipc[0] && (w[17:11] == 7'b0111111)) begin   // entry: opcode 0176/0177
+        op <= w[17:10];
+        loopn <= '0;
+        e_min <= w[7:0];
+        e_max <= w[25:18];
+        st <= S_ENTRY;
+      end else begin
+        h = ipc[0] ? {w[35:32], w[31:18]} : w[17:0];
+        op <= h[17:10];
+        operand <= h[9:0];
+        omode <= h[9:8];
+        ooff <= h[7:0];
+        // a stack operand (FP, LP or SP relative) is read from the stack
+        // cache now, so S_EXEC has it (opval)
+        oa = h[9:8] == 2'd0 ? fp + {24'd0, h[7:0]} :
+             h[9:8] == 2'd1 ? lp + {24'd0, h[7:0]} :
+             h[7:0] == 8'd0 ? sp : sp + {24'd0, h[7:0]} - 32'd255;
+        if (h[9:8] != 2'd3 && in_window(oa)) begin
+          sc_ra <= oa[6:0];
+          opv_pre <= 1'b1;
+        end
+        st <= S_EXEC;
+      end
+    end else if (ipc[0]) begin
+      err(E_I_STAGE, ipc[32:1]);
+    end else begin
+      // execute_fullword
+      case (wtype(w))
+        DTP_CALL_COMPILED_EVEN, DTP_CALL_COMPILED_EVEN_PREFETCH: begin
+          a1 <= mkw(DTP_COMPILED_FUNCTION, w[31:0]);
+          sc_odd <= 1'b0;
+          call0(S_SC, S_FW_CALLDONE);
+        end
+        DTP_CALL_COMPILED_ODD, DTP_CALL_COMPILED_ODD_PREFETCH: begin
+          a1 <= mkw(DTP_COMPILED_FUNCTION, w[31:0]);
+          sc_odd <= 1'b1;
+          call0(S_SC, S_FW_CALLDONE);
+        end
+        DTP_CALL_INDIRECT, DTP_CALL_INDIRECT_PREFETCH: begin
+          sc_odd <= 1'b0;
+          mr_a <= mkw(DTP_LOCATIVE, w[31:0]); mr_cyc <= CYC_DATA_READ;
+          call0(S_MRD, S_FW_IND);
+        end
+        DTP_CALL_GENERIC, DTP_CALL_GENERIC_PREFETCH: begin
+          a1 <= mkw(DTP_GENERIC_FUNCTION, w[31:0]);
+          sc_odd <= 1'b0;
+          call0(S_SC, S_FW_CALLDONE);
+        end
+        DTP_EXTERNAL_VALUE_CELL_POINTER: begin
+          mr_a <= mkw(DTP_LOCATIVE, w[31:0]); mr_cyc <= CYC_DATA_READ;
+          call0(S_MRD, S_FW_EVCP);
+        end
+        DTP_NULL, DTP_MONITOR_FORWARD, DTP_HEADER_P, DTP_HEADER_I, DTP_ONE_Q_FORWARD,
+        DTP_HEADER_FORWARD, DTP_ELEMENT_FORWARD, DTP_GC_FORWARD, DTP_BOUND_LOCATION,
+        DTP_LOGIC_VARIABLE:
+          err_d(E_ILLEGAL_FULL_WORD_INSTRUCTION, ipc[32:1], {2'b00, wtype(w)});
+        default: begin
+          p_w <= setcdr(stripcdr(w), CDR_NEXT);
+          call0(S_PUSH, S_RETIRE);
+        end
+      endcase
+    end
+  endtask
+
+  // Start an instruction at fpc (step()): the traps taken between
+  // instructions, else the fetch, from the cache in this cycle or from
+  // memory.  tp: trace-pending as it will be after the retiring instruction.
+  task automatic fetch(input logic [32:0] fpc, input logic tp);
+    inst_pc <= fpc;
+    restart_sp <= sp;
+    pc_changed <= 1'b0;
+    in_trap <= 1'b0;
+    sc_busy <= 1'b0;
+    count_insn <= 1'b0;
+    rsp <= '0;
+    if (reset_req) begin
+      pre_trap(TV_RESET, 3'd0);
+    end else if (mode <= TM_EXTRA_STACK && hp_sb) begin
+      hp_sb_taken <= 1'b1;
+      pre_trap(TV_HIGH_PRIORITY_SB, 3'd0);
+    end else if (mode == TM_EMULATOR && lp_sb) begin
+      lp_sb_taken <= 1'b1;
+      pre_trap(TV_LOW_PRIORITY_SB, 3'd0);
+    end else if (mode == TM_EMULATOR && preempt_register[0]) begin
+      pre_trap(TV_PREEMPT_REQUEST, 3'd0);
+    end else if (tp) begin
+      cr[CR_TRACE_PENDING] <= 1'b0;
+      pre_trap(TV_TRACE, 3'd0);
+    end else begin
+      count_insn <= 1'b1;
+      trace_insn <= cr[CR_INSTRUCTION_TRACE];
+      if (ic_hit) begin
+        iw <= ic_word;
+        fetch_mem <= 1'b0;
+        decode(ic_word, fpc);
+      end else begin
+        mem_rd(fpc[32:1], 1'b0);
+        fetch_mem <= 1'b1;
+        rstack[0] <= S_FETCH_W;
+        rsp <= 3'd1;
+        st <= S_MEM_W;
+      end
+    end
+  endtask
+
   // ---------------------------------------------------------------------------
   // The state machine
   // ---------------------------------------------------------------------------
@@ -196,11 +341,13 @@
     if (map_reload) irw[IRW_COUNT_MAP_RELOADS] <= fixnum(irw[IRW_COUNT_MAP_RELOADS][31:0] + 32'd1);
     scratch_rd <= scratch[scratch_rd_ix];
     ic_fill <= 1'b0;
+    if (tos_reload) begin tos <= sc_q; tos_sp <= sp; tos_valid <= 1'b1; tos_reload <= 1'b0; end
 
     if (reset) begin
       st <= S_RESET;
       rsp <= '0;
-      mem_req <= 1'b0;
+      m_first <= 1'b0;
+      m_wait <= 1'b0;
       cop_req <= 1'b0;
       halted <= 1'b0;
       halt_code <= '0;
@@ -209,8 +356,9 @@
       for (int i = 0; i < 32; i++) irw[i] <= fixnum(32'd0);
       irw[IRW_STACK_CACHE_DUMP_QUANTUM] <= fixnum(32'd32);
       for (int i = 0; i < 4; i++) bar[i] <= fixnum(32'd0);
-      sc_hit <= 1'b0;
       sc_busy <= 1'b0;
+      tos_valid <= 1'b0;
+      tos_reload <= 1'b0;
       pc <= {INIT_PC_VMA, 1'b0};
       cr <= {TM_FEP, 30'd0};
       sp <= 32'hF8008000; fp <= 32'hF8008000; lp <= 32'hF8008000;
@@ -248,112 +396,27 @@
         S_HALT: halted <= 1'b1;
 
         // ---------------------------------------------------------------- step()
-        S_FETCH: if (!hold) begin
-          inst_pc <= pc;
-          restart_sp <= sp;
-          pc_changed <= 1'b0;
-          in_trap <= 1'b0;
-          sc_hit <= 1'b0;
-          sc_busy <= 1'b0;
-          count_insn <= 1'b0;
-          rsp <= '0;
-          if (reset_req) begin
-            pre_trap(TV_RESET, 3'd0);
-          end else if (mode <= TM_EXTRA_STACK && hp_sb) begin
-            hp_sb_taken <= 1'b1;
-            pre_trap(TV_HIGH_PRIORITY_SB, 3'd0);
-          end else if (mode == TM_EMULATOR && lp_sb) begin
-            lp_sb_taken <= 1'b1;
-            pre_trap(TV_LOW_PRIORITY_SB, 3'd0);
-          end else if (mode == TM_EMULATOR && preempt_register[0]) begin
-            pre_trap(TV_PREEMPT_REQUEST, 3'd0);
-          end else if (cr[CR_TRACE_PENDING]) begin
-            cr[CR_TRACE_PENDING] <= 1'b0;
-            pre_trap(TV_TRACE, 3'd0);
-          end else begin
-            count_insn <= 1'b1;
-            trace_insn <= cr[CR_INSTRUCTION_TRACE];
-            if (ic_hit) begin
-              m_rd <= ic_word;
-              fetch_mem <= 1'b0;
-              st <= S_FETCH_W;
-            end else begin
-              mem_rd(pc[32:1], 1'b0);
-              fetch_mem <= 1'b1;
-              rstack[0] <= S_FETCH_W;
-              rsp <= 3'd1;
-              st <= S_MEM_W;
-            end
+        // The retiring instruction's last cycle is the next one's fetch
+        // (one copy of fetch and decode: tasks inline at every call)
+        S_FETCH, S_RETIRE: if (st == S_RETIRE || !hold) begin
+          if (st == S_RETIRE) begin
+            if (!pc_changed) pc <= next_pc;
+            if (trace_insn) cr[CR_TRACE_PENDING] <= 1'b1;
+            icount <= icount + 64'd1;
+            retire <= 1'b1;
+            retire_counted <= 1'b1;
           end
+          fetch(st == S_RETIRE && !pc_changed ? next_pc : pc,
+                cr[CR_TRACE_PENDING] || (st == S_RETIRE && trace_insn));
         end
 
+        // the word came from memory: into the instruction cache, then decode
         S_FETCH_W: begin
           iw <= m_rd;
-          // a word fetched from memory goes into the instruction cache
           if (fetch_mem && m_pa_valid) begin
             ic_fill <= 1'b1; ic_fill_va <= inst_pc[32:1]; ic_fill_pa <= m_pa; ic_fill_word <= m_rd;
           end
-          case (wcdr(m_rd))
-            2'd0: next_pc <= inst_pc + 33'd1;
-            2'd2: next_pc <= inst_pc - 33'd1;
-            2'd3: next_pc <= inst_pc + (inst_pc[0] ? 33'd3 : 33'd2);
-            default: next_pc <= inst_pc;
-          endcase
-          st <= S_DECODE;
-        end
-
-        S_DECODE: begin
-          if (wcdr(iw) == CDR_NIL) begin
-            err(E_I_STAGE, inst_pc[32:1]);
-          end else if (wtype(iw) >= DTP_PACKED_INSTRUCTION_60) begin
-            if (!inst_pc[0] && (iw[17:11] == 7'b0111111)) begin   // entry: opcode 0176/0177
-              op <= iw[17:10];
-              loopn <= '0;
-              e_min <= iw[7:0];
-              e_max <= iw[25:18];
-              st <= S_ENTRY;
-            end else begin
-              logic [17:0] h;
-              h = inst_pc[0] ? {iw[35:32], iw[31:18]} : iw[17:0];
-              op <= h[17:10];
-              operand <= h[9:0];
-              omode <= h[9:8];
-              ooff <= h[7:0];
-              st <= S_EXEC;
-            end
-          end else if (inst_pc[0]) begin
-            err(E_I_STAGE, inst_pc[32:1]);
-          end else begin
-            // execute_fullword
-            case (wtype(iw))
-              DTP_CALL_COMPILED_EVEN, DTP_CALL_COMPILED_EVEN_PREFETCH: begin
-                a1 <= mkw(DTP_COMPILED_FUNCTION, iw[31:0]);
-                sc_odd <= 1'b0;
-                call(S_SC, S_FW_CALLDONE);
-              end
-              DTP_CALL_COMPILED_ODD, DTP_CALL_COMPILED_ODD_PREFETCH: begin
-                a1 <= mkw(DTP_COMPILED_FUNCTION, iw[31:0]);
-                sc_odd <= 1'b1;
-                call(S_SC, S_FW_CALLDONE);
-              end
-              DTP_CALL_INDIRECT, DTP_CALL_INDIRECT_PREFETCH: begin
-                sc_odd <= 1'b0;
-                mrd(mkw(DTP_LOCATIVE, iw[31:0]), CYC_DATA_READ, S_FW_IND);
-              end
-              DTP_CALL_GENERIC, DTP_CALL_GENERIC_PREFETCH: begin
-                a1 <= mkw(DTP_GENERIC_FUNCTION, iw[31:0]);
-                sc_odd <= 1'b0;
-                call(S_SC, S_FW_CALLDONE);
-              end
-              DTP_EXTERNAL_VALUE_CELL_POINTER:
-                mrd(mkw(DTP_LOCATIVE, iw[31:0]), CYC_DATA_READ, S_FW_EVCP);
-              DTP_NULL, DTP_MONITOR_FORWARD, DTP_HEADER_P, DTP_HEADER_I, DTP_ONE_Q_FORWARD,
-              DTP_HEADER_FORWARD, DTP_ELEMENT_FORWARD, DTP_GC_FORWARD, DTP_BOUND_LOCATION,
-              DTP_LOGIC_VARIABLE:
-                err_d(E_ILLEGAL_FULL_WORD_INSTRUCTION, inst_pc[32:1], {2'b00, wtype(iw)});
-              default: push(stripcdr(iw), S_RETIRE);
-            endcase
-          end
+          decode(m_rd, inst_pc);
         end
 
         S_FW_IND: begin
@@ -366,14 +429,6 @@
         end
         S_FW_EVCP: push(mr_d, S_RETIRE);
 
-        S_RETIRE: begin
-          if (!pc_changed) pc <= next_pc;
-          if (trace_insn) cr[CR_TRACE_PENDING] <= 1'b1;
-          icount <= icount + 64'd1;
-          retire <= 1'b1;
-          retire_counted <= 1'b1;
-          st <= S_FETCH;
-        end
 
         // A trap ended the step (InstructionAbort)
         S_ABORT: begin
@@ -387,18 +442,29 @@
 
         // ---------------------------------------------------------------- MEM
         S_MEM: begin
-          if (m_we) mem_wr(m_addr, m_wd, m_phys, 1'b1);
-          else mem_rd(m_addr, m_phys);
+          m_through <= 1'b1; m_bypass <= 1'b0; m_first <= 1'b1;
           st <= S_MEM_W;
         end
-        S_MEM_W: if (sc_hit) begin
-          sc_hit <= 1'b0;
-          m_rd <= sc_q;
-          m_trans <= 1'b0;
-          m_pa_valid <= 1'b0;
-          ret();
+        // The memory-access stage: in its first cycle the request goes to the
+        // cache (answered now) or to the memory (mem_req is up from this
+        // cycle); then it waits for the memory
+        S_MEM_W: if (m_first) begin
+          m_first <= 1'b0;
+          if (m_cached) begin
+            if (m_we) begin
+              sc_we <= 1'b1; sc_wa <= m_addr[6:0]; sc_wd <= m_wd;
+              if (m_addr[6:0] == sp[6:0]) begin tos <= m_wd; tos_sp <= sp; tos_valid <= 1'b1; end
+              if (m_through) m_wait <= 1'b1;
+              else begin m_trans <= 1'b0; m_pa_valid <= 1'b0; ret(); end
+            end else begin
+              m_rd <= sc_q_m;
+              m_trans <= 1'b0;
+              m_pa_valid <= 1'b0;
+              ret();
+            end
+          end else m_wait <= 1'b1;
         end else if (mem_ack) begin
-          mem_req <= 1'b0;
+          m_wait <= 1'b0;
           m_trans <= mem_transport;
           m_pa <= mem_pa;
           m_pa_valid <= 1'b1;
@@ -492,9 +558,10 @@
 
         // ---------------------------------------------------------------- push / pop
         S_PUSH: begin
-          if (in_window(sp + 32'd1)) begin
+          if (spp1_in_window) begin
             sc_we <= 1'b1; sc_wa <= sp[6:0] + 7'd1; sc_wd <= p_w;
             sp <= sp + 32'd1;
+            tos <= p_w; tos_sp <= sp + 32'd1; tos_valid <= 1'b1; tos_reload <= 1'b0;
             // stack cache overflow: SP<6:2> reaches the overflow limit's
             if (((sp + 32'd1) & 32'h7C) == (stack_cache_overflow_limit & 32'h7C)) begin
               sc_a <= stack_cache_lower_bound;
@@ -504,6 +571,7 @@
             end else ret();
           end else begin
             mem_wr_mem(sp + 32'd1, p_w, 1'b0);
+            tos_valid <= 1'b0;
             call(S_MEM_W, S_PUSH_DONE);
           end
         end
@@ -546,8 +614,16 @@
           end
         end
         S_POP: begin
-          mem_rd(sp, 1'b0);
-          call(S_MEM_W, S_POP_DONE);
+          if (tos_ok) begin
+            pop_w <= tos_q;
+            sp <= sp - 32'd1;
+            tos_valid <= 1'b0;
+            if (spm1_in_window) begin sc_ra <= sp[6:0] - 7'd1; tos_reload <= 1'b1; end
+            ret();
+          end else begin
+            mem_rd(sp, 1'b0);
+            call(S_MEM_W, S_POP_DONE);
+          end
         end
         S_POP_DONE: begin
           pop_w <= m_rd;

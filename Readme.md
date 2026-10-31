@@ -56,11 +56,8 @@ In the order they'll be done. Bugs come first whenever they turn up.
    (`PROFILE=1` on `sim/system` counts cycles by state) and against the
    published times. The RTL's structure follows the chip, not the model;
    each step is checked on the MiSTer, not in lockstep.
-   - The 32-word instruction cache and its prefetcher, fetching ahead of
-     execution.
-   - The TLB in front of the map cache (16 entries) and a pipelined memory
-     interface (the Internals manual: up to four requests outstanding, one
-     word per cycle); today a cache hit costs ~7 cycles.
+   - A pipelined memory interface (the Internals manual: up to four
+     requests outstanding, one word per cycle) once the pipeline can use it.
    - Fewer states per simple instruction, overlapping fetch, decode and
      execute like the 4-stage pipeline (push, add, eq in one cycle).
    - Check against the Internals manual's block-transfer rates (an array
@@ -70,8 +67,11 @@ In the order they'll be done. Bugs come first whenever they turn up.
    - Done when the rebuilt core gets as far as this one: the FEP, Genera 8.3
      to the Listener, Login, compile-file, (fib 30) = 1346269 and the Gabriel
      suite with the same results, faster.
-   - Pace the core to the real chip's cycles at the real clock, once the
-     clock is pinned down.
+   - Land in the real machine's ballpark, not well past it: if the
+     pipelined core comes out clearly faster than the XL1201's 4.1 s for
+     `(fib 30)`, run the processor at the machine cycle (30.75 MHz assumed:
+     the Merlin-II's 61.5 MHz oscillator halved) rather than 50 MHz. No
+     cycle-exact throttling.
 2. A compatibility pass on the rebuilt core (not on this one: bugs in the
    old state machine aren't worth fixing): Zmacs (edit and save a file), Document
    Examiner, the Inspector, the Debugger, Peek; a full GC (`Start GC

@@ -80,6 +80,7 @@ void Ivory::step() {
       if (!odd && (eop == 0176 || eop == 0177)) {
         // entry instruction occupies the whole word
         cur_opcode = eop;
+        opstats[257]++;
         operand_off = even & 0xFF;                  // min args + 2
         operand_mode = (int)((ins >> 18) & 0xFF);   // max args + 2
         if (trace && tracef)
@@ -159,6 +160,7 @@ W Ivory::operand_value(bool sign_extend) {
 void Ivory::execute_fullword(W w) {
   int t = wtype(w);
   cur_opcode = -1;
+  opstats[256]++;
   if (trace && tracef)
     fprintf(tracef, "%010llx %08x    fullword %02o %08x  sp=%08x fp=%08x\n",
             (unsigned long long)icount, (uint32_t)(inst_pc >> 1), t, wdata(w), sp, fp);
@@ -205,6 +207,7 @@ void Ivory::execute_halfword(uint32_t h, int) {
   int op = (h >> 10) & 0xFF;
   int operand = h & 0x3FF;
   cur_opcode = op;
+  opstats[op & 0xFF]++;
   operand_mode = operand >> 8;
   operand_off = operand & 0xFF;
   if (trace && tracef)

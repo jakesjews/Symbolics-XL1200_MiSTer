@@ -50,7 +50,7 @@
         end
 
         // rgetf, member, assoc
-        S_MEM_1: begin a2 <= opv; t0 <= opv; sread(sp, S_MEM_2); end
+        S_MEM_1: begin a2 <= opv; t0 <= opv; read_tos(S_MEM_2); end
         S_MEM_2: begin
           a1 <= m_rd;
           if (is_boxed_number(wtype(m_rd))) begin
@@ -132,7 +132,7 @@
         S_PUSH_T: push(T_W, S_RETIRE);
 
         // ---------------------------------------------------------------- predicates
-        S_EQ_1: begin a2 <= opv; sread(sp, S_EQ_2); end
+        S_EQ_1: begin a2 <= opv; read_tos(S_EQ_2); end
         S_EQ_2: begin
           logic same;
           same = stripcdr(m_rd) == stripcdr(a2);
@@ -146,7 +146,7 @@
           end
         end
 
-        S_NUMCMP_1: begin a2 <= opv; sread(sp, S_NUMCMP_2); end
+        S_NUMCMP_1: begin a2 <= opv; read_tos(S_NUMCMP_2); end
         S_NUMCMP_2: begin
           logic res;
           if (!is_numeric_type(wtype(m_rd)) || !is_numeric_type(wtype(a2))) err(E_BINARY_ARITH_TYPE, 32'd0);
@@ -704,7 +704,7 @@
         S_LOOPDEC_1: begin
           if (is_fixnum(m_rd) && m_rd[31:0] != 32'h80000000) begin
             if ($signed(m_rd[31:0] - 32'd1) > 0) branch(operand);
-            swrite(sp, fixnum(m_rd[31:0] - 32'd1), S_RETIRE);
+            write_tos(fixnum(m_rd[31:0] - 32'd1), S_RETIRE);
           end else if (!is_numeric_type(wtype(m_rd))) err(E_UNARY_ARITH_TYPE, 32'd0);
           else begin
             sp <= sp - 32'd1;
@@ -716,7 +716,7 @@
         S_LOOPINC_2: begin
           if (fix2(t0, m_rd) && t0[31:0] != 32'h7FFFFFFF) begin
             if ($signed(t0[31:0]) < $signed(m_rd[31:0])) branch(operand);
-            swrite(sp, fixnum(t0[31:0] + 32'd1), S_RETIRE);
+            write_tos(fixnum(t0[31:0] + 32'd1), S_RETIRE);
           end else if (!is_numeric_type(wtype(t0)) || !is_numeric_type(wtype(m_rd)))
             err(E_BINARY_ARITH_TYPE, 32'd0);
           else begin
@@ -748,7 +748,7 @@
               default: begin
                 t1 <= operand[4] ? setcdr(mr_d, CDR_NEXT) : mr_d;
                 x0 <= mr_final;
-                sread(sp, S_BLKTEST_1);
+                read_tos(S_BLKTEST_1);
               end
             endcase
           end
@@ -913,7 +913,7 @@
             cr[CR_TRACE_PENDING] <= 1'b0;
             restart_sp <= sp;
             pre_trap(TV_TRACE, 3'd0);
-          end else if (cr[CR_APPLY]) sread(sp, S_ENTRY_1);
+          end else if (cr[CR_APPLY]) read_tos(S_ENTRY_1);
           else st <= S_ENTRY_NA;
         end
         S_ENTRY_1: begin
@@ -959,7 +959,7 @@
             call(S_PAA, S_ENTRY_GO);
           end else begin
             e_index <= {24'd0, cr[7:0] - e_min} + 32'd1;
-            swrite(sp, setcdr(e_tos, CDR_NIL), S_ENTRY_GO);
+            write_tos(setcdr(e_tos, CDR_NIL), S_ENTRY_GO);
           end
         end
         S_ENTRY_GO: begin
@@ -969,7 +969,7 @@
         end
 
         // pull_apply_args: pull one argument out of the apply list on the stack
-        S_PULL: sread(sp, S_PULL_1);
+        S_PULL: read_tos(S_PULL_1);
         S_PULL_1: begin
           if (wtype(m_rd) == DTP_NIL) begin
             sp <= sp - 32'd1;
@@ -987,7 +987,7 @@
           end
         end
         S_PULL_2: begin t1 <= mr_d; carcdr(t0, 1'b0, S_PULL_3); end
-        S_PULL_3: begin t2 <= cc_r; swrite(sp, setcdr(t1, CDR_NEXT), S_PULL_4); end
+        S_PULL_3: begin t2 <= cc_r; write_tos(setcdr(t1, CDR_NEXT), S_PULL_4); end
         S_PULL_4: push(t2, S_PULL_5);
         S_PULL_5: begin
           cr[7:0] <= cr[7:0] + 8'd1;
@@ -996,8 +996,8 @@
         end
 
         // push_apply_args: make the rest argument list
-        S_PAA: sread(sp, S_PAA_1);
-        S_PAA_1: begin t0 <= m_rd; swrite(sp, setcdr(m_rd, CDR_NIL), S_PAA_2); end
+        S_PAA: read_tos(S_PAA_1);
+        S_PAA_1: begin t0 <= m_rd; write_tos(setcdr(m_rd, CDR_NIL), S_PAA_2); end
         S_PAA_2: begin
           if (cr[CR_APPLY] && wtype(t0) == DTP_NIL) begin
             sp <= sp - 32'd1;
@@ -1006,7 +1006,7 @@
           end else if (!cr[CR_APPLY]) push(mkw(DTP_LIST, fp + {24'd0, e_max}), S_RETURN);
           else sread(sp - 32'd1, S_PAA_4);
         end
-        S_PAA_3: swrite(sp, setcdr(m_rd, CDR_NIL), S_PAA_5);
+        S_PAA_3: write_tos(setcdr(m_rd, CDR_NIL), S_PAA_5);
         S_PAA_5: push(mkw(DTP_LIST, fp + {24'd0, e_max}), S_RETURN);
         S_PAA_4: swrite(sp - 32'd1, setcdr(m_rd, CDR_NORMAL), S_PAA_6);
         S_PAA_6: push(mkw(DTP_LIST, fp + {24'd0, e_max}), S_PAA_7);
@@ -1033,7 +1033,7 @@
           ret_disp <= cr[19:18];
           if (ret_kind == 2'd0) begin
             ret_nvals <= 32'd1;
-            if (ret_arg[7:0] == 8'd0) sread(sp, S_RET_SINGLE);
+            if (ret_arg[7:0] == 8'd0) read_tos(S_RET_SINGLE);
             else begin
               ret_single <= ret_arg[0] ? T_W : NIL_W;
               st <= S_RET_FRAME1;
@@ -1275,7 +1275,7 @@
           if (wtype(opv) != DTP_LIST && wtype(opv) != DTP_LOCATIVE) err(E_UNARY_LEXENV_TYPE, 32'd0);
           else mrd(mkw(DTP_LOCATIVE, opv[31:0] + {29'd0, op[2:0]}), CYC_DATA_READ, S_PUSH_MRD);
         end
-        S_LEXW_1: begin a2 <= opv; sread(sp, S_LEXW_2); end
+        S_LEXW_1: begin a2 <= opv; read_tos(S_LEXW_2); end
         S_LEXW_2: begin
           if (wtype(a2) != DTP_LIST && wtype(a2) != DTP_LOCATIVE) err(E_BINARY_LEXENV_TYPE, 32'd0);
           else mwr(mkw(DTP_LOCATIVE, a2[31:0] + {29'd0, op[2:0]}), CYC_DATA_WRITE, m_rd, 1'b1, S_LEXW_3);
@@ -1323,7 +1323,7 @@
           case (op)
             8'o110, 8'o112: mrd(mkw(DTP_LOCATIVE, ea), CYC_DATA_READ, S_PUSH_MRD);
             8'o111, 8'o113: push(mkw(DTP_LOCATIVE, ea), S_RETIRE);
-            default: sread(sp, S_IVM_7);
+            default: read_tos(S_IVM_7);
           endcase
         end
         S_IVM_7: mwr(mkw(DTP_LOCATIVE, addr), CYC_DATA_WRITE, m_rd, 1'b1, S_IVM_8);
@@ -1369,7 +1369,7 @@
 
         // ---------------------------------------------------------------- subprimitives
         S_EPHP_1: push(boolw(is_pointer_type(wtype(opv)) && opv[31:27] == 5'd0), S_RETIRE);
-        S_ULESS_1: begin a2 <= opv; sread(sp, S_ULESS_2); end
+        S_ULESS_1: begin a2 <= opv; read_tos(S_ULESS_2); end
         S_ULESS_2: begin
           if (op == 8'o331) sp <= sp - 32'd1;
           push(boolw(m_rd[31:0] < a2[31:0]), S_RETIRE);
@@ -1423,7 +1423,7 @@
           else if (r == 10'o002) push(mkw(DTP_LOCATIVE, lp), S_RETIRE);
           else if (r == 10'o003) push(mkw(DTP_LOCATIVE, sp), S_RETIRE);
           else if (r >= 10'o1000) begin
-            if (r == 10'o1000) sread(sp, S_RIR_TOS);
+            if (r == 10'o1000) read_tos(S_RIR_TOS);
             else if (r == 10'o1007) push(mkw(DTP_PHYSICAL_ADDRESS, pht_base), S_RETIRE);
             else if (r == 10'o1010) push(fixnum(pht_mask), S_RETIRE);
             else if (r == 10'o1040) push(NIL_W, S_RETIRE);
@@ -1476,7 +1476,7 @@
             st <= S_RETIRE;
           end
           else if (r >= 10'o1000) begin
-            if (r == 10'o1000) swrite(sp, pop_w, S_RETIRE);
+            if (r == 10'o1000) write_tos(pop_w, S_RETIRE);
             else begin
               if (r == 10'o1007) begin pht_base <= pop_w[31:0]; map_flush <= 1'b1; end
               else if (r == 10'o1010) begin pht_mask <= pop_w[31:0]; map_flush <= 1'b1; end

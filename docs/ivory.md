@@ -122,8 +122,11 @@ Two thirds of the old core's cycles were memory waits of ~7 cycles, most of
 them stack accesses; a push is now one cycle, a pop or an operand fetch
 two. On the MiSTer (build 10, Oct 30 2026) Genera 8.3 boots and `(fib 30)`
 takes 9.33 s against 17.50 s before: 15.5 cycles an instruction instead of
-29.3, 1.88x. The free-running simulation of the FEP boot shows the same
-(3.1M instructions a simulated second against 1.7M).
+29.3, 1.88x. The Gabriel suite runs 1.24x (Div2 recursive) to 2.08x (Ctak)
+faster, 1.65x for Triang, and its geometric mean against the 3600 goes from
+1.41x to 2.31x; cycles an instruction 13 (Ctak) to 31 (Stak). The
+free-running simulation of the FEP boot shows the same (3.1M instructions a
+simulated second against 1.7M).
 
 ## Instruction cache and prefetcher
 
@@ -168,6 +171,9 @@ takes 9.33 s against 17.50 s before: 15.5 cycles an instruction instead of
   the stream meanwhile (the same bug, found in the free-running bench by
   watching one word: the prefetched word was installed at the restarted
   stream's address).
+- Measured with the TLB (build 12, Oct 30 2026): Genera boots on the
+  MiSTer and `(fib 30)` takes 6.43 s (9.33 s with the stack cache alone):
+  10.7 cycles an instruction, 2.72x the original core.
 - The prefetcher fetches the words after the last instruction fetched,
   sequentially, while enabled, until it is high-mark words ahead of the PC,
   resuming once fewer than low-mark words are ahead; it stops at a word
@@ -208,6 +214,9 @@ takes 9.33 s against 17.50 s before: 15.5 cycles an instruction instead of
 - The bus to `xl_mem` stays one word a transaction for now; a request a
   cycle, with up to four in flight, comes with the pipeline, which is what
   can use it.
+- Measured: see the instruction cache above (build 12 has both); the 4096
+  words of map cache RAM are gone (block memory 61% to 54%) and the logic
+  is 79% with the instruction cache's flops.
 
 ## Pipeline
 
@@ -241,6 +250,33 @@ Traps mid-instruction keep working as now: an instruction that faults
 restarts from its fetch with the architectural state untouched, which is
 the chip's W-stage rule.
 
+fib's instruction mix from the model (`XLEMU_OPSTATS`, 30.5M instructions
+of `(fib 30)`): push 14%, then the full-word call, entry, finish-call,
+return-single, branch-true, zerop and sub at 9% each, add 4%: a third of
+the instructions are the call sequence, which is also where the real
+chip's 4.2 cycles an instruction go.
+
+Build 13 (steps 1-3) did not fit: 84% of the logic, and the fitter gave
+up. SystemVerilog tasks inline at every call, so the stack cache's window
+check inside `mem_rd`/`mem_wr` had ~70 copies through `sread`/`swrite`,
+and the pipeline steps inlined fetch+decode twice. The cure is the chip's
+organisation: one fetch+decode (S_FETCH and S_RETIRE share a case arm) and
+one memory-access stage (every request registered into `m_*`, the window
+check, cache access and bus issue in S_MEM_W alone, the bus request driven
+combinationally from the registered request so memory accesses keep their
+timing; the cache data duplicated in a second block RAM read by the
+request address, the first keeping the operand pre-read and TOS reload).
+With that in, the FEP boot simulation runs 96.0M instructions in the 14 s,
+the same as before: the memory accesses kept their timing.
+
+Measured in the free-running simulation of the FEP boot (instructions in
+14 simulated seconds; the stack cache, instruction cache and TLB alone:
+57.7M, 12.1 cycles an instruction): step 1, 68.6M (10.2); step 2, 75.6M
+(9.3); step 3, 86.7M (8.1); step 4, 96.0M (7.3). The `decode` task runs in the fetch cycle (`fetch` task, called
+from `S_FETCH` and from `S_RETIRE`, whose cache lookup uses the next PC
+through `fetch_pc`); the operand pre-read sets `sc_ra` in `decode` and
+`opval` takes `sc_q` (`opv_pre`), or the immediate, in one cycle.
+
 ## Order of work
 
 1. Stack cache, verified by a Genera boot, compile-file and fib on the
@@ -249,8 +285,10 @@ the chip's W-stage rule.
 3. TLB and the pipelined memory interface.
 4. The pipeline.
 5. Checks: block-transfer rates from *Internals*, fib and Gabriel against the
-   XL1201 and the 3600, then pacing to the machine cycle. The working
-   assumption (Oct 2026) is 30.75 MHz: the 61.5 MHz oscillator on the
+   XL1201 and the 3600, then the clock: the core should land near the real
+   machine, not well past it; if it comes out clearly faster, the processor
+   runs at the machine cycle instead of 50 MHz, nothing more elaborate. The
+   working assumption (Oct 2026) is 30.75 MHz: the 61.5 MHz oscillator on the
    Merlin-II divided by two, as inferred for the MacIvory III; fib's
    instruction count against the XL1201's time gives 4.2 cycles an
    instruction at that rate, which fits the chip's pipeline.
