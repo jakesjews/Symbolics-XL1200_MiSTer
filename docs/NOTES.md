@@ -923,12 +923,16 @@ would put Genera on the LAN at its own address, a follow-up.
   peak, the design's margin being what it is.  The site setup and Save
   World on the network disk (44,564 blocks in six minutes again) gave
   the network master image; cold-booted from the FEP with Hello and
-  Boot it answers ping 9 s after Boot, without a login.  The MiSTer's
-  main program stays the patched one (`/media/fat/MiSTer`, the official
-  binary as `MiSTer.orig-20261031`, a spare copy `MiSTer.xl1200-enet`
-  for after an update overwrites it); MiSTer.ini can't choose a main
-  program, so its `[XL1200]` section only carries the core's video
-  settings (direct_video 0 while the core is tested from the Mac).
+  Boot it answers ping 9 s after Boot, without a login.  The patched main
+  program is `/media/fat/MiSTer_xl1200` and MiSTer.ini's `[XL1200]`
+  section says `main=MiSTer_xl1200`: at a core's start Main resolves the
+  section's `main` under /media/fat and restarts itself with that binary
+  if it isn't the one running (`user_io.cpp`, as the DVD and Falcon
+  cores' sections do), so the official `/media/fat/MiSTer` serves every
+  other core.  (Swapping the binaries under a running patched Main and
+  reloading rebooted the board once; from the menu the switch is clean.)
+  The section also carries direct_video 0 while the core is tested from
+  the Mac.
 
 ## RTL Ivory (`rtl/ivory/`)
 

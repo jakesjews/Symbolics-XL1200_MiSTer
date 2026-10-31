@@ -49,11 +49,19 @@ so there is nothing to run. Build the disk with `--internet A.B.C.D` (a
 free address on your LAN) and Genera comes up on it; the OSD's Network
 option picks the port (eth0 by default) or turns it off. Verified: Genera
 answers ping, and its FTP server answers connections (it refuses hosts it
-doesn't know; Genera 8.3 has no telnet server). Needs a MiSTer main program
-with the XL1200 bridge, which is in
-[tools/mister/Main_MiSTer-xl1200-enet.patch](tools/mister/Main_MiSTer-xl1200-enet.patch)
-until it is merged upstream. WiFi can't carry it, and every XL1200 core has
-the same Ethernet address, so run one per LAN.
+doesn't know; Genera 8.3 has no telnet server). Until the bridge is in
+MiSTer's main program upstream, it needs the one built from
+[tools/mister/Main_MiSTer-xl1200-enet.patch](tools/mister/Main_MiSTer-xl1200-enet.patch):
+copy it to the SD card as `MiSTer_xl1200` and put
+
+```
+[XL1200]
+main=MiSTer_xl1200
+```
+
+in `MiSTer.ini`; MiSTer switches to it for this core and back for the
+others. WiFi can't carry it, and every XL1200 core has the same Ethernet
+address, so run one per LAN.
 
 ## Gotchas
 
