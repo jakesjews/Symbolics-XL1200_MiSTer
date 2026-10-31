@@ -267,7 +267,20 @@ combinationally from the registered request so memory accesses keep their
 timing; the cache data duplicated in a second block RAM read by the
 request address, the first keeping the operand pre-read and TOS reload).
 With that in, the FEP boot simulation runs 96.0M instructions in the 14 s,
-the same as before: the memory accesses kept their timing.
+the same as before: the memory accesses kept their timing. Build 14 of it
+fits: 80% of the logic, timing met with 0.6 ns of slack. On the MiSTer
+(Oct 30 2026) Genera boots and `(fib 30)` takes 3.68 s: 6.1 cycles an
+instruction, 4.76x the original core and 10% under the XL1201's 4.10 s.
+The Gabriel suite's geometric mean against the 3600 is 4.73x (2.31x with
+the stack cache alone; a real Ivory about 6x), unevenly: the stack- and
+compute-bound benchmarks are at the real machine's ratio already (Deriv
+6.9x, FFT 6.6x, Browse 6.3x, Destructive 6.0x, Stak 5.6x, Tak 5.4x), the
+list- and memory-heavy ones lag (Triang 4.5x, Boyer 4.0x, Traverse 4.0x,
+Ctak 3.9x, Div2 recursive 3.9x, Puzzle 1.8x): a DDR cache miss costs more
+here than the Merlin-II's memory did. So on the broad suite the core is
+still slower than the real XL1200 on average, and only fib-like code is
+past it; the clock decision waits for step 5 on hardware and the
+FrameThrower.
 
 Measured in the free-running simulation of the FEP boot (instructions in
 14 simulated seconds; the stack cache, instruction cache and TLB alone:
