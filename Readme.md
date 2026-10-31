@@ -65,7 +65,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
      Gabriel, fib, and de Kleer's prime-implicate tests (needs the Building
      Problem Solvers code).
    - Land in the real machine's ballpark, not well past it. Standing (Oct
-     2026, build 23 at 50 MHz): `(fib 30)` 2.81 s against the XL1201's
+     2026, build 25 at 50 MHz): `(fib 30)` 2.80 s against the XL1201's
      4.1 s, Gabriel 6.4x the 3600 against a real Ivory's ~6x (compute-bound
      code past it, list- and array-bound code under it). The clock is
      the lever (30.75 MHz assumed for the chip: the Merlin-II's 61.5 MHz

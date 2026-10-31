@@ -361,6 +361,20 @@ by as much, so what is left of the speed work is evening those out (the
 memory path), not more peak; the clock decision stays deferred to after
 the FrameThrower.
 
+The array elements were the last inlined shifters: `aref-1`'s and
+`fast-aref-1`'s extraction and `aset-1`'s insert go through the rotator
+and masks too (`elem_units` arms them from the element's bit position and
+width; a packed write takes a cycle more, like `%p-dpb`). The first cut
+armed them in `aref-1`'s arm only and left `fast-aref-1`, the form
+Genera's compiled code uses, reading the units stale, which blanked the
+FEP's screen with no halt: the two array paths share their tail states
+and must share their setup. Build 25 (79%, every clock met with 0.29 ns
+to spare): `(fib 30)` 2.80 s, Gabriel 6.41x, Puzzle still 2.40x. Then the
+DDR cache answers a miss with the word asked for as its beat of the burst
+arrives, the rest of the line landing while the processor goes on,
+instead of after the fourth beat and a state more (FEP boot simulation
+fine; build 26).
+
 ## Order of work
 
 1. Stack cache, verified by a Genera boot, compile-file and fib on the
