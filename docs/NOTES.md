@@ -833,8 +833,10 @@ cores use) that Main polls from its main loop and moves to a raw socket on
 eth0 (promiscuous, with a BPF filter on the guest's MAC), eth1, a macvlan
 child of eth0, or a tap device, as the OSD's Network option says (eth0,
 Off, eth1, macvlan, tap0: the Sun cores' order, so Main's code for them
-serves).  Nothing runs by hand.  Over WiFi only tap0 can work (the MiSTer
-here has eth0 with no cable and wlan0 on 192.168.50.0/24).
+serves).  Nothing runs by hand.  Over WiFi only tap0 can work: a WiFi
+client may only send frames with its own MAC, so eth0's raw socket and the
+macvlan fail there; tap0 with routing (proxy ARP both sides) on the MiSTer
+would put Genera on the LAN at its own address, a follow-up.
 
 - `rtl/xl/xl_eth_hps.sv` is the SparcStation 20 core's `eth_hps.sv`
   (GPL-2+) with the magic word "XLETH001": the mailbox protocol SSETH002
@@ -880,6 +882,33 @@ here has eth0 with no cable and wlan0 on 192.168.50.0/24).
   line to the Hello.boot.  The station address is the ID PROM's
   08:00:05:12:00:01 (`xl_iob`'s ETHERNET parameter), the same for every
   core.
+- Fitting it (Oct 31 2026): the Ethernet logic (the bridge 1,232 ALUTs,
+  the arbiter 372, the 82586 grown from 517 to 1,817) took the design from
+  79% to 86% of the ALMs, and the standard fit's router, five minutes
+  before, ran for four hours in the same hot region (X22-32, Y35-45: the
+  processor's interconnect, 65% peak before, 84% after) and was killed.
+  A fast fit fails to route the pre-Ethernet RTL too, so that was never a
+  diagnostic.  Seed 2 routed the same RTL in 32 minutes (84% ALMs, 0.032
+  ns setup slack).  Since then the 82586 forms every descriptor address
+  with one adder (1,374 ALUTs) and the debug line is a debug build's
+  (`XL_DEBUG`).  A build past an hour gets killed; a LogicLock region
+  reserving the processor's area is the next lever if seeds stop working.
+- On the MiSTer (seed-2 build, Main_MiSTer of Oct 2025 with the patch,
+  the official binary kept as `/media/fat/MiSTer.orig-20261031`, started
+  by hand with its output in `/tmp/mister.log`; a 240,000-block disk from
+  `mkworld --standalone --internet 192.168.50.92`, eth0 on the LAN at
+  1 Gb/s): Main opens eth0 at the core start and attaches its filter on
+  08:00:05:12:00:01 once the core publishes the MAC (80 s later, the
+  mailbox comes up with the core); Genera boots, Hello.boot's `Set
+  Network Address` gives it INTERNET|192.168.50.92, and with nothing else
+  done it answers ARP and echoes pings from the Mac: `tools/mister/
+  mailbox.py` (run on the MiSTer) reads the mailbox from `/dev/mem` and
+  decodes the frames left in the rings, which showed the Mac's requests
+  in the receive ring and Genera's replies in the transmit ring, 94 bytes
+  for 98-byte requests.  `xl_iob` had left the chip's `tx_crcgen` output
+  unconnected, so the bridge took each frame as carrying an FCS and cut
+  four bytes (the unit bench wires the chip to the bridge directly and
+  could not see it; `verilator -Wwarn-UNDRIVEN` on `xl_machine` does).
 
 ## RTL Ivory (`rtl/ivory/`)
 
