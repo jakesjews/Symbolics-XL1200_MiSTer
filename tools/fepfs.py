@@ -17,7 +17,10 @@ Layout and sources: docs/NOTES.md, "FEP file system layout".
         and a paging file (>Page.page, the rest of the disk) to the root
         directory; --text FILE (repeatable) adds a text file before the
         paging file, e.g. a Lisp source to compile in Genera; --blocks N
-        first makes the disk N blocks (the label and free map grown)
+        first makes the disk N blocks (the label and free map grown);
+        --paging N makes the paging file N blocks (leave room for a saved
+        world); --standalone adds Symbolics' standalone site, so Genera
+        boots configured (docs/NOTES.md, "Compatibility")
 """
 import argparse, io, os, shutil, struct, sys, time
 
@@ -440,6 +443,83 @@ def cmd_mkworld(args):
         raise
 
 
+def standalone_site_files():
+    """The files of Symbolics' standalone site for the FEP disk, written the
+    way a new XL1200 was shipped (the Genera 8.3 Software Installation Guide
+    for XL Family Machines, "The Symbolics Standalone Site"; the CD's
+    sys.sct/standalone-site/xl1200/): a namespace with one host, XL1200, and
+    one user, Lisp-Machine, named by boot options in the Hello.boot. The
+    machine ships with the dummy Chaos address 52525; this one is 1200 to
+    match the template's Local.boot. The site's sys.translations has to be
+    on the LMFS (FEP file types are at most four characters), so it is here
+    as sys-translations.text for a Copy File in Genera: docs/NOTES.md,
+    "Compatibility"."""
+    hello = ("Hello I333\n"
+             "Hello Local\n"
+             "Set Boot Options :Site Name Standalone\n"
+             "Set Boot Options :Namespace Descriptor File FEP7:>standalone-namespace.text\n")
+    namespace = ('VERSION "FEP7:>standalone-namespace-log.text.newest"\n'
+                 '* "FEP7:>standalone-objects.text.newest"\n'
+                 'CHANGES "FEP7:>standalone-namespace-changes.text.newest"\n')
+    objects = """;-*- Mode: Text; Network-Namespace: STANDALONE-*-
+NAMESPACE STANDALONE
+PRIMARY-NAME-SERVER XL1200
+SEARCH-RULES STANDALONE
+DESCRIPTOR-FILE "FEP7:>standalone-namespace.text.newest"
+
+SITE STANDALONE
+PRETTY-NAME Standalone
+LOCAL-NAMESPACE STANDALONE
+SITE-DIRECTORY "XL1200:>sys>site>"
+TIMEZONE EST
+HOST-FOR-BUG-REPORTS XL1200
+STANDALONE YES
+
+NETWORK CHAOS
+SITE STANDALONE
+TYPE CHAOS
+
+HOST XL1200
+SYSTEM-TYPE LISPM
+SERVICE CHAOS-STATUS CHAOS-SIMPLE CHAOS-STATUS
+SERVICE SHOW-USERS CHAOS NAME
+SERVICE TIME CHAOS-SIMPLE TIME-SIMPLE
+SERVICE UPTIME CHAOS-SIMPLE UPTIME-SIMPLE
+SERVICE LOGIN CHAOS TELNET
+SERVICE LOGIN CHAOS SUPDUP
+SERVICE LOGIN CHAOS 3600-LOGIN
+SERVICE SEND CHAOS SEND
+SERVICE SEND CHAOS CONVERSE
+SERVICE NAMESPACE CHAOS NAMESPACE
+SERVICE NAMESPACE-TIMESTAMP CHAOS-SIMPLE NAMESPACE-TIMESTAMP
+SERVICE LISPM-FINGER CHAOS-SIMPLE LISPM-FINGER
+SERVICE FILE CHAOS QFILE
+SERVICE FILE CHAOS NFILE
+SERVICE CONFIGURATION CHAOS CONFIGURATION
+ADDRESS CHAOS 1200
+SITE STANDALONE
+MACHINE-TYPE XL1200
+
+USER LISP-MACHINE
+HOME-HOST XL1200
+LISPM-NAME LISPM
+"""
+    log = "3/2/93 21:55:00 STANDALONE created by LISPM\n"
+    changes = "TIMESTAMP 1\n"
+    translations = """;;; -*- Mode: Lisp; Syntax: Common-Lisp; Package: FS; Base: 10 -*-
+
+(SET-LOGICAL-PATHNAME-HOST "SYS" :TRANSLATIONS
+  '(("SYS:SITE;**;*.*.*" "XL1200:>sys>site>**>*.*.*")
+    ("SYS:**;*.*.*" "XL1200:>sys>**>*.*.*")))
+"""
+    return [('standalone-namespace', 'text', namespace),
+            ('standalone-objects', 'text', objects),
+            ('standalone-namespace-log', 'text', log),
+            ('standalone-namespace-changes', 'text', changes),
+            ('sys-translations', 'text', translations),
+            ('Hello', 'boot', hello)]
+
+
 def build_world_disk(args, name, typ, size):
     disk = Disk(args.out, args.stride, write=True)
     fs = FEPFS(disk)
@@ -453,16 +533,20 @@ def build_world_disk(args, name, typ, size):
                                          int(os.path.getmtime(args.world)) + UT_EPOCH)
     print(f"{args.out}: >{name}.{typ}.{version}, {size} bytes, header {hdr}, "
           f"data {runs_string(runs)}; image {disk.nblocks} blocks")
+    def add_text(name, typ, data, cdate):
+        data = lispm_text(data)
+        version, hdr, runs = fs.add_file(name, typ, io.BytesIO(data), len(data), args.author, '', cdate)
+        print(f"{args.out}: >{name}.{typ}.{version}, {len(data)} bytes of text, header {hdr}, "
+              f"data {runs_string(runs)}")
     for path in args.text or []:
         name, _, typ = os.path.basename(path).rpartition('.')
         if not name or len(typ) > 4 or len(name) > 32:
             sys.exit(f"{path}: wants name.type, a name of at most 32 characters and a type of at most 4")
         with open(path, 'rb') as f:
-            data = lispm_text(f.read())
-        version, hdr, runs = fs.add_file(name, typ, io.BytesIO(data), len(data), args.author, '',
-                                         int(os.path.getmtime(path)) + UT_EPOCH)
-        print(f"{args.out}: >{name}.{typ}.{version}, {len(data)} bytes of text, header {hdr}, "
-              f"data {runs_string(runs)}")
+            add_text(name, typ, f.read(), int(os.path.getmtime(path)) + UT_EPOCH)
+    if args.standalone:
+        for name, typ, text in standalone_site_files():
+            add_text(name, typ, text.encode('ascii'), int(time.time()) + UT_EPOCH)
     # Load World pages to the declared paging files, FEPn:>Page.page by default.
     paging = fs.free_blocks() - 4 if args.paging == 'rest' else int(args.paging)   # a header, and a directory page if one is needed
     if paging > 0:
@@ -499,6 +583,9 @@ def main():
     s.add_argument('--paging', default='rest', metavar='BLOCKS',
                    help="also add the paging file >Page.page of this many blocks; "
                         "'rest' (the default) uses all the free space, 0 adds none")
+    s.add_argument('--standalone', action='store_true',
+                   help="also add the files of Symbolics' standalone site (a Hello.boot with the "
+                        "boot options, the namespace, sys-translations.text for the LMFS)")
     s.add_argument('--no-grow', action='store_true',
                    help="keep the template's size instead of the label's disk size")
     s.add_argument('--blocks', type=int, metavar='N',

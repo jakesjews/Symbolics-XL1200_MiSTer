@@ -707,6 +707,55 @@ the bench disk's 3.1M words of paging space is less than physical memory,
 which Genera says will crash it, so the GC check moves to the 300 MB disk
 (`fepfs.py mkworld --blocks 240000`, 174,895 blocks of paging).
 
+On the 300 MB disk, configured as a standalone site (below): `Start GC
+:Immediately` collected 186,360 words of dynamic space into 100,134 in 80
+seconds, `(gc-immediately)` after it 138,931 into 101,563 in 90 seconds;
+`(car 1)` enters the Debugger with the trap message and the five proceed
+options; Abort returns to top level.
+
+The "This Lisp world has not been configured for use at the local site"
+box goes away by booting the world at Symbolics' standalone site, the way
+a new XL1200 shipped (the Genera 8.3 Software Installation Guide for XL
+Family Machines, "The Symbolics Standalone Site"): `Set Boot Options :Site
+Name Standalone` and `Set Boot Options :Namespace Descriptor File ...` in
+the Hello.boot, and the namespace files from the CD's
+`sys.sct/standalone-site/xl1200/` (one host, XL1200, one user,
+Lisp-Machine). The namespace files can live on the FEP disk (`mkworld
+--text`); the host's Chaos address is 1200 to match the FEP's Local.boot.
+The banner then reads "This machine is Standalone XL1200". The site's
+`sys.translations` cannot: FEP file types are at most four characters, and
+Genera looks for it at `XL1200:>sys>site>sys.translations` on the local
+LMFS (a real XL keeps all the site files there), so until it exists the
+boot prints "Unable to change site to Standalone. The directory >sys does
+not exist" and carries on with the site's namespace loaded. `mkworld
+--standalone` writes all of these (the namespace files, a Hello.boot.2
+with the boot options, and `sys-translations.text` to copy); in Genera,
+`Create Directory XL1200:>sys>` and `>sys>site>` on the template's empty
+LMFS (20,000 blocks: 4,990 LMFS records of 5,056 bytes) and `Copy File
+FEP7:>sys-translations.text XL1200:>sys>site>sys.translations` finish the
+site; the translations map `SYS:SITE;` to that directory and `SYS:` to
+`XL1200:>sys>` (the CD's version points at `local:>rel-8-1>sys>`, where
+the sources would be restored).
+
+`Save World FEP7:>Genera-8-3-site.ilod` after that: it shows the herald
+(the site name is in it: "Standalone XL1200") and the disk-label title
+"Genera 8.3" for confirmation, runs the before-cold initializations, logs
+out, prints "System Shutdown ..." and writes the world with the scheduler
+off (the status line's clock stops); 44,554 blocks in about six minutes,
+125 blocks a second, sequentially into the free space. Then "Update boot
+file to load FEP7:>Genera-8-3-site.ilod.1?": Yes, the default
+`FEP7:>boot.boot`, and since the template has no boot.boot a file-error
+menu offers Super-C, "Use the following as the contents of the boot file
+instead: Load World FEP7:>Genera-8-3-site.ilod.1 / Start", which writes
+it (46 bytes). After a cold start, `Hello` then `Boot` at the FEP runs
+that file: the saved world's banner reads "Loaded from
+FEP7:>Genera-8-3-site.ilod.1", "This machine is Standalone XL1200", with
+no site message, 4.0M words physical and 29.3M words of swap (the
+120,000-block paging file), and it is up within fifteen seconds of `Boot`
+where the distribution world took eighty (its first boot does the site
+and namespace work). Save World logs out first, so the saved world still
+starts at "Please login".
+
 The MacIvory animation world (`animation-mac-6-2.ilod`, Genera 8.1.1,
 System 436.39, from the user's collection) boots on the core from its own
 300 MB disk: the banner says "a Symbolics XL1200", 4.0M words physical and

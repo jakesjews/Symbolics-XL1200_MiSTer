@@ -21,13 +21,21 @@ with keyboard and mouse.
 ## Setup
 
 1. Copy `XL1200_*.rbf` to `_Computer` on the SD card.
-2. Copy the disk image to `games/XL1200/boot0.vhd`.
-3. Copy `XL1200.mgl` to `_Computer` and start the core from it; it mounts the disk
-   and the FEP prompt appears after about ten seconds. (Or load the core and mount
-   the image from the OSD as SCSI disk 0.)
-4. Type `Hello` and Return.
-5. Type `Load World FEP7:>Genera-8-3.ilod` and Return (the name `tools/fepfs.py` gives the world).
-6. Type `Start` and Return; Genera's Lisp Listener appears after about a minute and a half.
+2. Build the disk: `python3 tools/fepfs.py mkworld FEPDISK.dd GENERA_8_3.ILOD boot0.vhd --blocks 240000 --paging 120000 --standalone`
+   (a 300 MB disk with the world, Symbolics' standalone site, paging space and room for a saved world).
+3. Copy it to `games/XL1200/boot0.vhd`.
+4. Copy `XL1200.mgl` to `_Computer` and start the core from it; it mounts the disk
+   and the FEP prompt appears. (Or load the core and mount the image from the OSD
+   as SCSI disk 0.)
+5. Type `Hello`, then `Load World FEP7:>Genera-8-3.ilod`, then `Start`; Genera's
+   Lisp Listener comes up at site Standalone.
+6. Once, finish the site: `Login Lisp-Machine`, `Create Directory XL1200:>sys>`,
+   `Create Directory XL1200:>sys>site>`, then
+   `Copy File FEP7:>sys-translations.text XL1200:>sys>site>sys.translations`.
+7. Save it: `Save World FEP7:>Genera-8-3-site.ilod`; answer Y to the herald and
+   the label, Yes to updating the boot file, Return for `FEP7:>boot.boot`, and
+   Super-C (Windows-C) when it says the file isn't found, to write it.
+8. From then on type `Hello` and `Boot` at the FEP; Genera is up in seconds.
 
 The Symbolics keys (Select, Function, Abort, Help, ...) are on the PC's
 function keys: [docs/keyboard.md](docs/keyboard.md).
@@ -38,7 +46,8 @@ function keys: [docs/keyboard.md](docs/keyboard.md).
 - Images must be SCSI2SD dumps: each 1280-byte block in 1536 bytes.
 - With no disk mounted the machine halts; mounting one starts it.
 - Genera 8.3 doesn't accept dates after 1999, so leave the OSD's Clock at "28 years back".
-- To compile files, log in first (`Login Lisp-Machine`) and leave free space on the FEP disk (`tools/fepfs.py mkworld --paging`).
+- Save World shows "System Shutdown ..." with the clock stopped for several minutes while it writes; wait for "Saved to".
+- To compile files, log in first (`Login Lisp-Machine`).
 
 ## Troubleshooting
 
@@ -46,6 +55,9 @@ function keys: [docs/keyboard.md](docs/keyboard.md).
   [docs/NOTES.md](docs/NOTES.md#debug-line).
 - "Unable to get time from the network or the calendar clock": set Clock to "28 years back".
 - Genera asks for the date right after the MiSTer starts: MiSTer hadn't set its clock yet when the core loaded; type the date, or reload the core.
+- "This Lisp world has not been configured for use at the local site": the disk was built without `--standalone`.
+- "Unable to change site to Standalone. The directory >sys does not exist": step 6 hasn't been done on this disk.
+- A full GC freezes Genera: the paging file is smaller than physical memory (4M words); build the disk with `--blocks 240000`.
 - No picture on direct video: the display has to take an 80 MHz, 54 kHz signal.
 
 ## To do
@@ -72,12 +84,13 @@ In the order they'll be done. Bugs come first whenever they turn up.
      speed work left, after the compatibility pass; the clock stays at
      50 MHz until then (30.77 and 35 MHz were built and dropped: they
      put list-bound code further behind).
-2. A compatibility pass on the rebuilt core (not on this one: bugs in the
-   old state machine aren't worth fixing): Zmacs (edit and save a file), Document
-   Examiner, the Inspector, the Debugger, Peek; a full GC (`Start GC
-   :Immediately`) and ephemeral GC flips; Save World and booting the saved
-   world; bignums, ratios, double floats and complex numbers through the FPA;
-   an overnight run. Anything that breaks is reproduced in the free-running simulation or the model.
+2. A compatibility pass, in progress ([docs/NOTES.md](docs/NOTES.md#compatibility)
+   has what passed: Zmacs, Document Examiner, Inspector, Debugger, Peek, a
+   full GC, Save World and booting the saved world, the MacIvory animation
+   world's programs). Left: ephemeral GC flips; bignums, ratios, double
+   floats and complex numbers through the FPA; an overnight run; the
+   collection's applications that need a file or tape route in (Macsyma,
+   Illustrate, TeX). Anything that breaks is reproduced in the free-running simulation or the model.
    Lockstep only proves the RTL matches our model, so build a regression
    suite with its own expected answers, in place before the speed work:
    - Instruction tests on the RTL processor alone (`sim/ivory`, seconds):
@@ -107,10 +120,10 @@ In the order they'll be done. Bugs come first whenever they turn up.
    and the busy tag (dtp-null) on an early read. The status queue (registers
    4, 5, 7, 8, 9, 10: destinations and previous status).
 6. Calendar clock as GMT: Genera reads it as GMT, MiSTer's RTC is local time.
-7. A master disk image: a configured world (`Set Site`, saved), quality of
-   life patches (dates past 1999), and the applications: Illustrate and TeX
-   (distribution tapes), the Genera 8.1.1 animation world from the MacIvory
-   disk (its graphics want color hardware).
+7. A master disk image beyond the saved standalone world of the setup:
+   quality of life patches (dates past 1999), and the applications:
+   Illustrate and TeX (distribution tapes), the Genera 8.1.1 animation world
+   from the MacIvory disk (its graphics want color hardware).
 8. Network: the 82586 to a real network. Cores can't reach the MiSTer's
    Ethernet themselves; MiSTer's main program bridges it for a few cores
    (Minimig, NeXT, Sun), so this needs a change there.
