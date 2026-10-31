@@ -18,7 +18,7 @@ CPP := tb_system.cpp $(EMU)/machine.cpp $(EMU)/fpa.cpp $(EMU)/nvram.cpp $(EMU)/p
 
 VFLAGS := --cc --exe --build -j 8 -O3 --x-assign fast --x-initial fast --noassert \
   -Wno-fatal -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-MULTIDRIVEN -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM \
-  -Wno-BLKSEQ -I$(IVORY) -I$(XL) --top-module xl_machine
+  -Wno-BLKSEQ -Wwarn-UNDRIVEN -I$(IVORY) -I$(XL) --top-module xl_machine
 
 all: obj_dir/Vxl_machine obj_free/Vxl_machine
 
