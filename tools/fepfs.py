@@ -443,7 +443,7 @@ def cmd_mkworld(args):
         raise
 
 
-def standalone_site_files():
+def standalone_site_files(internet=None):
     """The files of Symbolics' standalone site for the FEP disk, written the
     way a new XL1200 was shipped (the Genera 8.3 Software Installation Guide
     for XL Family Machines, "The Symbolics Standalone Site"; the CD's
@@ -453,10 +453,13 @@ def standalone_site_files():
     match the template's Local.boot. The site's sys.translations has to be
     on the LMFS (FEP file types are at most four characters), so it is here
     as sys-translations.text for a Copy File in Genera: docs/NOTES.md,
-    "Compatibility"."""
+    "Compatibility".  With an Internet address the namespace also has the
+    INTERNET network, the host's address on it and its TCP services, and the
+    Hello.boot tells the FEP both addresses (docs/NOTES.md, "Network")."""
     hello = ("Hello I333\n"
              "Hello Local\n"
-             "Set Boot Options :Site Name Standalone\n"
+             + (f"Set Network Address CHAOS|1200,INTERNET|{internet}\n" if internet else "")
+             + "Set Boot Options :Site Name Standalone\n"
              "Set Boot Options :Namespace Descriptor File FEP7:>standalone-namespace.text\n")
     namespace = ('VERSION "FEP7:>standalone-namespace-log.text.newest"\n'
                  '* "FEP7:>standalone-objects.text.newest"\n'
@@ -478,7 +481,11 @@ STANDALONE YES
 NETWORK CHAOS
 SITE STANDALONE
 TYPE CHAOS
-
+""" + ("""
+NETWORK INTERNET
+SITE STANDALONE
+TYPE INTERNET
+""" if internet else "") + """
 HOST XL1200
 SYSTEM-TYPE LISPM
 SERVICE CHAOS-STATUS CHAOS-SIMPLE CHAOS-STATUS
@@ -497,7 +504,11 @@ SERVICE FILE CHAOS QFILE
 SERVICE FILE CHAOS NFILE
 SERVICE CONFIGURATION CHAOS CONFIGURATION
 ADDRESS CHAOS 1200
-SITE STANDALONE
+""" + (f"""ADDRESS INTERNET {internet}
+SERVICE LOGIN TCP TELNET
+SERVICE FILE TCP TCP-FTP
+SERVICE TIME UDP TIME-SIMPLE-MSB
+""" if internet else "") + """SITE STANDALONE
 MACHINE-TYPE XL1200
 
 USER LISP-MACHINE
@@ -545,7 +556,7 @@ def build_world_disk(args, name, typ, size):
         with open(path, 'rb') as f:
             add_text(name, typ, f.read(), int(os.path.getmtime(path)) + UT_EPOCH)
     if args.standalone:
-        for name, typ, text in standalone_site_files():
+        for name, typ, text in standalone_site_files(args.internet):
             add_text(name, typ, text.encode('ascii'), int(time.time()) + UT_EPOCH)
     # Load World pages to the declared paging files, FEPn:>Page.page by default.
     paging = fs.free_blocks() - 4 if args.paging == 'rest' else int(args.paging)   # a header, and a directory page if one is needed
@@ -586,6 +597,9 @@ def main():
     s.add_argument('--standalone', action='store_true',
                    help="also add the files of Symbolics' standalone site (a Hello.boot with the "
                         "boot options, the namespace, sys-translations.text for the LMFS)")
+    s.add_argument('--internet', metavar='A.B.C.D',
+                   help="with --standalone: the machine's Internet address (the INTERNET network "
+                        "and TCP services go in the namespace, both addresses in the Hello.boot)")
     s.add_argument('--no-grow', action='store_true',
                    help="keep the template's size instead of the label's disk size")
     s.add_argument('--blocks', type=int, metavar='N',
