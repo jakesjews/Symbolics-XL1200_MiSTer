@@ -7,10 +7,12 @@
 // memory is idle, so the requester may present its next request from the
 // cycle after ack.
 //
-// The cache is direct-mapped with four-word lines, write-through, allocating
-// on read misses only.  Only the processor reaches main memory (the I/O
-// board's DMA stays in its buffer memory), so nothing else can make a line
-// stale.  Its RAMs are read from the requester's address, which is a
+// The cache is direct-mapped with four-word lines, write-through, with a
+// valid bit per word: a read miss fills the line, a write installs its word
+// (allocating the line if need be), so a freshly written word is read back
+// from the cache and consing never reads DDR3.  Only the processor reaches
+// main memory (the I/O board's DMA stays in its buffer memory), so nothing
+// else can make a line stale.  Its RAMs are read from the requester's address, which is a
 // register on its side, so a read hit is answered in the cycle the request
 // appears, with no state change.  A miss is answered with the word asked
 // for as its beat of the line's burst arrives; the rest of the line lands
@@ -76,15 +78,15 @@ module xl_mem #(
   mstate_t st /*verilator public_flat_rd*/ = M_CLEAR;
 
   // ---------------------------------------------------------------- cache RAMs
-  logic [39:0]    cdata [1 << (LINE_AW + 2)];
-  logic [TAG_W:0] ctag  [1 << LINE_AW];       // {valid, tag}
-  logic [39:0]    cdata_q;
-  logic [TAG_W:0] ctag_q;
+  logic [39:0]      cdata [1 << (LINE_AW + 2)];
+  logic [TAG_W+3:0] ctag  [1 << LINE_AW];     // {valid[3:0], tag}
+  logic [39:0]      cdata_q;
+  logic [TAG_W+3:0] ctag_q;
   logic [LINE_AW+1:0] cdata_ra, cdata_wa;
   logic [LINE_AW-1:0] ctag_ra, ctag_wa;
   logic           cdata_we, ctag_we;
-  logic [39:0]    cdata_wd;
-  logic [TAG_W:0] ctag_wd;
+  logic [39:0]      cdata_wd;
+  logic [TAG_W+3:0] ctag_wd;
 
   always_ff @(posedge clk) if (cdata_we) cdata[cdata_wa] <= cdata_wd;
   always_ff @(posedge clk) if (ctag_we) ctag[ctag_wa] <= ctag_wd;
@@ -122,8 +124,11 @@ module xl_mem #(
 
   wire [TAG_W-1:0]   a_tag = a_addr[RAM_AW-1 -: TAG_W];
   wire [TAG_W-1:0]   c_tag = cpu_addr[RAM_AW-1 -: TAG_W];
-  // the hit for the request on the port (read from cpu_addr)
-  wire               hit = ctag_q[TAG_W] && ctag_q[TAG_W-1:0] == c_tag;
+  // the line and the word for the request on the port (read from cpu_addr)
+  wire               line_match = ctag_q[TAG_W-1:0] == c_tag;
+  wire [3:0]         line_valid = ctag_q[TAG_W+3:TAG_W];
+  wire               hit = line_match && line_valid[cpu_addr[1:0]];
+  wire [3:0]         word_bit = 4'b0001 << cpu_addr[1:0];
 
   // Clearing
   logic [22:0]       clr_addr;     // DDR words from RAM_BASE, then buffer words
@@ -140,14 +145,21 @@ module xl_mem #(
   // Writes into the cache
   always_comb begin
     cdata_we = 1'b0; cdata_wa = cpu_addr[LINE_AW+1:0]; cdata_wd = cpu_wdata;
-    ctag_we = 1'b0; ctag_wa = a_addr[LINE_AW+1:2]; ctag_wd = {1'b1, a_tag};
+    ctag_we = 1'b0; ctag_wa = a_addr[LINE_AW+1:2]; ctag_wd = {4'b1111, a_tag};
     case (st)
       M_CLEAR: begin
         ctag_we = !clr_tag[LINE_AW];
         ctag_wa = clr_tag[LINE_AW-1:0];
         ctag_wd = '0;
       end
-      M_IDLE: cdata_we = wq_push && hit;          // a write hit: update the word
+      M_IDLE: begin
+        // a write installs its word: in its line if that is the one
+        // cached, else in a fresh line holding that word alone
+        cdata_we = wq_push;
+        ctag_we = wq_push;
+        ctag_wa = cpu_addr[LINE_AW+1:2];
+        ctag_wd = line_match ? {line_valid | word_bit, c_tag} : {word_bit, c_tag};
+      end
       M_FILL: begin
         cdata_we = ddr_dout_ready;
         cdata_wa = {a_addr[LINE_AW+1:2], beat};
