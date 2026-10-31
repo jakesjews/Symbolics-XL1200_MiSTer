@@ -301,6 +301,16 @@ words back in block RAM, duplicated so the retire-cycle lookup reads from
 `next_pc` and the ordinary one from `pc` (both registers); a word's data
 lands a cycle after its tag, so a hit waits for it (a prefetched word can be
 fetched that very cycle: found as a trap inside a trap). 103.1M (6.8).
+Build 18 of it fits: 81% of the logic, 0.35 ns of slack. On the MiSTer
+(Oct 30 2026): Genera boots, compile-file works, `(fib 30)` takes 3.06 s
+(5.1 cycles an instruction; 5.7x the original core; the XL1201's 4.10 s),
+and Gabriel's geometric mean against the 3600 is 4.97x (a real Ivory ~6x):
+Tak 6.7x, FFT 7.4x, Deriv 6.9x, Destructive 6.5x, Browse 6.3x; Boyer 4.1x,
+Traverse 4.4x, Ctak 4.2x, Div2 4.0x/3.8x, Puzzle 1.9x. The stack-bound
+code is past the real machine by up to a quarter, the list- and
+array-bound code still under it, so the processor clock stays at 50 MHz
+for now (at 40 MHz the mean would be 4.0x, at 30.75 MHz 3.0x); the next
+speed work is the memory path those benchmarks wait on.
 The `decode` task runs in the fetch cycle (`fetch` task, called
 from `S_FETCH` and from `S_RETIRE`, whose cache lookup uses the next PC
 through `fetch_pc`); the operand pre-read sets `sc_ra` in `decode` and

@@ -56,22 +56,20 @@ In the order they'll be done. Bugs come first whenever they turn up.
    (`PROFILE=1` on `sim/system` counts cycles by state) and against the
    published times. The RTL's structure follows the chip, not the model;
    each step is checked on the MiSTer, not in lockstep.
-   - A pipelined memory interface (the Internals manual: up to four
-     requests outstanding, one word per cycle) once the pipeline can use it.
-   - Fewer states per simple instruction, overlapping fetch, decode and
-     execute like the 4-stage pipeline (push, add, eq in one cycle).
+   - The memory path, where the list- and array-bound benchmarks (Boyer,
+     Traverse, Puzzle, Div2) still lag the real machine: the DDR cache's
+     miss cost and the pipelined memory interface (the Internals manual: up
+     to four requests outstanding, one word per cycle).
    - Check against the Internals manual's block-transfer rates (an array
      copy approaching two cycles per element, an array sum one per cycle),
      Gabriel, fib, and de Kleer's prime-implicate tests (needs the Building
      Problem Solvers code).
-   - Done when the rebuilt core gets as far as this one: the FEP, Genera 8.3
-     to the Listener, Login, compile-file, (fib 30) = 1346269 and the Gabriel
-     suite with the same results, faster.
-   - Land in the real machine's ballpark, not well past it: if the
-     pipelined core comes out clearly faster than the XL1201's 4.1 s for
-     `(fib 30)`, run the processor at the machine cycle (30.75 MHz assumed:
-     the Merlin-II's 61.5 MHz oscillator halved) rather than 50 MHz. No
-     cycle-exact throttling.
+   - Land in the real machine's ballpark, not well past it. Standing (Oct
+     2026, build 18 at 50 MHz): `(fib 30)` 3.06 s against the XL1201's
+     4.1 s, Gabriel 5.0x the 3600 against a real Ivory's ~6x. The clock is
+     the lever (30.75 MHz assumed for the chip: the Merlin-II's 61.5 MHz
+     oscillator halved), to be set after the FrameThrower; no cycle-exact
+     throttling.
 2. A compatibility pass on the rebuilt core (not on this one: bugs in the
    old state machine aren't worth fixing): Zmacs (edit and save a file), Document
    Examiner, the Inspector, the Debugger, Peek; a full GC (`Start GC

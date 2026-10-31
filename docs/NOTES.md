@@ -666,9 +666,10 @@ paging space (Genera warns that a Start GC :Immediately will soon not fit).
 The rebuild of the processor after the real chip's structures is in
 `docs/ivory.md`, with each step's measurement; the stack cache brought
 `(fib 30)` to 9.33 s (15.5 cycles an instruction), the instruction cache
-and TLB to 6.43 s, the pipeline steps (build 14) to 3.68 s (6.1 cycles),
-under the XL1201's 4.10 s; Gabriel's geometric mean against the 3600 went
-1.41x, 2.31x, 4.73x (a real Ivory ~6x).
+and TLB to 6.43 s, the pipeline steps to 3.68 s and then 3.06 s (build
+18, 5.1 cycles), under the XL1201's 4.10 s; Gabriel's geometric mean
+against the 3600 went 1.41x, 2.31x, 4.73x, 4.97x (a real Ivory ~6x), with
+the list- and array-bound benchmarks still under the real machine.
 
 Before it, the RTL Ivory averaged ~29 cycles an instruction at 50 MHz, two thirds of
 them waiting ~7 cycles per memory access (`PROFILE=1` on `sim/system`),
