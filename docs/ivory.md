@@ -350,7 +350,16 @@ generators and one `%alu` (`rot_q`, `msk_q`, `msk2_q`, `alu_q`), with
 their inputs loaded the cycle before: the pops and the memory stage load
 the value, the dispatch arms the amounts; `%p-tag-ldb`, `%p-dpb` and
 `%block-n-read-test` take a cycle more. Same instruction count in the FEP
-boot simulation.
+boot simulation. Build 23 of all that (the two-cycle hits, the folded
+checks, the shared units) on the MiSTer: `(fib 30)` 2.81 s (4.7 cycles an
+instruction; the XL1201's 4.10 s), compile-file fine, Gabriel's geometric
+mean 6.39x the 3600: Deriv 8.6x, Stak 8.5x, Browse 8.4x, FFT 8.3x, Tak
+7.3x, Triang 6.7x, Traverse 6.5x; Boyer 5.3x, Div2 5.2x/5.0x, Ctak 4.8x,
+Puzzle 2.4x. The suite's average is now a real Ivory's; the compute-bound
+code is past it by up to 40% and the list- and array-bound code under it
+by as much, so what is left of the speed work is evening those out (the
+memory path), not more peak; the clock decision stays deferred to after
+the FrameThrower.
 
 ## Order of work
 
