@@ -689,6 +689,41 @@ where the real chip's stack cache, TLB and instruction cache answer in a
 cycle; and at least five states (fetch, fetch wait, decode, execute, retire)
 even with no memory access.
 
+## Compatibility
+
+Driven from the Mac with `tools/mister/run.sh type` (the Symbolics keys on
+the PC function keys, `{ctrl x}` and `{meta x}` chords) and `shot`, Oct 31
+2026, on build 30/31 (50 MHz).
+
+Genera 8.3 on the 80,000-block bench disk: Zmacs (Select-E, Find File on
+FEP7:, typing, Control-X Control-S, which asks "Who are you really?" under
+the Lisp-Machine login and then writes `FEP7:>compat.lisp.1`), the
+Document Examiner (Select-D, the candidates pane lists every Genera book:
+the documentation database is on the disk), the Inspector (Select-I on
+`*package*`), Peek (Select-P), Abort back to top level. `Start GC
+:Immediately` on that disk warned "Address space low" five times and the
+machine froze once it reached 0 words (the status line clock stopped):
+the bench disk's 3.1M words of paging space is less than physical memory,
+which Genera says will crash it, so the GC check moves to the 300 MB disk
+(`fepfs.py mkworld --blocks 240000`, 174,895 blocks of paging).
+
+The MacIvory animation world (`animation-mac-6-2.ilod`, Genera 8.1.1,
+System 436.39, from the user's collection) boots on the core from its own
+300 MB disk: the banner says "a Symbolics XL1200", 4.0M words physical and
+34.3M words of swap, with FrameThrower 10.52, Color, Graphics Library,
+Images, Live Window, Graphics Toolkit, PaintAmation, S-Geometry, S-Dynamics,
+S-Render, S-Compositor, S-Convert, S-Record, S-Colorize, Experimental
+Solitaire and the rest loaded. Each Select-key program opened and drew
+its frame: S-Paint, the S-Dynamics script editor with the S-Geometry
+viewer and camera menus, S-Compositor, S-Record (warnings only: no file
+server for its options file, no video recorder in the namespace),
+S-Convert, S-Colorize, Frame-Up, the Flavor Examiner, File System
+Operations (with Local LMFS Operations), Zmail, Converse, Terminal,
+Object Attributes; FrameThrower Utilities reports "No color configuration
+file found", as it would with no FrameThrower. The Joshua, Concordia,
+Statice and CLIM named in the collection's audit are installed files on
+the MacIvory disk, not systems in this world.
+
 ## RTL Ivory (`rtl/ivory/`)
 
 `ivory_cpu.sv` is a state machine that follows the C++ model function by
