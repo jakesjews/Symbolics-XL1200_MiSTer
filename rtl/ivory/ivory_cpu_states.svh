@@ -99,6 +99,20 @@
     m_wchk <= 1'b1;
     call(S_MEM_W, r);
   endtask
+  // The shared units for a packed array element (docs/ivory.md): ebits wide
+  // (32 >> bp) at bit esh of its word.  A read (S_AREF_6) rotates the word
+  // right by esh and masks ebits; a write (S_AREF_8) rotates the value left
+  // by esh under the mask of bits esh .. esh+ebits-1.  bp 0 is the whole
+  // word: esh 0, a 32-bit mask.
+  task automatic elem_units(input logic [2:0] ebp, input logic [4:0] ei, input logic set);
+    logic [5:0] ebits;
+    logic [4:0] esh;
+    ebits = 6'd32 >> ebp;
+    esh = (ei & ((5'd1 << ebp) - 5'd1)) << (3'd5 - ebp);
+    rot_n <= set ? esh : -esh;
+    msk_n <= set ? {1'b0, esh} + ebits : ebits;
+    msk2_n <= {1'b0, esh};
+  endtask
   // The memory stage has the data d (transport bit trans) of an access:
   // the checked read's or write's action, or just the result
   task automatic mem_got(input word_t d, input logic trans);

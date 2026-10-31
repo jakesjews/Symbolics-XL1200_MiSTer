@@ -110,6 +110,8 @@ int main(int argc, char** argv) {
   int shot = 0;
   const char* tr = getenv("XLTRACE");
   uint64_t trace_n = tr ? strtoull(tr, nullptr, 0) : 0;
+  // XLTRACE_FROM=N: the trace starts at the Nth instruction
+  uint64_t trace_from = getenv("XLTRACE_FROM") ? strtoull(getenv("XLTRACE_FROM"), nullptr, 0) : 0;
   // The instruction cache isn't kept coherent with stores (the chip's isn't):
   // report a hit in VMA=PMA space whose word differs from memory
   const int S_FETCH = 12;   // from rtl/ivory/ivory_cpu_state_enum.svh;
@@ -117,6 +119,8 @@ int main(int argc, char** argv) {
   // PROFILE=1: cycles by processor, MMU and memory state (names from the
   // generated state enum, as sim/system/tb_system.cpp)
   bool profile = getenv("PROFILE") != nullptr;
+  // PROFILE_FROM=N: count from the Nth instruction on (a benchmark after a boot)
+  uint64_t profile_from = getenv("PROFILE_FROM") ? strtoull(getenv("PROFILE_FROM"), nullptr, 0) : 0;
   std::map<int, uint64_t> prof_cpu;
   uint64_t prof_mmu[16] = {}, prof_mem[16] = {}, prof_insns0 = 0;
   // XLWATCH=va (hex, VMA=PMA space): report what happens to that instruction word
@@ -125,7 +129,8 @@ int main(int argc, char** argv) {
   bool watch_wr = false;
   while (cycles < end) {
     tick();
-    if (profile) {
+    if (profile && top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__icount >= profile_from) {
+      if (!prof_insns0) prof_insns0 = top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__icount;
       prof_cpu[top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__st]++;
       prof_mmu[top->rootp->xl_machine__DOT__core__DOT__mmu__DOT__st & 15]++;
       prof_mem[top->rootp->xl_machine__DOT__mem__DOT__st & 15]++;
@@ -190,7 +195,7 @@ int main(int argc, char** argv) {
         }
       }
     }
-    if (trace_n && top->retire) {
+    if (trace_n && top->retire && top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__icount >= trace_from) {
       trace_n--;
       printf("%10llu  pc %08x.%d  sp %08x\n", (unsigned long long)cycles,
              (uint32_t)(top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__pc >> 1),
@@ -241,7 +246,7 @@ int main(int argc, char** argv) {
     std::vector<std::pair<uint64_t, int>> tops;
     for (auto& [k, v] : prof_cpu) tops.emplace_back(v, k);
     std::sort(tops.rbegin(), tops.rend());
-    uint64_t insns = top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__icount;
+    uint64_t insns = top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__icount - (prof_insns0 ? prof_insns0 - 1 : 0);
     printf("profile: %llu cycles, %llu instructions, %.2f cycles/instruction\n", (unsigned long long)total,
            (unsigned long long)insns, (double)total / insns);
     for (size_t k = 0; k < tops.size() && k < 30; k++)

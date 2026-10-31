@@ -540,6 +540,7 @@
           hidx = a2[31:0];
           bp <= hbp; etype <= het; base <= hbase; idx <= hidx;
           ec = aset_check(val, het, hbp);
+          elem_units(hbp, hidx[4:0], op != 8'o312);
           if (mr_d[23]) begin
             if (op == 8'o310) exc(3'd3, val, a1, a2);
             else exc(3'd2, a1, a2, '0);
@@ -565,14 +566,20 @@
           end
         end
         S_PUSH_MRD: push(mr_d, S_RETIRE);
+        // the element: the word read (in the rotator) rotated right by its
+        // position and masked to its width (elem_units)
         S_AREF_6: begin
           if (bp != 3'd0 && !is_fixnum(mr_d)) err(E_BYTE_ARRAY_WORD_TYPE, mr_final);
-          else push(array_element(mr_d, bp, etype, idx), S_RETIRE);
+          else push(array_element(mr_d, etype, rot_q & msk_q), S_RETIRE);
         end
         S_AREF_7: begin
           if (!is_fixnum(mr_d)) err(E_BYTE_ARRAY_WORD_TYPE, mr_final);
-          else swrite(mr_final, setdata(mr_d, array_insert(mr_d[31:0], aset_value(val, etype), bp, idx)),
-                      S_RETIRE);
+          else begin rot_x <= aset_value(val, etype); st <= S_AREF_8; end   // the value, not the word read
+        end
+        S_AREF_8: begin
+          logic [31:0] mask;
+          mask = msk_q & ~msk2_q;
+          swrite(mr_final, setdata(mr_d, (mr_d[31:0] & ~mask) | (rot_q & mask)), S_RETIRE);
         end
 
         // setup-1d-array, setup-force-1d-array
@@ -652,6 +659,7 @@
           wa0 = t1[31:0] + (i2 >> fbp);
           bp <= fbp; etype <= fet; idx <= i2;
           ec = aset_check(val, fet, fbp);
+          elem_units(fbp, i2[4:0], op != 8'o350);
           if (op == 8'o350) begin
             if (fbp == 3'd0 && fet == 2'd3) mrd(mkw(DTP_LOCATIVE, wa0), CYC_DATA_READ, S_PUSH_MRD);
             else mrd(mkw(DTP_LOCATIVE, wa0), CYC_DATA_READ, S_AREF_6);

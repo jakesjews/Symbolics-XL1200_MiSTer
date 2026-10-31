@@ -565,18 +565,9 @@ module ivory_cpu
     endcase
   endfunction
 
-  // Array element extraction for aref (byte-packed or not)
-  function automatic word_t array_element(word_t word, logic [2:0] bp, logic [1:0] etype,
-                                          logic [31:0] idx);
-    logic [31:0] x;
-    logic [5:0] bits;
-    logic [4:0] sub;
-    x = word[31:0];
-    if (bp != 3'd0) begin
-      bits = 6'd32 >> bp;
-      sub = idx[4:0] & ((5'd1 << bp) - 5'd1);
-      x = (x >> (sub * bits)) & low_mask(bits);
-    end
+  // The array element of type etype from its bits x (extracted by the
+  // rotator and mask) and the word they came from
+  function automatic word_t array_element(word_t word, logic [1:0] etype, logic [31:0] x);
     case (etype)
       2'd0: return fixnum(x);
       2'd1: return mkw(DTP_CHARACTER, x);
@@ -585,17 +576,6 @@ module ivory_cpu
     endcase
   endfunction
 
-  function automatic logic [31:0] array_insert(logic [31:0] x, logic [31:0] v, logic [2:0] bp,
-                                               logic [31:0] idx);
-    logic [5:0] bits;
-    logic [4:0] sub;
-    logic [31:0] m;
-    if (bp == 3'd0) return v;
-    bits = 6'd32 >> bp;
-    sub = idx[4:0] & ((5'd1 << bp) - 5'd1);
-    m = low_mask(bits) << (sub * bits);
-    return (x & ~m) | ((v << (sub * bits)) & m);
-  endfunction
 
 `include "ivory_cpu_states.svh"
 
