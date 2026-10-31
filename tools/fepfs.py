@@ -437,13 +437,15 @@ def cmd_get(args):
     fs = FEPFS(Disk(args.image, args.stride), args.label)
     e = fs.lookup(args.path)
     left = e.header[F_LENGTH]
+    if left == 0:                 # a partition (LMFS, paging): no length, every block is data
+        left = sum(n for n, _ in fs.data_map(e.header)) * BLOCK
     with open(args.out, 'wb') as out:
         for dpn in fs.blocks(e.header):
             if left <= 0:
                 break
             out.write(fs.disk.raw(dpn)[:left])
             left -= BLOCK
-    print(f"{e.path}: {e.header[F_LENGTH]} bytes to {args.out}")
+    print(f"{e.path}: {os.path.getsize(args.out)} bytes to {args.out}")
 
 
 def cmd_mkworld(args):
