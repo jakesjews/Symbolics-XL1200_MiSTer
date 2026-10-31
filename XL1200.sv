@@ -46,7 +46,9 @@ localparam CONF_STR = {
 	"O[2],Aspect ratio,Original,Full Screen;",
 	"O[5:3],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer,HV-Integer;",
 	"O[6],Clock,28 years back,Today;",
+`ifdef XL_DEBUG
 	"O[7],Debug line,Off,On;",
+`endif
 	"O[10:8],Network,eth0,Off,eth1,macvlan,tap0;",
 	"-;",
 	"T[0],Reset;",
@@ -224,13 +226,16 @@ xl_machine #(.NT(NT), .CLK_HZ(50_000_000), .PROM_FILE("rtl/xl/boot_prom.mem")) m
 	.halt_reason(),
 	.retire(),
 	.insn_count(),
-	.debug(status[7]),
+	.debug(debug_on),
 	.dbg(dbg)
 );
 
-// With the debug line on, the same words go out on the UART (/dev/ttyS1 on
-// the MiSTer, 115200 8N1) twice a second.
+// The debug line is a debug build's (XL_DEBUG in the qsf). With it on, the
+// same words go out on the UART (/dev/ttyS1 on the MiSTer, 115200 8N1) twice
+// a second.
 wire [31:0] dbg[8];
+`ifdef XL_DEBUG
+wire debug_on = status[7];
 xl_debug_uart #(.CLK_HZ(50_000_000)) debug_uart
 (
 	.clk(clk_sys),
@@ -238,6 +243,10 @@ xl_debug_uart #(.CLK_HZ(50_000_000)) debug_uart
 	.words(dbg),
 	.txd(UART_TXD)
 );
+`else
+wire debug_on = 1'b0;
+assign UART_TXD = 1'b1;
+`endif
 
 assign LED_USER = run_light;
 assign LED_DISK = {1'b1, disk_light};

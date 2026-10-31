@@ -1009,9 +1009,10 @@ up by 150 s of simulated time (Oct 2026).
 
 ## Debug line
 
-The OSD's "Debug line" shows eight words in hex across the top of the
-picture and sends them to the UART (`/dev/ttyS1` on the MiSTer, 115200 8N1)
-twice a second (`xl_machine`):
+A debug build (`XL_DEBUG` in XL1200.qsf; the release build leaves it out,
+a few hundred ALUTs) has an OSD "Debug line" that shows eight words in hex
+across the top of the picture and sends them to the UART (`/dev/ttyS1` on
+the MiSTer, 115200 8N1) twice a second (`xl_machine`):
 
 1. instructions executed (low 32 bits)
 2. PC (word address of the next instruction)

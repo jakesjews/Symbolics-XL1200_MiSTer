@@ -51,8 +51,8 @@ function keys: [docs/keyboard.md](docs/keyboard.md).
 
 ## Troubleshooting
 
-- No FEP prompt: turn on Debug line in the OSD and read the words with
-  [docs/NOTES.md](docs/NOTES.md#debug-line).
+- No FEP prompt: a debug build's Debug line in the OSD shows where it
+  stopped, see [docs/NOTES.md](docs/NOTES.md#debug-line).
 - "Unable to get time from the network or the calendar clock": set Clock to "28 years back".
 - Genera asks for the date right after the MiSTer starts: MiSTer hadn't set its clock yet when the core loaded; type the date, or reload the core.
 - "This Lisp world has not been configured for use at the local site": the disk was built without `--standalone`.
