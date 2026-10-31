@@ -823,6 +823,64 @@ file found", as it would with no FrameThrower. The Joshua, Concordia,
 Statice and CLIM named in the collection's audit are installed files on
 the MacIvory disk, not systems in this world.
 
+## Network
+
+The 82586 on the I/O board reaches a real network the way the Sun, NeXT,
+SGI, HP 9000, Macintosh and Amiga cores do: the chip stays in the FPGA and
+Main_MiSTer is the wire.  Frames cross a mailbox in DDR3 at ARM physical
+0x1FF00000 (64 KB, outside the core's memory; the same window those
+cores use) that Main polls from its main loop and moves to a raw socket on
+eth0 (promiscuous, with a BPF filter on the guest's MAC), eth1, a macvlan
+child of eth0, or a tap device, as the OSD's Network option says (eth0,
+Off, eth1, macvlan, tap0: the Sun cores' order, so Main's code for them
+serves).  Nothing runs by hand.  Over WiFi only tap0 can work (the MiSTer
+here has eth0 with no cable and wlan0 on 192.168.50.0/24).
+
+- `rtl/xl/xl_eth_hps.sv` is the SparcStation 20 core's `eth_hps.sv`
+  (GPL-2+) with the magic word "XLETH001": the mailbox protocol SSETH002
+  (magic, generation, TX and RX write/read counts, the MAC word, 8 TX
+  slots and 16 RX slots of 2 KB with a length header; Main appends the
+  FCS to received frames and computes the LADRF hash), 10 Mb/s pacing of
+  received frames, the station/broadcast/multicast/promiscuous filter,
+  loopback, and the drops (Main not running: 50 ms; network off: at
+  once).  `rtl/xl/ddram_arb.sv`, the same core's arbiter, puts it on the
+  DDR port behind `xl_mem` (master 0, with priority).
+- `rtl/xl/xl_i82586.sv` grew the transmit and receive engines on Genera's
+  structures (`network/82586-ethernet-driver.lisp`): a transmit block's
+  TBD chain is pushed to the wire 16 bits at a time (byte enables for odd
+  starts and ends; with AL-LOC 0 the destination, the station address and
+  the length from the block go first) and the block completes with C and
+  OK once the wire has the frame; a received frame goes to the RFD at the
+  RFA and its RBD chain (the one the RFD names, or the one in use),
+  buffer by buffer with actual counts, F and EOF, the RFD getting the
+  first RBD's offset, C and OK (and the address and length fields with
+  AL-LOC 0), then FR; EL on an RFD ends the area (no resources, RNR), S
+  suspends, an RBD with EL inside a frame truncates it; IA-setup sets the
+  station address (published to Main), configure takes AL-LOC, loopback,
+  promiscuous and broadcast disable, MC-setup opens the multicast filter.
+  Genera's driver configures AL-LOC 1 (addresses in the buffers), 192-byte
+  receive buffers (a 1514-byte frame spans eight), sixty frames, and
+  restarts the RU itself when it runs out.  The FCS is not stored.
+- `sim/ether/` drives the chip as the driver does and plays Main's side of
+  the mailbox (the structures Genera lays out, Main's CRC and hash): the
+  handshake, configure and IA-setup, transmits of one buffer, a chain with
+  odd lengths and an odd start, 1514 and 14 bytes, receives across two
+  and eight buffers, an odd broadcast, a frame for another station
+  (consumed, not delivered), suspend and resume, the last RFD and the
+  driver's restart, AL-LOC 0 both ways, and the network off.  489k cycles.
+- Main's side: `tools/mister/Main_MiSTer-xl1200-enet.patch`,
+  `support/xl1200/xl1200_enet.cpp` (the Sun bridge keyed on XLETH001, the
+  OSD option at status bits 10:8, macvlan child "xl0") and the three
+  user_io hooks, for a pull request to MiSTer-devel/Main_MiSTer.  Built
+  with the Arm GNU 10.2 toolchain on the Ubuntu server
+  (`~/dev/mister/toolchain`, `~/dev/mister/Main_MiSTer`).
+- The namespace: `fepfs.py mkworld --standalone --internet A.B.C.D` adds
+  the INTERNET network, the host's address and its TCP services (TELNET,
+  TCP-FTP, TIME) and a `Set Network Address CHAOS|1200,INTERNET|A.B.C.D`
+  line to the Hello.boot.  The station address is the ID PROM's
+  08:00:05:12:00:01 (`xl_iob`'s ETHERNET parameter), the same for every
+  core.
+
 ## RTL Ivory (`rtl/ivory/`)
 
 `ivory_cpu.sv` is a state machine that follows the C++ model function by
