@@ -673,8 +673,10 @@ and TLB to 6.43 s, the pipeline steps to 3.68 s and 3.06 s, the memory
 path to 2.81 s (build 23, 4.7 cycles; build 25 with the array elements
 through the shared units the same), under the XL1201's 4.10 s;
 Gabriel's geometric mean against the 3600 went 1.41x, 2.31x, 4.73x,
-4.97x, 6.4x (a real Ivory ~6x), the list- and array-bound benchmarks
-still under the real machine (Puzzle 2.4x) and the compute-bound ones past it.
+4.97x, 6.4x (a real Ivory ~6x), then 6.55x with the DDR cache answering
+misses early and posting writes (build 27: Stak and the recursive Div2
+11-13% faster), the compute-bound benchmarks past the real machine and
+Puzzle (2.4x: Genera 8.3's version does more work) the outlier.
 
 Before it, the RTL Ivory averaged ~29 cycles an instruction at 50 MHz, two thirds of
 them waiting ~7 cycles per memory access (`PROFILE=1` on `sim/system`),

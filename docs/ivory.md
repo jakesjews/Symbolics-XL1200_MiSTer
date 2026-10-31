@@ -369,11 +369,41 @@ armed them in `aref-1`'s arm only and left `fast-aref-1`, the form
 Genera's compiled code uses, reading the units stale, which blanked the
 FEP's screen with no halt: the two array paths share their tail states
 and must share their setup. Build 25 (79%, every clock met with 0.29 ns
-to spare): `(fib 30)` 2.80 s, Gabriel 6.41x, Puzzle still 2.40x. Then the
-DDR cache answers a miss with the word asked for as its beat of the burst
-arrives, the rest of the line landing while the processor goes on,
-instead of after the fourth beat and a state more (FEP boot simulation
-fine; build 26).
+to spare): `(fib 30)` 2.80 s, Gabriel 6.41x, Puzzle still 2.40x.
+
+Puzzle turned out not to lag at all: the model counts 49M instructions a
+call, so 4.60 s is the pipeline's 4.7 cycles an instruction, as fib, Tak
+and Ctak; Genera 8.3's Puzzle just does more work than the 1985 one the
+3600's time is for. Dividing the model's counts into build 25's times
+puts the memory-bound benchmarks at Stak 10.7 cycles an instruction
+(special binding: the binding stack and the value cell, three writes and
+two reads a bind/unbind pair), Div2 recursive 10.4 (deep recursion: the
+stack cache dumping and refilling), FFT 8.6, Boyer 7.9, Traverse 7.1
+(list structure across the heap: misses) — the model's opcode histograms
+of Boyer and Stak show stores at 7% and 14% of their instructions, and
+every store went through to DDR3 one transaction at a time, four cycles
+plus the controller's busy time, a stack-cache dump thirty-two of them in
+a row.
+
+So two changes to the DDR cache. The miss is answered with the word asked
+for as its beat of the burst arrives, the rest of the line landing while
+the processor goes on, instead of after the fourth beat and a state more:
+build 26, Boyer, Traverse, Deriv and Dderiv 2-4% faster, Div2 recursive
+5% slower (the prefetcher takes the port in the window the earlier
+acknowledgement opens; to look at), geometric mean 6.45x. And writes are
+posted: acknowledged in the cycle they appear, the cached word updated on
+a hit, and queued (32 entries) for DDR3, which takes them while the memory
+is idle; a read miss waits for the queue to drain so DDR3 has every write
+first. A write is then two cycles like a cached read, and a dump streams.
+Build 27: Stak 11% faster (9.4 cycles an instruction), Div2 recursive
+13.5% (9.5), Div2 iterative 4.5%, Boyer and Browse 2%; Traverse 12.7%
+slower (5.26 to 5.93 s), everything else within noise; geometric mean
+6.55x. Traverse's graph fits the cache, so its loss is the queue itself:
+every miss waited for the whole queue to drain, and a prefetch issued
+while a line was still landing held the port. So the prefetcher waits for
+the memory's busy signal (build 28), and a miss passes the queue unless a
+queued write is to its line, the addresses in flops for the compare, 16
+entries (build 29).
 
 ## Order of work
 
