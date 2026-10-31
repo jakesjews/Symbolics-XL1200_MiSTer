@@ -3,7 +3,7 @@
 #include <fstream>
 #include <map>
 // The RTL XL1200 as it runs on the MiSTer: device time in microseconds of the
-// 50 MHz clock, SCSI commands running while the processor polls, memory
+// 30.77 MHz clock, SCSI commands running while the processor polls, memory
 // cleared at power-up (DDR3 starts with junk), the display clock running.
 // No reference model; it prints what the console shows by saving the screen.
 //   ./obj_free/Vxl_machine DISK.dd SECONDS [AT-SECONDS TEXT] [SCREEN.pgm]
@@ -28,7 +28,8 @@
 static Vxl_machine* top;
 static DdrModel ddr;
 static SdModel<Vxl_machine> sd;
-static uint64_t cycles = 0;            // 50 MHz cycles
+static const double CLK_HZ = 30769231.0; // the machine's clock, as XL1200.sv sets it
+static uint64_t cycles = 0;            // clock cycles
 static const uint32_t RAM_BASE = 0x06000000, BUF_BASE = 0x06400000;
 static std::deque<std::pair<bool, uint8_t>> keys;
 
@@ -66,8 +67,8 @@ int main(int argc, char** argv) {
     fprintf(stderr, "usage: %s DISK.dd SECONDS [AT-SECONDS TEXT] [SCREEN.pgm]\n", argv[0]);
     return 1;
   }
-  uint64_t end = (uint64_t)(atof(argv[2]) * 50e6);
-  uint64_t type_at = argc > 4 ? (uint64_t)(atof(argv[3]) * 50e6) : ~0ull;
+  uint64_t end = (uint64_t)(atof(argv[2]) * CLK_HZ);
+  uint64_t type_at = argc > 4 ? (uint64_t)(atof(argv[3]) * CLK_HZ) : ~0ull;
   std::string text = argc > 4 ? argv[4] : "";
   std::string screen = argc > 5 ? argv[5] : "screen.pgm";
 
@@ -106,7 +107,7 @@ int main(int argc, char** argv) {
   top->reset = 0;
 
   size_t typed = 0;
-  uint64_t next_key = type_at, next_shot = 50000000;
+  uint64_t next_key = type_at, next_shot = (uint64_t)CLK_HZ;
   int shot = 0;
   const char* tr = getenv("XLTRACE");
   uint64_t trace_n = tr ? strtoull(tr, nullptr, 0) : 0;
@@ -151,7 +152,7 @@ int main(int argc, char** argv) {
     if (watch) {
       auto& r = *top->rootp;
       static double t_from = getenv("XLFROM") ? atof(getenv("XLFROM")) : 0, t_to = getenv("XLTO") ? atof(getenv("XLTO")) : 0;
-      double t = cycles / 50e6;
+      double t = cycles / CLK_HZ;
       if (t >= t_from && t < t_to)
         printf("%.7f cpu st %3d mem_req %d we %d addr %08x | port_ack %d rdata %010llx | pf busy %d req %d addr %08x | mmu st %d bus req %d ack %d addr %08x | ic we %d wix %2d wd %010llx fill %d s_va %08x\n",
                t, (int)r.xl_machine__DOT__core__DOT__cpu__DOT__st, (int)r.xl_machine__DOT__core__DOT__mem_req,
@@ -164,14 +165,14 @@ int main(int argc, char** argv) {
                (int)r.xl_machine__DOT__core__DOT__icache__DOT__fill, r.xl_machine__DOT__core__DOT__icache__DOT__s_va);
       uint64_t m = ddr.at(RAM_BASE + (watch & 0x07FFFFFFu));
       if (m != watch_mem) {
-        printf("%.6f s: memory[%08x] = %010llx\n", cycles / 50e6, watch, (unsigned long long)m);
+        printf("%.6f s: memory[%08x] = %010llx\n", cycles / CLK_HZ, watch, (unsigned long long)m);
         watch_mem = m;
       }
       bool wr = r.xl_machine__DOT__core__DOT__mem_req && r.xl_machine__DOT__core__DOT__mem_we &&
                 (r.xl_machine__DOT__core__DOT__mem_phys ? (r.xl_machine__DOT__core__DOT__mem_addr | 0xF8000000u) == watch
                                                         : r.xl_machine__DOT__core__DOT__mem_addr == watch);
       if (wr && !watch_wr)
-        printf("%.6f s: processor writes %08x (phys %d)\n", cycles / 50e6, watch, (int)r.xl_machine__DOT__core__DOT__mem_phys);
+        printf("%.6f s: processor writes %08x (phys %d)\n", cycles / CLK_HZ, watch, (int)r.xl_machine__DOT__core__DOT__mem_phys);
       watch_wr = wr;
       {
         static uint64_t last_d = ~0ull; static uint32_t last_t = ~0u; static int last_v = -1;
@@ -179,9 +180,9 @@ int main(int argc, char** argv) {
         uint32_t t = r.xl_machine__DOT__core__DOT__icache__DOT__tag[watch & 31];
         int v = (r.xl_machine__DOT__core__DOT__icache__DOT__valid >> (watch & 31)) & 1;
         if (d != last_d || t != last_t || v != last_v) {
-          if (cycles / 50e6 > 0.58)
+          if (cycles / CLK_HZ > 0.58)
             printf("%.6f s: slot %d tag %08x valid %d data %010llx  (fill %d pend %d pf_busy %d s_va %08x s_pa %08x)\n",
-                   cycles / 50e6, (int)(watch & 31), t << 5, v, (unsigned long long)d,
+                   cycles / CLK_HZ, (int)(watch & 31), t << 5, v, (unsigned long long)d,
                    (int)r.xl_machine__DOT__core__DOT__icache__DOT__fill, (int)r.xl_machine__DOT__core__DOT__icache__DOT__pend,
                    (int)r.xl_machine__DOT__core__DOT__icache__DOT__pf_busy, r.xl_machine__DOT__core__DOT__icache__DOT__s_va,
                    r.xl_machine__DOT__core__DOT__icache__DOT__s_pa);
@@ -189,7 +190,7 @@ int main(int argc, char** argv) {
         }
       }
       if (r.xl_machine__DOT__core__DOT__cpu__DOT__st == S_FETCH && (uint32_t)(r.xl_machine__DOT__core__DOT__cpu__DOT__pc >> 1) == watch)
-        printf("%.6f s: fetch %08x hit %d valid %d\n", cycles / 50e6, watch,
+        printf("%.6f s: fetch %08x hit %d valid %d\n", cycles / CLK_HZ, watch,
                (int)r.xl_machine__DOT__core__DOT__icache__DOT__hit, (int)((r.xl_machine__DOT__core__DOT__icache__DOT__valid >> (watch & 31)) & 1));
     }
     if (top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__st == S_FETCH &&
@@ -200,7 +201,7 @@ int main(int argc, char** argv) {
         uint64_t got = top->rootp->xl_machine__DOT__core__DOT__icache__DOT__word;
         if (mem != got && stale++ < 10) {
           printf("stale instruction cache hit at %08x: cache %010llx memory %010llx (%.3f s)\n", va,
-                 (unsigned long long)got, (unsigned long long)mem, cycles / 50e6);
+                 (unsigned long long)got, (unsigned long long)mem, cycles / CLK_HZ);
           if (stale == 1)
             for (int k = -4; k <= 3; k++)
               printf("  memory[%08x] = %010llx\n", va + k,
@@ -215,7 +216,7 @@ int main(int argc, char** argv) {
              (int)(top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__pc & 1), top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__sp);
     }
     if (top->halted) {
-      printf("halted (code %d) after %.3f s\n", top->halt_reason, cycles / 50e6);
+      printf("halted (code %d) after %.3f s\n", top->halt_reason, cycles / CLK_HZ);
       if (getenv("XLTRACE"))
         printf("ddr[RAM+800c..f] = %010llx %010llx %010llx %010llx, wleft %d\n",
                (unsigned long long)ddr.at(RAM_BASE + 0x800c), (unsigned long long)ddr.at(RAM_BASE + 0x800d),
@@ -226,7 +227,7 @@ int main(int argc, char** argv) {
       char c = text[typed] == '|' ? '\r' : text[typed];
       uint8_t k;
       bool shift;
-      if (c == '~') next_key = cycles + 500000000;
+      if (c == '~') next_key = cycles + 10 * (uint64_t)CLK_HZ;
       else {
         if (ascii_to_key(c, k, shift)) {
           if (shift) keys.emplace_back(true, K_LEFT_SHIFT);
@@ -234,12 +235,12 @@ int main(int argc, char** argv) {
           keys.emplace_back(false, k);
           if (shift) keys.emplace_back(false, K_LEFT_SHIFT);
         }
-        next_key = cycles + (c == '\r' ? 150000000 : 2500000);
+        next_key = cycles + (c == '\r' ? 3 * (uint64_t)CLK_HZ : (uint64_t)(CLK_HZ / 20));
       }
       typed++;
     }
     if (cycles >= next_shot) {
-      next_shot += 50000000;
+      next_shot += (uint64_t)CLK_HZ;
       shot++;
       printf("%d s: %llu instructions, memory %s\n", shot, (unsigned long long)top->insn_count,
              top->rootp->xl_machine__DOT__mem_ready ? "ready" : "clearing");
@@ -265,8 +266,9 @@ int main(int argc, char** argv) {
     for (int k = 0; k < 16; k++) if (prof_mmu[k]) printf("  mmu %-8s %5.1f%%\n", mmu_names[k], 100.0 * prof_mmu[k] / total);
     for (int k = 0; k < 16; k++) if (prof_mem[k]) printf("  mem %-8s %5.1f%%\n", mem_names[k], 100.0 * prof_mem[k] / total);
   }
-  printf("%.2f s simulated, %llu instructions; screen in %s\n", cycles / 50e6, (unsigned long long)top->insn_count,
+  printf("%.2f s simulated, %llu instructions; screen in %s\n", cycles / CLK_HZ, (unsigned long long)top->insn_count,
          screen.c_str());
+  printf("machine clock %u us, the bench's %.0f\n", (unsigned)top->rootp->xl_machine__DOT__usec, cycles / CLK_HZ * 1e6);
   delete top;
   fs::remove_all(dir);
   return 0;

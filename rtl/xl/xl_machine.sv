@@ -4,14 +4,14 @@
 // "Physical address map").
 //
 // Device time: the I/O board and the microsecond clock count microseconds of
-// clk (CLK_MHZ), or with LOCKSTEP instructions, as the reference model does
+// clk (CLK_HZ), or with LOCKSTEP instructions, as the reference model does
 // (four instructions a microsecond), so the Verilator testbench can run the
 // machine in lockstep with emu/.
 module xl_machine #(
   parameter int    NT = 2,                 // SCSI disk targets
   parameter bit    LOCKSTEP = 1'b0,
   parameter bit    MEM_CLEAR = 1'b1,       // clear DDR3 memory at power-up
-  parameter int    CLK_MHZ = 50,
+  parameter int    CLK_HZ = 30_769_231,   // the Merlin-II's 61.5 MHz halved, as the PLL makes it (1200/39)
   parameter        PROM_FILE = "boot_prom.mem"
 ) (
   input  logic        clk,
@@ -82,7 +82,7 @@ module xl_machine #(
   logic        cop_req, cop_we, cop_ack;
   logic [9:0]  cop_reg;
   word_t       cop_wdata, cop_rdata;
-  logic [31:0] usec;
+  logic [31:0] usec /*verilator public_flat_rd*/;
   logic        mem_ready /*verilator public_flat_rd*/, mem_busy;
   logic        retire_counted;
   logic        hp_sb, lp_sb;
@@ -102,7 +102,9 @@ module xl_machine #(
 
   // ---------------------------------------------------------------- time
   logic [31:0] ticks;           // LOCKSTEP: instructions so far
-  logic [7:0]  usec_div;
+  // A microsecond every CLK_HZ / 1e6 cycles, fractional: the accumulator
+  // gains a million a cycle and ticks when it passes the clock rate.
+  logic [26:0] usec_acc;
   logic        usec_tick;
   logic [19:0] sec_div;
   logic        second;
@@ -114,17 +116,17 @@ module xl_machine #(
         ticks <= ticks + 32'd1;
         if (ticks[1:0] == 2'd3) usec_tick <= 1'b1;
       end
-    end else if (usec_div == 8'(CLK_MHZ - 1)) begin
-      usec_div <= 8'd0;
+    end else if (usec_acc + 27'd1_000_000 >= 27'(CLK_HZ)) begin
+      usec_acc <= usec_acc + 27'd1_000_000 - 27'(CLK_HZ);
       usec_tick <= 1'b1;
-    end else usec_div <= usec_div + 8'd1;
+    end else usec_acc <= usec_acc + 27'd1_000_000;
     if (usec_tick) begin
       usec <= usec + 32'd1;
       if (sec_div == 20'd999999) begin sec_div <= 20'd0; second <= 1'b1; end
       else sec_div <= sec_div + 20'd1;
     end
     if (power_on) begin
-      ticks <= '0; usec_div <= '0; usec <= '0; sec_div <= '0;
+      ticks <= '0; usec_acc <= '0; usec <= '0; sec_div <= '0;
     end
   end
   wire        dev_tick = LOCKSTEP ? retire : usec_tick;
