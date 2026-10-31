@@ -59,7 +59,7 @@ public:
 
   bool hp_sb = false, lp_sb = false;
   uint64_t cycles = 0;            // advanced by the run loop
-  uint64_t pit_usec = 0;          // microseconds the timer has counted
+  uint32_t pit_usec = 0;          // microsecond clock value the timer has counted to
 
   // Accesses to not-yet-modelled registers are logged (a few per address).
   bool log_io = true;

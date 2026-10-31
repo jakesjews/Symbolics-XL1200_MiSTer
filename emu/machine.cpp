@@ -19,7 +19,9 @@ void Machine::tick(uint64_t n) {
   cycles += n;
   iob.frame_counter = cycles / 64;
   iob.tick(cycles);
-  uint64_t usec = microsecond_clock();
+  // The microsecond clock is 32 bits and wraps (71.6 minutes); count the
+  // difference in 32 bits too
+  uint32_t usec = microsecond_clock();
   if (usec != pit_usec) {
     pit.tick(usec - pit_usec);
     pit_usec = usec;

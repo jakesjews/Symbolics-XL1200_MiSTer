@@ -106,8 +106,76 @@ int main(int argc, char** argv) {
   int shot = 0;
   const char* tr = getenv("XLTRACE");
   uint64_t trace_n = tr ? strtoull(tr, nullptr, 0) : 0;
+  // The instruction cache isn't kept coherent with stores (the chip's isn't):
+  // report a hit in VMA=PMA space whose word differs from memory
+  const int S_FETCH = 12;   // from rtl/ivory/ivory_cpu_state_enum.svh;
+  uint64_t stale = 0;
+  // XLWATCH=va (hex, VMA=PMA space): report what happens to that instruction word
+  uint32_t watch = getenv("XLWATCH") ? (uint32_t)strtoul(getenv("XLWATCH"), nullptr, 16) : 0;
+  uint64_t watch_mem = watch ? ddr.at(RAM_BASE + (watch & 0x07FFFFFFu)) : 0;
+  bool watch_wr = false;
   while (cycles < end) {
     tick();
+    if (watch) {
+      auto& r = *top->rootp;
+      static double t_from = getenv("XLFROM") ? atof(getenv("XLFROM")) : 0, t_to = getenv("XLTO") ? atof(getenv("XLTO")) : 0;
+      double t = cycles / 50e6;
+      if (t >= t_from && t < t_to)
+        printf("%.7f cpu st %3d mem_req %d we %d addr %08x | port_ack %d rdata %010llx | pf busy %d req %d addr %08x | mmu st %d bus req %d ack %d addr %08x | ic we %d wix %2d wd %010llx fill %d s_va %08x\n",
+               t, (int)r.xl_machine__DOT__core__DOT__cpu__DOT__st, (int)r.xl_machine__DOT__core__DOT__mem_req,
+               (int)r.xl_machine__DOT__core__DOT__mem_we, r.xl_machine__DOT__core__DOT__mem_addr,
+               (int)r.xl_machine__DOT__core__DOT__port_ack, (unsigned long long)r.xl_machine__DOT__core__DOT__mem_rdata,
+               (int)r.xl_machine__DOT__core__DOT__icache__DOT__pf_busy, (int)r.xl_machine__DOT__core__DOT__pf_req,
+               r.xl_machine__DOT__core__DOT__pf_addr, (int)r.xl_machine__DOT__core__DOT__mmu__DOT__st,
+               (int)r.xl_machine__DOT__core__DOT__bus_req, (int)r.xl_machine__DOT__core__DOT__bus_ack,
+               r.xl_machine__DOT__core__DOT__bus_addr, 0, 0, 0ull,
+               (int)r.xl_machine__DOT__core__DOT__icache__DOT__fill, r.xl_machine__DOT__core__DOT__icache__DOT__s_va);
+      uint64_t m = ddr.at(RAM_BASE + (watch & 0x07FFFFFFu));
+      if (m != watch_mem) {
+        printf("%.6f s: memory[%08x] = %010llx\n", cycles / 50e6, watch, (unsigned long long)m);
+        watch_mem = m;
+      }
+      bool wr = r.xl_machine__DOT__core__DOT__mem_req && r.xl_machine__DOT__core__DOT__mem_we &&
+                (r.xl_machine__DOT__core__DOT__mem_phys ? (r.xl_machine__DOT__core__DOT__mem_addr | 0xF8000000u) == watch
+                                                        : r.xl_machine__DOT__core__DOT__mem_addr == watch);
+      if (wr && !watch_wr)
+        printf("%.6f s: processor writes %08x (phys %d)\n", cycles / 50e6, watch, (int)r.xl_machine__DOT__core__DOT__mem_phys);
+      watch_wr = wr;
+      {
+        static uint64_t last_d = ~0ull; static uint32_t last_t = ~0u; static int last_v = -1;
+        uint64_t d = r.xl_machine__DOT__core__DOT__icache__DOT__data[watch & 31];
+        uint32_t t = r.xl_machine__DOT__core__DOT__icache__DOT__tag[watch & 31];
+        int v = (r.xl_machine__DOT__core__DOT__icache__DOT__valid >> (watch & 31)) & 1;
+        if (d != last_d || t != last_t || v != last_v) {
+          if (cycles / 50e6 > 0.58)
+            printf("%.6f s: slot %d tag %08x valid %d data %010llx  (fill %d pend %d pf_busy %d s_va %08x s_pa %08x)\n",
+                   cycles / 50e6, (int)(watch & 31), t << 5, v, (unsigned long long)d,
+                   (int)r.xl_machine__DOT__core__DOT__icache__DOT__fill, (int)r.xl_machine__DOT__core__DOT__icache__DOT__pend,
+                   (int)r.xl_machine__DOT__core__DOT__icache__DOT__pf_busy, r.xl_machine__DOT__core__DOT__icache__DOT__s_va,
+                   r.xl_machine__DOT__core__DOT__icache__DOT__s_pa);
+          last_d = d; last_t = t; last_v = v;
+        }
+      }
+      if (r.xl_machine__DOT__core__DOT__cpu__DOT__st == S_FETCH && (uint32_t)(r.xl_machine__DOT__core__DOT__cpu__DOT__pc >> 1) == watch)
+        printf("%.6f s: fetch %08x hit %d valid %d\n", cycles / 50e6, watch,
+               (int)r.xl_machine__DOT__core__DOT__icache__DOT__hit, (int)((r.xl_machine__DOT__core__DOT__icache__DOT__valid >> (watch & 31)) & 1));
+    }
+    if (top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__st == S_FETCH &&
+        top->rootp->xl_machine__DOT__core__DOT__icache__DOT__hit) {
+      uint32_t va = (uint32_t)(top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__pc >> 1);
+      if (va >= 0xF8000000u && (va & 0x07FFFFFFu) < 0x400000u) {
+        uint64_t mem = ddr.at(RAM_BASE + (va & 0x07FFFFFFu)) & 0xFFFFFFFFFFull;
+        uint64_t got = top->rootp->xl_machine__DOT__core__DOT__icache__DOT__word;
+        if (mem != got && stale++ < 10) {
+          printf("stale instruction cache hit at %08x: cache %010llx memory %010llx (%.3f s)\n", va,
+                 (unsigned long long)got, (unsigned long long)mem, cycles / 50e6);
+          if (stale == 1)
+            for (int k = -4; k <= 3; k++)
+              printf("  memory[%08x] = %010llx\n", va + k,
+                     (unsigned long long)(ddr.at(RAM_BASE + ((va + k) & 0x07FFFFFFu)) & 0xFFFFFFFFFFull));
+        }
+      }
+    }
     if (trace_n && top->retire) {
       trace_n--;
       printf("%10llu  pc %08x.%d  sp %08x\n", (unsigned long long)cycles,

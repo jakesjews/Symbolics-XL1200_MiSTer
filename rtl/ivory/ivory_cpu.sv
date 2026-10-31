@@ -40,6 +40,19 @@ module ivory_cpu
   input  logic        mem_buserr,     // with mem_ack: nothing at this address
   input  logic [31:0] mem_bus_pa,     // with mem_buserr: the physical address
   input  logic        mem_transport,  // with mem_ack: the page's transport-trap bit
+  input  logic [31:0] mem_pa,         // with mem_ack: the physical address accessed
+
+  // instruction cache (ivory_icache): looked up from the PC, filled on a miss
+  input  logic        ic_hit,
+  input  word_t       ic_word,
+  output logic        ic_fill,
+  output logic [31:0] ic_fill_va,
+  output logic [31:0] ic_fill_pa,
+  output word_t       ic_fill_word,
+  output logic [31:0] fetch_pc,
+  output logic        icache_on,
+  output logic        pf_on,
+  output logic [3:0]  pf_high,
 
   output logic [31:0] pht_base_o,     // to the MMU
   output logic [31:0] pht_mask_o,
@@ -115,7 +128,7 @@ module ivory_cpu
     IRW_COUNT_MAP_RELOADS = 9, IRW_LIST_CACHE_AREA = 10, IRW_LIST_CACHE_ADDRESS = 11,
     IRW_LIST_CACHE_LENGTH = 12, IRW_STRUCTURE_CACHE_AREA = 13, IRW_STRUCTURE_CACHE_ADDRESS = 14,
     IRW_STRUCTURE_CACHE_LENGTH = 15, IRW_FEP_MODE_TRAP_VECTOR_ADDRESS = 20,
-    IRW_STACK_FRAME_MAXIMUM_SIZE = 24;
+    IRW_STACK_FRAME_MAXIMUM_SIZE = 24, IRW_STACK_CACHE_DUMP_QUANTUM = 25;
   // Registers in 01001-01031 kept in IRW; the others in that range are scratch.
   function automatic logic irw_reg(logic [9:0] r);
     case (r)
@@ -146,13 +159,9 @@ module ivory_cpu
   logic [31:0] restart_sp;
   logic        pc_changed, trace_insn, count_insn;
   word_t       iw;                    // instruction word
-  // The last instruction word fetched: the second halfword instruction in a
-  // word needn't fetch it again.  Forgotten when the processor writes that
-  // word, and at every coprocessor operation (life support may change memory
-  // or page attributes then).
-  logic        ib_valid;
-  logic [31:0] ib_addr;
-  word_t       ib_word;
+  logic        fetch_mem;            // the instruction word came from memory (not the cache)
+  logic [31:0] m_pa;                  // physical address of the last memory access
+  logic        m_pa_valid;
   logic [7:0]  op;
   logic [9:0]  operand;
   logic [1:0]  omode;
@@ -165,6 +174,29 @@ module ivory_cpu
   logic [63:0] q64;
   logic [10:0] guard;
   logic [15:0] loopn;
+
+  // Stack cache (docs/ivory.md): 128 words shadowing [lower bound, +127],
+  // read combinationally from a registered address, written a cycle after
+  // the state that asks for it
+  word_t       sc_data [128]    /*verilator public_flat_rw*/;
+  logic [6:0]  sc_ra, sc_wa;
+  logic        sc_we;
+  word_t       sc_wd, sc_q;
+  logic        sc_hit;                // the access just started is answered by the cache
+  logic        sc_busy;               // dumping or refilling: a fault halts
+  logic [31:0] sc_a, sc_end;          // dump / refill cursor and end
+  assign sc_q = sc_data[sc_ra];
+  always_ff @(posedge clk) if (sc_we) sc_data[sc_wa] <= sc_wd;
+
+  function automatic logic in_window(logic [31:0] a);
+    return (a - stack_cache_lower_bound) < 32'd128;
+  endfunction
+  // the dump quantum register (01031): 32 at reset and for values the cache can't dump
+  function automatic logic [31:0] sc_quantum();
+    logic [31:0] q;
+    q = irw[IRW_STACK_CACHE_DUMP_QUANTUM][31:0];
+    return (q == 32'd0 || q > 32'd128) ? 32'd32 : q;
+  endfunction
 
   // MEM subroutine
   logic [31:0] m_addr;
@@ -227,6 +259,10 @@ module ivory_cpu
   assign insn_count = icount;
   assign halt_reason = halt_code;
   assign dbg_pc = pc[32:1];
+  assign fetch_pc = pc[32:1];
+  assign icache_on = icache_control[0];
+  assign pf_on = prefetcher_control[0];
+  assign pf_high = prefetcher_control[8:5];
 
   function automatic logic oldspace_address(logic [31:0] a);
     if (a[31:27] == 5'd0) return a[26] == ephemeral_oldspace[a[25:21]];

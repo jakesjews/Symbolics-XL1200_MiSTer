@@ -1059,10 +1059,15 @@
           fp <= nfp;
           cr <= ncr;
           lp <= nfp + {24'd0, ncr[7:0]};
-          // the caller's frame is reloaded into the stack cache
-          if (nfp < stack_cache_lower_bound) stack_cache_lower_bound <= nfp;
           cnt <= '0;
-          st <= S_RET_VALUES;
+          // the caller's frame is reloaded into the stack cache
+          if (nfp < stack_cache_lower_bound) begin
+            sc_a <= stack_cache_lower_bound - 32'd1;
+            sc_end <= nfp;
+            stack_cache_overflow_limit <= stack_cache_overflow_limit - (stack_cache_lower_bound - nfp);
+            sc_busy <= 1'b1;
+            st <= S_SC_FILL;
+          end else st <= S_RET_VALUES;
         end
         S_RET_VALUES: begin
           if (ret_kind == 2'd2) st <= S_RET_COPY;
@@ -1516,7 +1521,6 @@
           cop_we <= 1'b1;
           cop_reg <= operand;
           cop_wdata <= pop_w;
-          ib_valid <= 1'b0;
           st <= S_COP_W;
         end
         S_COP_W: if (cop_ack) begin

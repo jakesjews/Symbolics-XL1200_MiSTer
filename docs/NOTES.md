@@ -593,9 +593,21 @@ Published numbers for real machines:
   stack cache, method lookup and lists. The block subprimitives copy an array
   at "asymptotically approaching two cycles per element" and sum one at one
   element per cycle: a cycle-level check that doesn't depend on the clock.
-- Clock: the first Ivory ran at "in the vicinity of 150 ns" a cycle, the
-  second at ~100 ns (NASA spaceborne VHSIC multiprocessor paper, 1988, in the
-  addendum); the XL1200's own clock is not yet confirmed.
+- Clock: a 61.5 MHz oscillator (Valpey-Fisher VF155, "61.500000MHz") sits
+  next to the Ivory on an XL1201's Merlin-II board (read from Douglas
+  Fields's board photographs, symbolics.lisp.engineer; the board inventory
+  there lists a clock PAL at AA16, BC-LCLK-G_N, part 115958-A). The same
+  oscillator is on a MacIvory III, where OldVCR infers a divide-by-two from a
+  Symbolics white paper: that is where the often-quoted 30.75 MHz comes from.
+  An XL1200 owner's page (Michael Parker) says 40 MHz without a source. The
+  1987 Ivory paper says a two-phase clock is used and the adders work twice a
+  clock cycle, not how the oscillator relates to a machine cycle; the first
+  Ivory ran "in the vicinity of 150 ns" a cycle, the second ~100 ns (NASA
+  spaceborne VHSIC multiprocessor paper, 1988, in the addendum). So:
+  oscillator 61.5 MHz, photographed; machine-cycle rate unresolved. The
+  model's instruction counts for fib against the XL1201's times give
+  instructions per second, which bounds the cycle rate from below (calls and
+  returns take several cycles each).
 
 Genera ships the suite: `sys:examples;gabriel-benchmarks.lisp`;
 `(gabriel::run-series-to-file "FEP7:>gabriel.text")` (not exported) writes the
@@ -615,6 +627,34 @@ times to a FEP file. Baseline on the MiSTer (Oct 2026, build `output_files8`,
 | Puzzle | 26.52 | 11.04 | 0.42 |
 | Triang | 83.28 | 116.99 | 1.40 |
 
+Instructions per benchmark from the model (its clock runs at 4 instructions
+a microsecond, so Genera's CPU seconds there are instruction counts), and
+the MiSTer's cycles an instruction from them:
+
+| Benchmark | M instructions | MiSTer cycles/instruction |
+|---|---|---|
+| Boyer | 11.3 | 30.5 |
+| Browse | 18.8 | 29.8 |
+| Destructive | 2.2 | 29.6 |
+| Traverse init / run | 6.4 / 37.8 | 32.8 / 32.9 |
+| Tak / Stak / Ctak / Takl | 0.63 / 1.27 / 10.9 / 5.5 | 29.4 / 41.4 / 27.3 / 30.6 |
+| Deriv / Dderiv | 3.1 / 3.5 | 28.6 / 29.1 |
+| Div2 iterative / recursive | 2.1 / 2.4 | 31.0 / 30.8 |
+| FFT | 2.7 | 42.0 |
+| Puzzle | 49.0 | 27.1 |
+| Triang | 135.3 | 30.8 |
+
+fib in the model: (fib 25) 2.72M instructions, (fib 30) 30.15M (11.2 an
+invocation). The XL1201's 4.097 s for (fib 30) is then 7.4M instructions a
+second: 4.2 cycles an instruction at 30.75 MHz, 5.4 at 40 MHz, 1.4 at 10
+MHz; the last is impossible for a mix of calls and returns, so the machine
+cycle is in the 30-40 MHz range. The MiSTer does 1.72M a second.
+
+Stak (special binding) and FFT (floating point through the FPA) cost the
+most cycles an instruction. Puzzle runs 49M instructions where the 3600
+took 11 s: Genera 8.3's version does more work than the 1985 one, which is
+why it is the outlier in the table above.
+
 Geometric mean 1.41x the 3600, against ~6x for a real Ivory: about 4x slow,
 as fib shows ((fib 30) 17.50 s, (fib 36) 312.76 s, 4.27x and 4.23x the
 XL1201's). Genera's elapsed time for (fib 36) agreed with the host's clock
@@ -623,7 +663,11 @@ keeps real time. Puzzle (2-D arrays) and Ctak (catch/throw) are the
 outliers. The suite took 15.5 minutes; it nearly exhausts the bench disk's
 paging space (Genera warns that a Start GC :Immediately will soon not fit).
 
-The RTL Ivory averages ~29 cycles an instruction at 50 MHz, two thirds of
+The rebuild of the processor after the real chip's structures is in
+`docs/ivory.md`, with each step's measurement; the first, the stack cache,
+brought `(fib 30)` to 9.33 s (15.5 cycles an instruction).
+
+Before it, the RTL Ivory averaged ~29 cycles an instruction at 50 MHz, two thirds of
 them waiting ~7 cycles per memory access (`PROFILE=1` on `sim/system`),
 where the real chip's stack cache, TLB and instruction cache answer in a
 cycle; and at least five states (fetch, fetch wait, decode, execute, retire)

@@ -9,7 +9,7 @@ XL := $(abspath ../../rtl/xl)
 MEM := $(abspath ../mem)
 PROM := $(XL)/boot_prom.mem
 
-SV := $(IVORY)/ivory_pkg.sv $(IVORY)/ivory_cpu.sv $(IVORY)/ivory_mmu.sv $(IVORY)/ivory_core.sv \
+SV := $(IVORY)/ivory_pkg.sv $(IVORY)/ivory_cpu.sv $(IVORY)/ivory_mmu.sv $(IVORY)/ivory_icache.sv $(IVORY)/ivory_core.sv \
       $(XL)/xl_mem.sv $(XL)/xl_scsi.sv $(XL)/xl_i82586.sv $(XL)/xl_pit.sv $(XL)/xl_fpa_unit.sv $(XL)/xl_fpa.sv $(XL)/xl_console.sv \
       $(XL)/xl_video.sv $(XL)/xl_iob.sv $(XL)/xl_nvram.sv $(XL)/xl_machine.sv
 SVH := $(wildcard $(IVORY)/*.svh)

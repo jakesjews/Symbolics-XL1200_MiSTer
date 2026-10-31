@@ -52,17 +52,32 @@ function keys: [docs/keyboard.md](docs/keyboard.md).
 
 In the order they'll be done. Bugs come first whenever they turn up.
 
-1. Benchmarks on the MiSTer, as the baseline for the speed work: `(fib 30)`
-   (4.097 s on an XL1201), Genera's Gabriel suite
-   (`(gabriel::run-series)`, against the 3600's table), with the model's
-   instruction counts (instructions per second of the real machine, per
-   benchmark).
-2. A compatibility pass on the MiSTer before the speed work, so the rewrite
-   starts from a known-good machine: Zmacs (edit and save a file), Document
+1. Speed the way the real Ivory gets it, measured after each step
+   (`PROFILE=1` on `sim/system` counts cycles by state) and against the
+   published times. The RTL's structure follows the chip, not the model;
+   each step is checked on the MiSTer, not in lockstep.
+   - The 32-word instruction cache and its prefetcher, fetching ahead of
+     execution.
+   - The TLB in front of the map cache (16 entries) and a pipelined memory
+     interface (the Internals manual: up to four requests outstanding, one
+     word per cycle); today a cache hit costs ~7 cycles.
+   - Fewer states per simple instruction, overlapping fetch, decode and
+     execute like the 4-stage pipeline (push, add, eq in one cycle).
+   - Check against the Internals manual's block-transfer rates (an array
+     copy approaching two cycles per element, an array sum one per cycle),
+     Gabriel, fib, and de Kleer's prime-implicate tests (needs the Building
+     Problem Solvers code).
+   - Done when the rebuilt core gets as far as this one: the FEP, Genera 8.3
+     to the Listener, Login, compile-file, (fib 30) = 1346269 and the Gabriel
+     suite with the same results, faster.
+   - Pace the core to the real chip's cycles at the real clock, once the
+     clock is pinned down.
+2. A compatibility pass on the rebuilt core (not on this one: bugs in the
+   old state machine aren't worth fixing): Zmacs (edit and save a file), Document
    Examiner, the Inspector, the Debugger, Peek; a full GC (`Start GC
    :Immediately`) and ephemeral GC flips; Save World and booting the saved
    world; bignums, ratios, double floats and complex numbers through the FPA;
-   an overnight run. Anything that breaks goes into the model's lockstep.
+   an overnight run. Anything that breaks is reproduced in the free-running simulation or the model.
    Lockstep only proves the RTL matches our model, so build a regression
    suite with its own expected answers, in place before the speed work:
    - Instruction tests on the RTL processor alone (`sim/ivory`, seconds):
@@ -80,48 +95,27 @@ In the order they'll be done. Bugs come first whenever they turn up.
      and loads the tests, the RTL runs them.
    - Gabriel and fib as speed regressions: cycle counts in Verilator, times
      on the MiSTer.
-3. Speed the way the real Ivory gets it, measured after each step
-   (`PROFILE=1` on `sim/system` counts cycles by state) and against the
-   published times. The RTL's structure follows the chip, not the model:
-   lockstep compares state at each retired instruction, the model changes
-   only where the chip's structures show through to software, and where
-   lockstep can't follow, it gives way, not the RTL.
-   - The 128-word stack cache: one-cycle hits, filled and emptied over the
-     memory interface, invalidated when Genera changes mappings.
-   - The 32-word instruction cache and its prefetcher, fetching ahead of
-     execution.
-   - The TLB in front of the map cache (16 entries) and a pipelined memory
-     interface (the Internals manual: up to four requests outstanding, one
-     word per cycle); today a cache hit costs ~7 cycles.
-   - Fewer states per simple instruction, overlapping fetch, decode and
-     execute like the 4-stage pipeline (push, add, eq in one cycle).
-   - Check against the Internals manual's block-transfer rates (an array
-     copy approaching two cycles per element, an array sum one per cycle),
-     Gabriel, fib, and de Kleer's prime-implicate tests (needs the Building
-     Problem Solvers code).
-   - Pace the core to the real chip's cycles at the real clock, once the
-     clock is pinned down.
-4. Check the device models against their manuals
+3. Check the device models against their manuals
    (`research/downloads/xl1200-documentation-addendum`): the 82586 (Intel
    reference manual), the DUSCC (SCN26562/68562 users' guide, AN416, AN419),
    the SCN2674 (Signetics data sheet), the WD33C93A (data sheet, version
    differences and bug list; decide which revision the XL1200 has).
-5. Small register arrays into RAM: the processor's internal registers (32 x
+4. Small register arrays into RAM: the processor's internal registers (32 x
    32 bits), the DUSCC's 64 bytes, the WD33C93's 32 bytes.
-6. FPA timing, once the processor's is close: the manual's latencies in FPA
+5. FPA timing, once the processor's is close: the manual's latencies in FPA
    clocks (the FPA has its own clock on the Merlin-II) scaled to the Ivory's,
    and the busy tag (dtp-null) on an early read. The status queue (registers
    4, 5, 7, 8, 9, 10: destinations and previous status).
-7. Calendar clock as GMT: Genera reads it as GMT, MiSTer's RTC is local time.
-8. A master disk image: a configured world (`Set Site`, saved), quality of
+6. Calendar clock as GMT: Genera reads it as GMT, MiSTer's RTC is local time.
+7. A master disk image: a configured world (`Set Site`, saved), quality of
    life patches (dates past 1999), and the applications: Illustrate and TeX
    (distribution tapes), the Genera 8.1.1 animation world from the MacIvory
    disk (its graphics want color hardware).
-9. Network: the 82586 to a real network. Cores can't reach the MiSTer's
+8. Network: the 82586 to a real network. Cores can't reach the MiSTer's
    Ethernet themselves; MiSTer's main program bridges it for a few cores
    (Minimig, NeXT, Sun), so this needs a change there.
-10. Color and FrameThrower graphics.
-11. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
+9. Color and FrameThrower graphics.
+10. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
 
 Documentation still wanted:
 - The Merlin-II boot PROMs (a dump; the CY7C291 PROMs' data sheet is in the
@@ -132,9 +126,11 @@ Documentation still wanted:
   Weste, "Lisp chips increase power with symbolic processing", Computer
   Design 26:18 (1987).
 - `(gabriel::run-series)` output from a real XL1200, XL1201 or MacIvory III.
-- Ivory instruction timings and rev 4/4A errata; the XL1200's processor
-  clock (a 1988 paper gives ~100 ns cycles for the second Ivory; the
-  MacIvory III's oscillator suggests 30.75 MHz).
+- Ivory instruction timings and rev 4/4A errata; the Ivory's machine-cycle
+  rate on the Merlin-II: the oscillator is 61.5 MHz (photographed), the
+  divider isn't known (30.75 MHz is an inference, 40 MHz an owner's claim);
+  the clock PAL at AA16 (BC-LCLK-G_N, 115958-A) or a measurement would
+  settle it.
 
 How the core is built and what has been found out about the machine:
 [docs/NOTES.md](docs/NOTES.md).

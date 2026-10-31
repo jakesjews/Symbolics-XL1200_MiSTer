@@ -236,7 +236,13 @@ def build():
     a.i('logior', 'FP', HEADER)
     a.i('%memory-write', 'POP')
 
-    # FEP-STARTUP's frame on the boot stack, as if called from the PROM entry
+    # FEP-STARTUP's frame on the boot stack, as if called from the PROM entry.
+    # The stack cache shadows the frame before it is written (spec: after
+    # loading a stack, the lower bound is FP; the FEP compares the bound with
+    # *boot-stack-base* to tell whether it is running on its own stack), with
+    # the overflow limit where Genera puts it, a maximum frame above the bound.
+    loc(STACK_BASE + 1); a.i('%write-internal-register', 5)         # stack cache lower bound
+    loc(STACK_BASE + 1 + 112); a.i('%write-internal-register', 0o34) # stack cache overflow limit
     loc(STACK_BASE + 1); a.const((EVEN_PC, ENTRY_VMA)); a.i('%set-tag', '#', 0xC0 | EVEN_PC)
     a.i('%memory-write', 'POP')
     loc(STACK_BASE + 2); a.i('%read-internal-register', 0o14); a.i('%set-tag', '#', 0xC0 | FIX)
@@ -249,10 +255,6 @@ def build():
     a.const((EVEN_PC, ENTRY_VMA)); a.i('%write-internal-register', 0o12)
     push((3 << 30) | 2 | (1 << 18)); a.i('%write-internal-register', 0o14)
     loc(STACK_BASE + 1); a.i('%write-internal-register', 1)    # FP
-    # The stack cache starts at the frame (spec: after loading a stack, the
-    # lower bound is FP); the FEP compares it with *boot-stack-base* to tell
-    # whether it is running on its own stack.
-    loc(STACK_BASE + 1); a.i('%write-internal-register', 5)    # stack cache lower bound
     loc(STACK_BASE + 3); a.i('%write-internal-register', 2)    # LP
     loc(STACK_BASE + 2); a.i('%write-internal-register', 3)    # SP
     a.i('%jump', 'LP', 0)

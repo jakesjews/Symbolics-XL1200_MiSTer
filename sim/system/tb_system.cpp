@@ -327,8 +327,8 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < top_states.size() && i < 25; i++)
       printf("  cpu %-16s %5.1f%%\n", top_states[i].second < (int)names.size() ? names[top_states[i].second].c_str() : "?",
              100.0 * top_states[i].first / total);
-    const char* mmu_names[] = {"SWEEP", "IDLE", "INVAL_W", "INVAL", "LOOK_W", "LOOK", "W0", "W1", "AGE",
-                               "FILL", "HIT", "N1", "N2", "ACCESS", "?", "?"};
+    const char* mmu_names[] = {"IDLE", "W0", "W1", "AGE", "FILL", "HIT", "N1", "N2", "ACCESS",
+                               "?", "?", "?", "?", "?", "?", "?"};
     const char* mem_names[] = {"CLEAR", "IDLE", "LOOKUP", "MISS", "FILL", "FILLED", "WRITE", "BUF_RD",
                                "BUF_WAIT", "BUF_WR", "?", "?", "?", "?", "?", "?"};
     for (int i = 0; i < 16; i++)

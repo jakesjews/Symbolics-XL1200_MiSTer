@@ -36,14 +36,35 @@
   endtask
 
   // Start a memory access now; S_MEM_W waits for it.  (S_MEM starts one from
-  // m_addr, m_we, m_wd and m_phys a cycle later.)
-  task automatic mem_rd(input logic [31:0] a, input logic phys);
+  // m_addr, m_we, m_wd and m_phys a cycle later.)  A virtual address the
+  // stack cache shadows is read from the cache and written to it; a memory
+  // cycle's write (through) goes to memory as well, a stack write doesn't.
+  task automatic mem_rd_mem(input logic [31:0] a, input logic phys);
     m_addr <= a; m_we <= 1'b0; m_phys <= phys;
     mem_req <= 1'b1; mem_we <= 1'b0; mem_addr <= a; mem_phys <= phys;
+    sc_hit <= 1'b0;
   endtask
-  task automatic mem_wr(input logic [31:0] a, input word_t w, input logic phys);
+  task automatic mem_wr_mem(input logic [31:0] a, input word_t w, input logic phys);
     m_addr <= a; m_we <= 1'b1; m_wd <= w; m_phys <= phys;
     mem_req <= 1'b1; mem_we <= 1'b1; mem_addr <= a; mem_wdata <= w; mem_phys <= phys;
+    sc_hit <= 1'b0;
+  endtask
+  task automatic mem_rd(input logic [31:0] a, input logic phys);
+    if (!phys && in_window(a)) begin
+      m_addr <= a; m_we <= 1'b0; m_phys <= 1'b0;
+      sc_ra <= a[6:0];
+      sc_hit <= 1'b1;
+    end else mem_rd_mem(a, phys);
+  endtask
+  task automatic mem_wr(input logic [31:0] a, input word_t w, input logic phys, input logic through);
+    if (!phys && in_window(a)) begin
+      sc_we <= 1'b1; sc_wa <= a[6:0]; sc_wd <= w;
+      if (through) mem_wr_mem(a, w, 1'b0);
+      else begin
+        m_addr <= a; m_we <= 1'b1; m_wd <= w; m_phys <= 1'b0;
+        sc_hit <= 1'b1;
+      end
+    end else mem_wr_mem(a, w, phys);
   endtask
   // read_raw / write_raw: virtual address, page attributes checked outside the stack window
   task automatic sread(input logic [31:0] a, input state_t r);
@@ -51,7 +72,7 @@
     call(S_MEM_W, r);
   endtask
   task automatic swrite(input logic [31:0] a, input word_t w, input state_t r);
-    mem_wr(a, w, 1'b0);
+    mem_wr(a, w, 1'b0, 1'b0);
     call(S_MEM_W, r);
   endtask
   // read_addr / write_addr: a locative-like word or a dtp-physical-address
@@ -60,7 +81,7 @@
     call(S_MEM_W, r);
   endtask
   task automatic write_addr(input word_t a, input word_t w, input state_t r);
-    mem_wr(a[31:0], w, wtype(a) == DTP_PHYSICAL_ADDRESS);
+    mem_wr(a[31:0], w, wtype(a) == DTP_PHYSICAL_ADDRESS, 1'b1);
     call(S_MEM_W, r);
   endtask
   task automatic mrd(input word_t a, input logic [3:0] cyc, input state_t r);
@@ -165,6 +186,7 @@
   always_ff @(posedge clk) begin
     retire <= 1'b0;
     retire_counted <= 1'b0;
+    sc_we <= 1'b0;
     hp_sb_taken <= 1'b0;
     lp_sb_taken <= 1'b0;
     map_flush <= 1'b0;
@@ -173,27 +195,32 @@
     // a PHT search loaded the map cache (MMU)
     if (map_reload) irw[IRW_COUNT_MAP_RELOADS] <= fixnum(irw[IRW_COUNT_MAP_RELOADS][31:0] + 32'd1);
     scratch_rd <= scratch[scratch_rd_ix];
-    // a write to the buffered instruction word forgets it (before the next fetch can use it)
-    if (mem_req && mem_we && mem_addr == ib_addr) ib_valid <= 1'b0;
+    ic_fill <= 1'b0;
 
     if (reset) begin
       st <= S_RESET;
       rsp <= '0;
       mem_req <= 1'b0;
       cop_req <= 1'b0;
-      ib_valid <= 1'b0;
       halted <= 1'b0;
       halt_code <= '0;
       in_trap <= 1'b0;
       // Ivory::Ivory and Ivory::init: internal registers hold fixnum 0
       for (int i = 0; i < 32; i++) irw[i] <= fixnum(32'd0);
+      irw[IRW_STACK_CACHE_DUMP_QUANTUM] <= fixnum(32'd32);
       for (int i = 0; i < 4; i++) bar[i] <= fixnum(32'd0);
+      sc_hit <= 1'b0;
+      sc_busy <= 1'b0;
       pc <= {INIT_PC_VMA, 1'b0};
       cr <= {TM_FEP, 30'd0};
       sp <= 32'hF8008000; fp <= 32'hF8008000; lp <= 32'hF8008000;
       cont <= '0;
       {alu_control, rotate_latch, ephemeral_oldspace, zone_oldspace, fp_coprocessor_present} <= '0;
-      {preempt_register, icache_control, prefetcher_control, map_cache_control, memory_control} <= '0;
+      {preempt_register, map_cache_control, memory_control} <= '0;
+      // what the boot PROM leaves (docs/ivory.md): the cache on, the
+      // prefetcher as Genera itself sets it
+      icache_control <= 32'd1;
+      prefetcher_control <= 32'h0FD;
       {stack_cache_lower_bound, stack_cache_overflow_limit, entry_max_args, pht_base, pht_mask} <= '0;
       chip_revision <= 32'd4;
       icount <= '0;
@@ -201,7 +228,6 @@
     end else begin
       case (st)
         S_RESET: begin
-          ib_valid <= 1'b0;
           if (dbg_we) begin
             case (dbg_sel)
               4'd0: pc <= dbg_data[32:0];
@@ -227,6 +253,8 @@
           restart_sp <= sp;
           pc_changed <= 1'b0;
           in_trap <= 1'b0;
+          sc_hit <= 1'b0;
+          sc_busy <= 1'b0;
           count_insn <= 1'b0;
           rsp <= '0;
           if (reset_req) begin
@@ -245,11 +273,13 @@
           end else begin
             count_insn <= 1'b1;
             trace_insn <= cr[CR_INSTRUCTION_TRACE];
-            if (ib_valid && ib_addr == pc[32:1]) begin
-              m_rd <= ib_word;
+            if (ic_hit) begin
+              m_rd <= ic_word;
+              fetch_mem <= 1'b0;
               st <= S_FETCH_W;
             end else begin
               mem_rd(pc[32:1], 1'b0);
+              fetch_mem <= 1'b1;
               rstack[0] <= S_FETCH_W;
               rsp <= 3'd1;
               st <= S_MEM_W;
@@ -259,7 +289,10 @@
 
         S_FETCH_W: begin
           iw <= m_rd;
-          ib_valid <= 1'b1; ib_addr <= inst_pc[32:1]; ib_word <= m_rd;
+          // a word fetched from memory goes into the instruction cache
+          if (fetch_mem && m_pa_valid) begin
+            ic_fill <= 1'b1; ic_fill_va <= inst_pc[32:1]; ic_fill_pa <= m_pa; ic_fill_word <= m_rd;
+          end
           case (wcdr(m_rd))
             2'd0: next_pc <= inst_pc + 33'd1;
             2'd2: next_pc <= inst_pc - 33'd1;
@@ -354,17 +387,23 @@
 
         // ---------------------------------------------------------------- MEM
         S_MEM: begin
-          mem_req <= 1'b1;
-          mem_we <= m_we;
-          mem_addr <= m_addr;
-          mem_wdata <= m_wd;
-          mem_phys <= m_phys;
+          if (m_we) mem_wr(m_addr, m_wd, m_phys, 1'b1);
+          else mem_rd(m_addr, m_phys);
           st <= S_MEM_W;
         end
-        S_MEM_W: if (mem_ack) begin
+        S_MEM_W: if (sc_hit) begin
+          sc_hit <= 1'b0;
+          m_rd <= sc_q;
+          m_trans <= 1'b0;
+          m_pa_valid <= 1'b0;
+          ret();
+        end else if (mem_ack) begin
           mem_req <= 1'b0;
           m_trans <= mem_transport;
-          if (mem_buserr) begin
+          m_pa <= mem_pa;
+          m_pa_valid <= 1'b1;
+          if (sc_busy && (mem_buserr || mem_fault != 12'd0)) halt(8'd11);   // fault dumping or refilling the stack cache
+          else if (mem_buserr) begin
             if (in_trap) halt(8'd1);
             else begin
               tr_args[0] <= mkw(DTP_PHYSICAL_ADDRESS, mem_bus_pa);
@@ -446,19 +485,65 @@
             mem_rd(m_rd[31:0], 1'b0);
             call(S_MEM_W, S_MWR_CHK);
           end else begin
-            mem_wr(mr_final, mw_preserve ? {m_rd[39:38], mw_v[37:0]} : mw_v, mw_phys);
+            mem_wr(mr_final, mw_preserve ? {m_rd[39:38], mw_v[37:0]} : mw_v, mw_phys, 1'b1);
             st <= S_MEM_W;   // tail call: S_MEM_W returns to our caller
           end
         end
 
         // ---------------------------------------------------------------- push / pop
         S_PUSH: begin
-          mem_wr(sp + 32'd1, p_w, 1'b0);
-          call(S_MEM_W, S_PUSH_DONE);
+          if (in_window(sp + 32'd1)) begin
+            sc_we <= 1'b1; sc_wa <= sp[6:0] + 7'd1; sc_wd <= p_w;
+            sp <= sp + 32'd1;
+            // stack cache overflow: SP<6:2> reaches the overflow limit's
+            if (((sp + 32'd1) & 32'h7C) == (stack_cache_overflow_limit & 32'h7C)) begin
+              sc_a <= stack_cache_lower_bound;
+              sc_end <= stack_cache_lower_bound + sc_quantum();
+              sc_busy <= 1'b1;
+              st <= S_SC_DUMP;   // returns to our caller
+            end else ret();
+          end else begin
+            mem_wr_mem(sp + 32'd1, p_w, 1'b0);
+            call(S_MEM_W, S_PUSH_DONE);
+          end
         end
         S_PUSH_DONE: begin
           sp <= sp + 32'd1;
           ret();
+        end
+        // dump the quantum lowest words of the cache to memory and raise the bounds
+        S_SC_DUMP: begin
+          if (sc_a == sc_end) begin
+            stack_cache_overflow_limit <= stack_cache_overflow_limit + (sc_end - stack_cache_lower_bound);
+            stack_cache_lower_bound <= sc_end;
+            sc_busy <= 1'b0;
+            ret();
+          end else begin
+            sc_ra <= sc_a[6:0];
+            st <= S_SC_DUMP2;
+          end
+        end
+        S_SC_DUMP2: begin
+          mem_wr_mem(sc_a, sc_q, 1'b0);
+          sc_a <= sc_a + 32'd1;
+          call(S_MEM_W, S_SC_DUMP);
+        end
+        // refill the cache from memory, from sc_a down to sc_end, for a return
+        // below the lower bound; the bounds were adjusted by the caller
+        S_SC_FILL: begin
+          mem_rd_mem(sc_a, 1'b0);
+          call(S_MEM_W, S_SC_FILL2);
+        end
+        S_SC_FILL2: begin
+          sc_we <= 1'b1; sc_wa <= sc_a[6:0]; sc_wd <= m_rd;
+          if (sc_a == sc_end) begin
+            stack_cache_lower_bound <= sc_end;
+            sc_busy <= 1'b0;
+            st <= S_RET_VALUES;
+          end else begin
+            sc_a <= sc_a - 32'd1;
+            st <= S_SC_FILL;
+          end
         end
         S_POP: begin
           mem_rd(sp, 1'b0);
