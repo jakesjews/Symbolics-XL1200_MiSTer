@@ -63,6 +63,20 @@ in `MiSTer.ini`; MiSTer switches to it for this core and back for the
 others. WiFi can't carry it, and every XL1200 core has the same Ethernet
 address, so run one per LAN.
 
+## The full disk
+
+The MacIvory factory disk image that circulates (`MacIvory_Virginal_9GB`)
+holds a Genera file system with Joshua, Concordia, Statice, CLIM, the
+documentation and fonts, the animation world and the Y2K patches. The disk
+tool reads it and puts all of it on an XL1200 disk; what to do with it is in
+[docs/NOTES.md](docs/NOTES.md#the-macivory-disk-and-the-full-image). In short:
+build the disk with `--blocks 1150000`, extract the MacIvory's `lmfs.file`,
+`animation-mac-6-2.ilod` and patches with `fepfs.py -S 1280 -L 13 get`, add
+them with `fepfs.py add` together with a 15-byte `fspt.fspt` reading
+`fep7:>lmfs.file`, boot, do step 6 with only the `Copy File`, and
+`Load File FEP7:>y2k-fix.lisp` before step 7. Genera then mounts the
+MacIvory's files as `XL1200:>` and the herald lists the Y2K patch.
+
 ## Gotchas
 
 - **The core writes to the disk image, so give it a copy.**
