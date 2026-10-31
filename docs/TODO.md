@@ -21,7 +21,10 @@ In the order they'll be done. Bugs come first whenever they turn up.
      6.0x: DDR misses). Lifting those to the real machine's pace is the
      speed work left, after the compatibility pass; the clock stays at
      50 MHz until then (30.77 and 35 MHz were built and dropped: they
-     put list-bound code further behind).
+     put list-bound code further behind). A cache twice the size changed
+     nothing (Oct 31 2026, [NOTES.md](NOTES.md#performance)): the work is
+     the miss path (an earlier restart, a prefetch of the next line, a
+     miss overlapped with the next instruction).
 2. A compatibility pass, in progress ([NOTES.md](NOTES.md#compatibility)
    has what passed: Zmacs, Document Examiner, Inspector, Debugger, Peek, a
    full GC, Save World and booting the saved world, the MacIvory animation

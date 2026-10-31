@@ -738,6 +738,18 @@ where the real chip's stack cache, TLB and instruction cache answer in a
 cycle; and at least five states (fetch, fetch wait, decode, execute, retire)
 even with no memory access.
 
+The cache's size is not the lever either (Oct 31 2026): the DDR cache
+doubled to 4096 lines of 4 words (16K words, 44 more M10Ks, no more logic;
+seed 3 routed with 0.480 ns of slack, seeds 1 and 2 did not) ran the suite
+at Boyer 1.702 s (5.52x the 3600), Traverse 6.02 s (5.87x), Div2 recursive
+0.445 s (5.62x), Deriv 0.409 s (9.27x), Stak 0.240 s (9.58x), Puzzle
+4.60 s, Triang 17.33 s: geometric mean 6.58x against build 30's 6.56x,
+Boyer and Traverse unchanged, Div2 and Deriv 8% better, the rest noise.
+Reverted. Boyer's working set outruns 16K words as it did 8K and Traverse
+already fitted: both pay the latency of each miss, so the lever is the miss
+path (an earlier restart, a prefetch of the next line, overlapping a miss
+with the next instruction), not a bigger cache.
+
 ## Compatibility
 
 Driven from the Mac with `tools/mister/run.sh type` (the Symbolics keys on
