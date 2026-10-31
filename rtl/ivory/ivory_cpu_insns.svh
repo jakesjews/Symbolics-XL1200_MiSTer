@@ -313,15 +313,23 @@
         end
 
         // rot, lsh
-        S_SHIFT_1: begin a2 <= opv; pop(S_SHIFT_2); end
+        S_SHIFT_1: begin
+          // the rotator does both: a left shift by n is a rotate by n with
+          // the low n bits cleared; a right shift by k is a rotate by 32-k
+          // keeping the low 32-k bits, and n's low five bits are 32-k
+          a2 <= opv;
+          rot_n <= opv[4:0];
+          msk_n <= {1'b0, opv[4:0]};
+          pop(S_SHIFT_2);
+        end
         S_SHIFT_2: begin
           logic [31:0] res;
           logic signed [31:0] n;
           n = a2[31:0];
-          if (op == 8'o220) res = rotl(pop_w[31:0], n[4:0]);
+          if (op == 8'o220) res = rot_q;
           else if (n >= 32 || n <= -32) res = 32'd0;
-          else if (n >= 0) res = pop_w[31:0] << n[4:0];
-          else res = pop_w[31:0] >> (-n);
+          else if (n >= 0) res = rot_q & ~msk_q;
+          else res = rot_q & msk_q;
           if (!fix2(pop_w, a2)) err(E_TWO_OPERAND_FIXNUM_TYPE, 32'd0);
           else push(fixnum(res), S_RETIRE);
         end
@@ -451,7 +459,7 @@
         // ---------------------------------------------------------------- field extraction
         S_LDB_1: begin
           logic [31:0] v;
-          v = rotl(pop_w[31:0], operand[4:0]) & low_mask({1'b0, operand[9:5]} + 6'd1);
+          v = rot_q & msk_q;
           if (op == 8'o170) begin
             if (!is_numeric_type(wtype(pop_w))) err(E_UNARY_ARITH_TYPE, 32'd0);
             else if (!is_fixnum(pop_w)) exc(3'd1, pop_w, '0, '0);
@@ -465,8 +473,8 @@
         S_DPB_2: begin
           logic [31:0] mask, v;
           word_t bad;
-          mask = low_mask({1'b0, operand[9:5]} + 6'd1) << operand[4:0];
-          v = (a2[31:0] & ~mask) | ((pop_w[31:0] << operand[4:0]) & mask);
+          mask = msk_q & ~msk2_q;
+          v = (a2[31:0] & ~mask) | (rot_q & mask);
           bad = !is_fixnum(a2) ? a2 : pop_w;
           if (op == 8'o370) begin
             if (!fix2(pop_w, a2)) begin
@@ -480,24 +488,25 @@
         end
         S_PLDB_1: begin a1 <= pop_w; mrd(pop_w, CYC_RAW, S_PLDB_2); end
         S_PLDB_2: begin
-          logic [31:0] x;
-          x = op == 8'o172 ? mr_d[31:0] : {24'd0, mr_d[39:32]};
-          push(fixnum(rotl(x, operand[4:0]) & low_mask({1'b0, operand[9:5]} + 6'd1)), S_RETIRE);
+          if (op == 8'o172) push(fixnum(rot_q & msk_q), S_RETIRE);   // the word (in the rotator)
+          else begin rot_x <= {24'd0, mr_d[39:32]}; st <= S_PLDB_3; end   // the tag
         end
+        S_PLDB_3: push(fixnum(rot_q & msk_q), S_RETIRE);
         S_PDPB_1: begin a2 <= pop_w; pop(S_PDPB_2); end
         S_PDPB_2: begin
           a1 <= pop_w;
           if (!is_fixnum(pop_w)) err(E_P_DPB_TYPE, 32'd0);
           else mrd(a2, CYC_RAW, S_PDPB_3);
         end
-        S_PDPB_3: begin
+        S_PDPB_3: begin rot_x <= a1[31:0]; st <= S_PDPB_4; end   // the value, not the word read
+        S_PDPB_4: begin
           logic [31:0] mask, v;
-          mask = low_mask({1'b0, operand[9:5]} + 6'd1) << operand[4:0];
+          mask = msk_q & ~msk2_q;
           if (op == 8'o372) begin
-            v = (mr_d[31:0] & ~mask) | ((a1[31:0] << operand[4:0]) & mask);
+            v = (mr_d[31:0] & ~mask) | (rot_q & mask);
             write_addr(a2, setdata(mr_d, v), S_RETIRE);
           end else begin
-            v = ({24'd0, mr_d[39:32]} & ~mask) | ((a1[31:0] << operand[4:0]) & mask);
+            v = ({24'd0, mr_d[39:32]} & ~mask) | (rot_q & mask);
             write_addr(a2, {v[7:0], mr_d[31:0]}, S_RETIRE);
           end
         end
@@ -713,8 +722,8 @@
           logic [1:0] kind;
           logic [31:0] rotated, mask, res;
           kind = op[3:2];
-          rotated = rotl(mr_d[31:0], alu_control[4:0]);
-          mask = 32'hFFFFFFFF << (6'd31 - {1'b0, alu_control[9:5]});   // top byte-s+1 bits
+          rotated = rot_q;
+          mask = ~msk2_q;   // top byte-s+1 bits
           res = (rotated & mask) | (rotate_latch & ~mask);
           if (operand[5] && !is_fixnum(mr_d))
             err(kind == 2'd2 ? E_BLOCK_READ_TEST_TRANSPORT_FIXNUM : E_BLOCK_READ_TRANSPORT_FIXNUM, mr_final);
@@ -728,15 +737,17 @@
               end
               default: begin
                 t1 <= operand[4] ? setcdr(mr_d, CDR_NEXT) : mr_d;
+                alu_w1 <= operand[4] ? setcdr(mr_d, CDR_NEXT) : mr_d;
                 x0 <= mr_final;
                 read_tos(S_BLKTEST_1);
               end
             endcase
           end
         end
-        S_BLKTEST_1: begin
+        S_BLKTEST_1: begin alu_w2 <= m_rd; st <= S_BLKTEST_1B; end
+        S_BLKTEST_1B: begin
           alu_t r;
-          r = alu_compute(t1[31:0], m_rd[31:0], t1, m_rd);
+          r = alu_q;
           if (operand[5] && !is_fixnum(m_rd)) err(E_BLOCK_READ_TEST_TRANSPORT_FIXNUM, sp);
           else begin
             if (r.rl_we) rotate_latch <= r.rl;
@@ -754,13 +765,13 @@
         S_BLKALU_1: begin
           if (!is_fixnum(m_rd)) err(E_BLOCK_READ_BINARY_TRANSPORT_FIXNUM, addr);
           else begin
-            t0 <= m_rd;
+            t0 <= m_rd; alu_w2 <= m_rd;
             mrd(bar[op[1:0]], CYC_DATA_READ, S_BLKALU_2);
           end
         end
         S_BLKALU_2: begin
           alu_t r;
-          r = alu_compute(mr_d[31:0], t0[31:0], mr_d, t0);
+          r = alu_q;   // alu_w1 is the word read
           if (!is_fixnum(mr_d)) err(E_BLOCK_READ_BINARY_TRANSPORT_FIXNUM, mr_final);
           else begin
             bar[op[1:0]] <= setdata(bar[op[1:0]], mr_final + 32'd1);
@@ -1355,10 +1366,10 @@
           if (op == 8'o331) sp <= sp - 32'd1;
           push(boolw(m_rd[31:0] < a2[31:0]), S_RETIRE);
         end
-        S_ALU_1: begin a2 <= opv; pop(S_ALU_2); end
+        S_ALU_1: begin a2 <= opv; alu_w2 <= opv; pop(S_ALU_2); end
         S_ALU_2: begin
           alu_t r;
-          r = alu_compute(pop_w[31:0], a2[31:0], pop_w, a2);
+          r = alu_q;   // alu_w1 is the word popped
           if (!fix2(pop_w, a2)) err(E_TWO_OPERAND_FIXNUM_TYPE, 32'd0);
           else begin
             if (r.rl_we) rotate_latch <= r.rl;

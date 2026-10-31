@@ -41,16 +41,20 @@
   // never touch the cache.
   task automatic mem_rd_mem(input logic [31:0] a, input logic phys);
     m_addr <= a; m_we <= 1'b0; m_phys <= phys; m_bypass <= 1'b1; m_first <= 1'b1;
+    m_chk <= 1'b0; m_wchk <= 1'b0;
   endtask
   task automatic mem_wr_mem(input logic [31:0] a, input word_t w, input logic phys);
     m_addr <= a; m_we <= 1'b1; m_wd <= w; m_phys <= phys; m_bypass <= 1'b1; m_first <= 1'b1;
+    m_chk <= 1'b0; m_wchk <= 1'b0;
   endtask
   task automatic mem_rd(input logic [31:0] a, input logic phys);
     m_addr <= a; m_we <= 1'b0; m_phys <= phys; m_bypass <= 1'b0; m_first <= 1'b1;
+    m_chk <= 1'b0; m_wchk <= 1'b0;
   endtask
   task automatic mem_wr(input logic [31:0] a, input word_t w, input logic phys, input logic through);
     m_addr <= a; m_we <= 1'b1; m_wd <= w; m_phys <= phys; m_through <= through; m_bypass <= 1'b0;
     m_first <= 1'b1;
+    m_chk <= 1'b0; m_wchk <= 1'b0;
   endtask
   // read_raw / write_raw: virtual address, page attributes checked outside the stack window
   task automatic sread(input logic [31:0] a, input state_t r);
@@ -70,14 +74,89 @@
     mem_wr(a[31:0], w, wtype(a) == DTP_PHYSICAL_ADDRESS, 1'b1);
     call(S_MEM_W, r);
   endtask
+  // mem_read / mem_write with a cycle type: the data's type decides
+  // (cycle_action) a trap, an indirection or the result, in the memory
+  // stage, in the cycle the data arrives (m_chk / m_wchk)
+  task automatic mrd_start(input word_t a, input logic [3:0] cyc);
+    mr_cyc <= cyc;
+    mr_final <= a[31:0];
+    mr_hops <= '0;
+    mr_phys <= wtype(a) == DTP_PHYSICAL_ADDRESS;
+    mem_rd(a[31:0], wtype(a) == DTP_PHYSICAL_ADDRESS);
+    m_chk <= 1'b1;
+  endtask
   task automatic mrd(input word_t a, input logic [3:0] cyc, input state_t r);
-    mr_a <= a; mr_cyc <= cyc;
-    call(S_MRD, r);
+    mrd_start(a, cyc);
+    call(S_MEM_W, r);
   endtask
   task automatic mwr(input word_t a, input logic [3:0] cyc, input word_t v, input logic pres,
                      input state_t r);
-    mw_a <= a; mw_cyc <= cyc; mw_v <= v; mw_preserve <= pres;
-    call(S_MWR, r);
+    mw_cyc <= cyc; mw_v <= v; mw_preserve <= pres;
+    mr_final <= a[31:0];
+    mr_hops <= '0;
+    mw_phys <= wtype(a) == DTP_PHYSICAL_ADDRESS;
+    mem_rd(a[31:0], wtype(a) == DTP_PHYSICAL_ADDRESS);
+    m_wchk <= 1'b1;
+    call(S_MEM_W, r);
+  endtask
+  // The memory stage has the data d (transport bit trans) of an access:
+  // the checked read's or write's action, or just the result
+  task automatic mem_got(input word_t d, input logic trans);
+    logic [2:0] act;
+    m_trans <= trans;
+    if (m_chk) begin
+      act = cycle_action(mr_cyc, action_column(wtype(d)));
+      if (act == A_TRAP) begin
+        err_d(E_MEMORY_DATA_ERROR, mr_final, {4'd0, mr_cyc});
+      end else if ((act == A_IND || act == A_MTRAP ||
+                    (cycle_transport(mr_cyc) && is_pointer_type(wtype(d)) && wtype(d) != DTP_NULL)) &&
+                   trans && oldspace_address(d[31:0])) begin
+        // the transport trap takes precedence over the monitor trap
+        tr_args[0] <= mkw(DTP_LOCATIVE, mr_final);
+        pre_trap(TV_TRANSPORT, 3'd1);
+      end else if (act == A_MTRAP) begin
+        tr_args[0] <= mkw(DTP_LOCATIVE, mr_final);
+        pre_trap(TV_MONITOR, 3'd1);
+      end else if (act == A_IND) begin
+        if (mr_hops > 17'd100000) halt(8'd3);
+        mr_hops <= mr_hops + 17'd1;
+        mr_final <= d[31:0];
+        mr_phys <= 1'b0;
+        mem_rd(d[31:0], 1'b0);   // stays in the memory stage, m_chk still set
+        m_chk <= 1'b1;
+      end else begin
+        mr_d <= d; m_rd <= d;
+        rot_x <= d[31:0]; alu_w1 <= d;
+        m_chk <= 1'b0;
+        ret();
+      end
+    end else if (m_wchk) begin
+      act = cycle_action(mw_cyc, action_column(wtype(d)));
+      if (act == A_TRAP) begin
+        err_d(E_MEMORY_DATA_ERROR, mr_final, {4'd0, mw_cyc});
+      end else if ((act == A_IND || act == A_MTRAP) && trans && oldspace_address(d[31:0])) begin
+        // forwarding and monitor pointers are checked before indirection
+        tr_args[0] <= mkw(DTP_LOCATIVE, mr_final);
+        pre_trap(TV_TRANSPORT, 3'd1);
+      end else if (act == A_MTRAP) begin
+        tr_args[0] <= mkw(DTP_LOCATIVE, mr_final);
+        pre_trap(TV_MONITOR, 3'd1);
+      end else if (act == A_IND) begin
+        if (mr_hops > 17'd100000) halt(8'd4);
+        mr_hops <= mr_hops + 17'd1;
+        mr_final <= d[31:0];
+        mw_phys <= 1'b0;
+        mem_rd(d[31:0], 1'b0);
+        m_wchk <= 1'b1;
+      end else begin
+        // the write itself; the stage returns to the caller after it
+        mem_wr(mr_final, mw_preserve ? {d[39:38], mw_v[37:0]} : mw_v, mw_phys, 1'b1);
+        m_wchk <= 1'b0;
+      end
+    end else begin
+      m_rd <= d;
+      ret();
+    end
   endtask
   // the top of the stack: the register when it holds it, else the cache
   task automatic read_tos(input state_t r);
@@ -116,6 +195,7 @@
   // pop the top of the stack from its register into pop_w, in this cycle
   task automatic pop_now();
     pop_w <= tos_q;
+    rot_x <= tos_q[31:0]; alu_w1 <= tos_q;
     sp <= sp - 32'd1;
     tos_valid <= 1'b0;
     if (spm1_in_window) begin sc_ra <= sp[6:0] - 7'd1; tos_reload <= 1'b1; end
@@ -283,8 +363,8 @@
         end
         DTP_CALL_INDIRECT, DTP_CALL_INDIRECT_PREFETCH: begin
           sc_odd <= 1'b0;
-          mr_a <= mkw(DTP_LOCATIVE, w[31:0]); mr_cyc <= CYC_DATA_READ;
-          call0(S_MRD, S_FW_IND);
+          mrd_start(mkw(DTP_LOCATIVE, w[31:0]), CYC_DATA_READ);
+          call0(S_MEM_W, S_FW_IND);
         end
         DTP_CALL_GENERIC, DTP_CALL_GENERIC_PREFETCH: begin
           a1 <= mkw(DTP_GENERIC_FUNCTION, w[31:0]);
@@ -292,8 +372,8 @@
           call0(S_SC, S_FW_CALLDONE);
         end
         DTP_EXTERNAL_VALUE_CELL_POINTER: begin
-          mr_a <= mkw(DTP_LOCATIVE, w[31:0]); mr_cyc <= CYC_DATA_READ;
-          call0(S_MRD, S_FW_EVCP);
+          mrd_start(mkw(DTP_LOCATIVE, w[31:0]), CYC_DATA_READ);
+          call0(S_MEM_W, S_FW_EVCP);
         end
         DTP_NULL, DTP_MONITOR_FORWARD, DTP_HEADER_P, DTP_HEADER_I, DTP_ONE_Q_FORWARD,
         DTP_HEADER_FORWARD, DTP_ELEMENT_FORWARD, DTP_GC_FORWARD, DTP_BOUND_LOCATION,
@@ -507,15 +587,12 @@
               if (m_through) m_wait <= 1'b1;
               else begin m_trans <= 1'b0; m_pa_valid <= 1'b0; ret(); end
             end else begin
-              m_rd <= sc_q_m;
-              m_trans <= 1'b0;
               m_pa_valid <= 1'b0;
-              ret();
+              mem_got(sc_q_m, 1'b0);
             end
           end else m_wait <= 1'b1;
         end else if (mem_ack) begin
           m_wait <= 1'b0;
-          m_trans <= mem_transport;
           m_pa <= mem_pa;
           m_pa_valid <= 1'b1;
           if (sc_busy && (mem_buserr || mem_fault != 12'd0)) halt(8'd11);   // fault dumping or refilling the stack cache
@@ -532,78 +609,7 @@
               tr_args[0] <= mkw(DTP_LOCATIVE, m_addr);
               pre_trap(mem_fault, 3'd1);
             end
-          end else begin
-            m_rd <= mem_rdata;
-            ret();
-          end
-        end
-
-        // ---------------------------------------------------------------- mem_read
-        S_MRD: begin
-          mr_phys <= wtype(mr_a) == DTP_PHYSICAL_ADDRESS;
-          mr_final <= mr_a[31:0];
-          mr_hops <= '0;
-          mem_rd(mr_a[31:0], wtype(mr_a) == DTP_PHYSICAL_ADDRESS);
-          call(S_MEM_W, S_MRD_CHK);
-        end
-        S_MRD_CHK: begin
-          logic [2:0] act;
-          act = cycle_action(mr_cyc, action_column(wtype(m_rd)));
-          if (act == A_TRAP) begin
-            err_d(E_MEMORY_DATA_ERROR, mr_final, {4'd0, mr_cyc});
-          end else if ((act == A_IND || act == A_MTRAP ||
-                        (cycle_transport(mr_cyc) && is_pointer_type(wtype(m_rd)) && wtype(m_rd) != DTP_NULL)) &&
-                       m_trans && oldspace_address(m_rd[31:0])) begin
-            // the transport trap takes precedence over the monitor trap
-            tr_args[0] <= mkw(DTP_LOCATIVE, mr_final);
-            pre_trap(TV_TRANSPORT, 3'd1);
-          end else if (act == A_MTRAP) begin
-            tr_args[0] <= mkw(DTP_LOCATIVE, mr_final);
-            pre_trap(TV_MONITOR, 3'd1);
-          end else if (act == A_IND) begin
-            if (mr_hops > 17'd100000) halt(8'd3);
-            mr_hops <= mr_hops + 17'd1;
-            mr_final <= m_rd[31:0];
-            mr_phys <= 1'b0;
-            mem_rd(m_rd[31:0], 1'b0);
-            call(S_MEM_W, S_MRD_CHK);
-          end else begin
-            mr_d <= m_rd;
-            ret();
-          end
-        end
-
-        // ---------------------------------------------------------------- mem_write
-        S_MWR: begin
-          mw_phys <= wtype(mw_a) == DTP_PHYSICAL_ADDRESS;
-          mr_final <= mw_a[31:0];
-          mr_hops <= '0;
-          mem_rd(mw_a[31:0], wtype(mw_a) == DTP_PHYSICAL_ADDRESS);
-          call(S_MEM_W, S_MWR_CHK);
-        end
-        S_MWR_CHK: begin
-          logic [2:0] act;
-          act = cycle_action(mw_cyc, action_column(wtype(m_rd)));
-          if (act == A_TRAP) begin
-            err_d(E_MEMORY_DATA_ERROR, mr_final, {4'd0, mw_cyc});
-          end else if ((act == A_IND || act == A_MTRAP) && m_trans && oldspace_address(m_rd[31:0])) begin
-            // forwarding and monitor pointers are checked before indirection
-            tr_args[0] <= mkw(DTP_LOCATIVE, mr_final);
-            pre_trap(TV_TRANSPORT, 3'd1);
-          end else if (act == A_MTRAP) begin
-            tr_args[0] <= mkw(DTP_LOCATIVE, mr_final);
-            pre_trap(TV_MONITOR, 3'd1);
-          end else if (act == A_IND) begin
-            if (mr_hops > 17'd100000) halt(8'd4);
-            mr_hops <= mr_hops + 17'd1;
-            mr_final <= m_rd[31:0];
-            mw_phys <= 1'b0;
-            mem_rd(m_rd[31:0], 1'b0);
-            call(S_MEM_W, S_MWR_CHK);
-          end else begin
-            mem_wr(mr_final, mw_preserve ? {m_rd[39:38], mw_v[37:0]} : mw_v, mw_phys, 1'b1);
-            st <= S_MEM_W;   // tail call: S_MEM_W returns to our caller
-          end
+          end else mem_got(mem_rdata, mem_transport);
         end
 
         // ---------------------------------------------------------------- push / pop
@@ -665,6 +671,7 @@
         S_POP: begin
           if (tos_ok) begin
             pop_w <= tos_q;
+            rot_x <= tos_q[31:0]; alu_w1 <= tos_q;
             sp <= sp - 32'd1;
             tos_valid <= 1'b0;
             if (spm1_in_window) begin sc_ra <= sp[6:0] - 7'd1; tos_reload <= 1'b1; end
@@ -676,6 +683,7 @@
         end
         S_POP_DONE: begin
           pop_w <= m_rd;
+          rot_x <= m_rd[31:0]; alu_w1 <= m_rd;
           sp <= sp - 32'd1;
           ret();
         end
@@ -715,17 +723,9 @@
           cc_bad <= 1'b0;
           case (wtype(cc_x))
             DTP_NIL: begin cc_r <= NIL_W; ret(); end
-            DTP_LOCATIVE: begin
-              mr_a <= mkw(DTP_LOCATIVE, cc_x[31:0]); mr_cyc <= CYC_DATA_READ;
-              st <= S_MRD;
-              rstack[rsp] <= S_CC_DONE; rsp <= rsp + 3'd1;
-            end
-            DTP_LIST: begin
-              mr_a <= mkw(DTP_LOCATIVE, cc_x[31:0]);
-              mr_cyc <= cc_car ? CYC_DATA_READ : CYC_CDR;
-              st <= S_MRD;
-              rstack[rsp] <= cc_car ? S_CC_DONE : S_CC_CDR; rsp <= rsp + 3'd1;
-            end
+            DTP_LOCATIVE: mrd(mkw(DTP_LOCATIVE, cc_x[31:0]), CYC_DATA_READ, S_CC_DONE);
+            DTP_LIST: mrd(mkw(DTP_LOCATIVE, cc_x[31:0]), cc_car ? CYC_DATA_READ : CYC_CDR,
+                          cc_car ? S_CC_DONE : S_CC_CDR);
             default: begin cc_bad <= 1'b1; ret(); end
           endcase
         end

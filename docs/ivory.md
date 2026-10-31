@@ -333,7 +333,24 @@ lookup state); the MMU passes that ack, the data and the physical address
 straight through instead of registering them (traps and bus errors stay
 registered). A cached read is then 2 cycles. FEP boot simulation: 117.3M
 instructions in the 14 s, 5.97 cycles an instruction (6.79 before), the
-memory-wait share 19% (30%).
+memory-wait share 19% (30%). Then the cycle-typed reads and writes (car,
+cdr, aref, rplaca, the block instructions: `mrd`/`mwr`) lost their two
+states: the request is registered straight into the memory stage and the
+data's check (`cycle_action`: a trap, an indirection or the result) runs
+in the cycle the data arrives (`mem_got`). 123.8M instructions, 5.66
+cycles an instruction.
+
+Build 19 (two-cycle hits) didn't fit at 81%, the count build 18 fitted
+at: that is the margin where placement luck decides, so more logic came
+out instead of trying seeds. The processor is 17.8K of the 34K ALMs (the
+FPA 2.5K, the I/O board 2.5K, the TLB 1.6K, MiSTer's framework ~7K), and
+inside it every inlined call of the rotate, mask and ALU functions was a
+barrel shifter of its own. Now there is one rotator, two field-mask
+generators and one `%alu` (`rot_q`, `msk_q`, `msk2_q`, `alu_q`), with
+their inputs loaded the cycle before: the pops and the memory stage load
+the value, the dispatch arms the amounts; `%p-tag-ldb`, `%p-dpb` and
+`%block-n-read-test` take a cycle more. Same instruction count in the FEP
+boot simulation.
 
 ## Order of work
 

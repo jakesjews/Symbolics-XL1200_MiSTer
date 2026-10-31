@@ -89,10 +89,16 @@
             end
 
             // field extraction
-            8'o170, 8'o171: pop(S_LDB_1);                             // ldb, char-ldb
-            8'o370, 8'o371: pop(S_DPB_1);                             // dpb, char-dpb
-            8'o172, 8'o173: pop(S_PLDB_1);                            // %p-ldb, %p-tag-ldb
-            8'o372, 8'o373: pop(S_PDPB_1);                            // %p-dpb, %p-tag-dpb
+            8'o170, 8'o171, 8'o172, 8'o173: begin                     // ldb, char-ldb, %p-ldb, %p-tag-ldb
+              rot_n <= operand[4:0]; msk_n <= {1'b0, operand[9:5]} + 6'd1;
+              pop(op[1] ? S_PLDB_1 : S_LDB_1);
+            end
+            8'o370, 8'o371, 8'o372, 8'o373: begin                     // dpb, char-dpb, %p-dpb, %p-tag-dpb
+              rot_n <= operand[4:0];
+              msk_n <= {1'b0, operand[4:0]} + {1'b0, operand[9:5]} + 6'd1;   // bits pos .. pos+size
+              msk2_n <= {1'b0, operand[4:0]};
+              pop(op[1] ? S_PDPB_1 : S_DPB_1);
+            end
 
             // arrays
             8'o312, 8'o313, 8'o310: opval(1'b0, S_AREF_1);            // aref-1, aloc-1, aset-1
@@ -113,8 +119,10 @@
 
             // blocks
             8'o120, 8'o121, 8'o122, 8'o123, 8'o124, 8'o125, 8'o126, 8'o127,
-            8'o130, 8'o131, 8'o132, 8'o133:
+            8'o130, 8'o131, 8'o132, 8'o133: begin
+              rot_n <= alu_control[4:0]; msk2_n <= 6'd31 - {1'b0, alu_control[9:5]};
               mrd(bar[op[1:0]], operand[9:6] >= CYC_COUNT ? CYC_RAW : operand[9:6], S_BLK_1);
+            end
             8'o160, 8'o161, 8'o162, 8'o163: begin                     // %block-n-read-alu
               if (omode == 2'd3) err(E_I_STAGE, inst_pc[32:1]);
               else begin addr <= oaddr; sread(oaddr, S_BLKALU_1); end

@@ -233,6 +233,7 @@ module ivory_cpu
   logic        m_first;               // the request hasn't been looked at yet
   logic        m_wait;                // waiting for the memory
   logic        m_cached;
+  logic        m_chk, m_wchk;         // a cycle-typed read's / write's check on the data
   logic        m_trans;               // the page accessed has transport traps enabled
   word_t       m_wd, m_rd;
   assign sc_q_m = sc_data2[m_addr[6:0]];
@@ -243,13 +244,12 @@ module ivory_cpu
   assign mem_wdata = m_wd;
   assign mem_phys = m_phys;
   // MRD / MWR subroutines
-  word_t       mr_a;                  // address word (locative-like or physical)
   logic [3:0]  mr_cyc;
   word_t       mr_d;                  // result
   logic [31:0] mr_final;              // address the data came from
   logic        mr_phys;
   logic [16:0] mr_hops;
-  word_t       mw_a, mw_v;
+  word_t       mw_v;
   logic [3:0]  mw_cyc;
   logic        mw_preserve, mw_phys;
   // PUSH / POP
@@ -423,6 +423,20 @@ module ivory_cpu
     r.cond = ac[21] ? !v : v;
     return r;
   endfunction
+
+  // One rotator, two field masks and one %alu for all the instructions
+  // that need them (a function inlines at every call): their inputs are
+  // loaded the cycle before (the pops and the memory stage load the value)
+  logic [31:0] rot_x, rot_q;
+  logic [4:0]  rot_n;
+  logic [5:0]  msk_n, msk2_n;
+  logic [31:0] msk_q, msk2_q;
+  word_t       alu_w1, alu_w2;
+  alu_t        alu_q;
+  assign rot_q = rotl(rot_x, rot_n);
+  assign msk_q = low_mask(msk_n);
+  assign msk2_q = low_mask(msk2_n);
+  assign alu_q = alu_compute(alu_w1[31:0], alu_w2[31:0], alu_w1, alu_w2);
 
   // Microstate for the error handler (error_microstate): the rev-5 numbering
   function automatic logic [31:0] error_microstate(logic [6:0] cond, logic dvalid, logic [7:0] detail);
