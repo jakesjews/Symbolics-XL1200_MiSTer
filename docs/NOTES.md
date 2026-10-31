@@ -631,18 +631,18 @@ Instructions per benchmark from the model (its clock runs at 4 instructions
 a microsecond, so Genera's CPU seconds there are instruction counts), and
 the MiSTer's cycles an instruction from them:
 
-| Benchmark | M instructions | MiSTer cycles/instruction |
-|---|---|---|
-| Boyer | 11.3 | 30.5 |
-| Browse | 18.8 | 29.8 |
-| Destructive | 2.2 | 29.6 |
-| Traverse init / run | 6.4 / 37.8 | 32.8 / 32.9 |
-| Tak / Stak / Ctak / Takl | 0.63 / 1.27 / 10.9 / 5.5 | 29.4 / 41.4 / 27.3 / 30.6 |
-| Deriv / Dderiv | 3.1 / 3.5 | 28.6 / 29.1 |
-| Div2 iterative / recursive | 2.1 / 2.4 | 31.0 / 30.8 |
-| FFT | 2.7 | 42.0 |
-| Puzzle | 49.0 | 27.1 |
-| Triang | 135.3 | 30.8 |
+| Benchmark | M instructions | MiSTer cycles/instruction, build 8 | build 25 |
+|---|---|---|---|
+| Boyer | 11.3 | 30.5 | 7.9 |
+| Browse | 18.8 | 29.8 | 6.8 |
+| Destructive | 2.2 | 29.6 | 6.0 |
+| Traverse init / run | 6.4 / 37.8 | 32.8 / 32.9 | 7.2 / 7.1 |
+| Tak / Stak / Ctak / Takl | 0.63 / 1.27 / 10.9 / 5.5 | 29.4 / 41.4 / 27.3 / 30.6 | 4.8 / 10.7 / 4.8 / 6.2 |
+| Deriv / Dderiv | 3.1 / 3.5 | 28.6 / 29.1 | 7.0 / 7.3 |
+| Div2 iterative / recursive | 2.1 / 2.4 | 31.0 / 30.8 | 6.9 / 10.4 |
+| FFT | 2.7 | 42.0 | 8.6 |
+| Puzzle | 49.0 | 27.1 | 4.7 |
+| Triang | 135.3 | 30.8 | 6.4 |
 
 fib in the model: (fib 25) 2.72M instructions, (fib 30) 30.15M (11.2 an
 invocation). The XL1201's 4.097 s for (fib 30) is then 7.4M instructions a
@@ -651,7 +651,10 @@ MHz; the last is impossible for a mix of calls and returns, so the machine
 cycle is in the 30-40 MHz range. The MiSTer does 1.72M a second.
 
 Stak (special binding) and FFT (floating point through the FPA) cost the
-most cycles an instruction. Puzzle runs 49M instructions where the 3600
+most cycles an instruction, and still do on build 25, with the
+recursive Div2, Boyer and Traverse (list structure spread over the heap:
+the DDR cache's misses) next; Tak, Ctak, fib and Puzzle run at the
+pipeline's 4.7-4.8. Puzzle runs 49M instructions where the 3600
 took 11 s: Genera 8.3's version does more work than the 1985 one, which is
 why it is the outlier in the table above.
 

@@ -15,6 +15,10 @@
 // appears, with no state change.  A miss is answered with the word asked
 // for as its beat of the line's burst arrives; the rest of the line lands
 // while the processor goes on (the port is sampled again once it has).
+// Writes are posted: acknowledged in the cycle they appear (the cached
+// word updated on a hit) and queued for DDR3, which takes them while the
+// memory is idle; a miss waits for the queue to drain, so DDR3 has every
+// write before a read of it.
 //
 // Power-up: DDR3 holds whatever the last core left there; while `init` is
 // high the memory clears main and buffer memory to zero words (as the
@@ -65,7 +69,7 @@ module xl_mem #(
   localparam int CLEAR_BURST = 16;
 
   typedef enum logic [3:0] {
-    M_CLEAR, M_IDLE, M_LOOKUP, M_MISS, M_FILL, M_WRITE, M_BUF_RD, M_BUF_WAIT, M_BUF_WR
+    M_CLEAR, M_IDLE, M_MISS, M_FILL, M_BUF_RD, M_BUF_WAIT, M_BUF_WR
   } mstate_t;
   mstate_t st /*verilator public_flat_rd*/ = M_CLEAR;
 
@@ -85,11 +89,20 @@ module xl_mem #(
   assign cdata_q = cdata[cdata_ra];
   assign ctag_q = ctag[ctag_ra];
 
-  // The request being served
-  logic              a_we;
+  // The read miss being served
   logic [RAM_AW-1:0] a_addr;
-  logic [39:0]       a_wd;
   logic [1:0]        beat;
+
+  // The write queue: {address, word}, read from its registered pointer
+  localparam int WQ_AW = 5;
+  logic [RAM_AW+39:0] wq [1 << WQ_AW];
+  logic [WQ_AW:0]     wq_wp, wq_rp;
+  wire                wq_empty = wq_wp == wq_rp;
+  wire                wq_full = wq_wp == {~wq_rp[WQ_AW], wq_rp[WQ_AW-1:0]};
+  wire [RAM_AW+39:0]  wq_head = wq[wq_rp[WQ_AW-1:0]];
+  wire                wq_push = st == M_IDLE && cpu_req && cpu_we && !buf_req && !wq_full;
+  wire                wq_pop = st == M_IDLE && !wq_empty && !ddr_busy;
+  always_ff @(posedge clk) if (wq_push) wq[wq_wp[WQ_AW-1:0]] <= {cpu_addr, cpu_wdata};
   logic              b_we;
   logic [15:0]       b_addr;
   logic [3:0]        b_be;
@@ -97,8 +110,7 @@ module xl_mem #(
 
   wire [TAG_W-1:0]   a_tag = a_addr[RAM_AW-1 -: TAG_W];
   wire [TAG_W-1:0]   c_tag = cpu_addr[RAM_AW-1 -: TAG_W];
-  // the hit for the request on the port (read from cpu_addr); the write
-  // path's (M_LOOKUP) is the same request, still held on the port
+  // the hit for the request on the port (read from cpu_addr)
   wire               hit = ctag_q[TAG_W] && ctag_q[TAG_W-1:0] == c_tag;
 
   // Clearing
@@ -115,7 +127,7 @@ module xl_mem #(
 
   // Writes into the cache
   always_comb begin
-    cdata_we = 1'b0; cdata_wa = a_addr[LINE_AW+1:0]; cdata_wd = a_wd;
+    cdata_we = 1'b0; cdata_wa = cpu_addr[LINE_AW+1:0]; cdata_wd = cpu_wdata;
     ctag_we = 1'b0; ctag_wa = a_addr[LINE_AW+1:2]; ctag_wd = {1'b1, a_tag};
     case (st)
       M_CLEAR: begin
@@ -123,7 +135,7 @@ module xl_mem #(
         ctag_wa = clr_tag[LINE_AW-1:0];
         ctag_wd = '0;
       end
-      M_LOOKUP: cdata_we = a_we && hit;           // write hit: update the word
+      M_IDLE: cdata_we = wq_push && hit;          // a write hit: update the word
       M_FILL: begin
         cdata_we = ddr_dout_ready;
         cdata_wa = {a_addr[LINE_AW+1:2], beat};
@@ -137,11 +149,12 @@ module xl_mem #(
   // DDR3 commands
   always_comb begin
     ddr_rd = 1'b0; ddr_we = 1'b0;
-    ddr_addr = RAM_BASE + 29'(a_addr);
+    ddr_addr = RAM_BASE + 29'(wq_head[RAM_AW+39:40]);
     ddr_burstcnt = 8'd1;
-    ddr_din = {24'd0, a_wd};
+    ddr_din = {24'd0, wq_head[39:0]};
     ddr_be = 8'hFF;
     case (st)
+      M_IDLE: ddr_we = !wq_empty;                 // drain the write queue
       M_CLEAR: begin
         ddr_we = CLEAR && !init && !(clr_buf && clr_addr[16]);
         ddr_addr = (clr_buf ? BUF_BASE : RAM_BASE) + 29'(clr_addr - 23'(clr_beat));
@@ -153,7 +166,6 @@ module xl_mem #(
         ddr_addr = RAM_BASE + 29'({a_addr[RAM_AW-1:2], 2'b00});
         ddr_burstcnt = 8'd4;
       end
-      M_WRITE: ddr_we = 1'b1;
       M_BUF_RD: begin
         ddr_rd = 1'b1;
         ddr_addr = BUF_BASE + 29'(b_addr);
@@ -175,9 +187,8 @@ module xl_mem #(
     buf_ack = 1'b0;
     buf_rdata = ddr_dout[31:0];
     case (st)
-      M_IDLE: cpu_ack = cpu_req && !buf_req && !cpu_we && hit;   // a read hit, answered now
+      M_IDLE: cpu_ack = cpu_req && !buf_req && (cpu_we ? !wq_full : hit);   // a read hit or a posted write
       M_FILL: begin cpu_ack = ddr_dout_ready && beat == a_addr[1:0]; cpu_rdata = ddr_dout[39:0]; end
-      M_WRITE:  cpu_ack = !ddr_busy;
       M_BUF_WAIT: buf_ack = ddr_dout_ready;
       M_BUF_WR: buf_ack = !ddr_busy;
       default: ;
@@ -194,7 +205,11 @@ module xl_mem #(
       clr_beat <= '0;
       clr_buf <= 1'b0;
       clr_tag <= '0;
+      wq_wp <= '0;
+      wq_rp <= '0;
     end else begin
+      if (wq_push) wq_wp <= wq_wp + 1'd1;
+      if (wq_pop) wq_rp <= wq_rp + 1'd1;
       case (st)
         M_CLEAR: begin
           if (!clr_tag[LINE_AW]) clr_tag <= clr_tag + 1'd1;
@@ -215,12 +230,10 @@ module xl_mem #(
           if (buf_req) begin
             b_we <= buf_we; b_addr <= buf_addr; b_be <= buf_be; b_wd <= buf_wdata;
             st <= buf_we ? M_BUF_WR : M_BUF_RD;
-          end else if (cpu_req && (cpu_we || !hit)) begin
-            a_we <= cpu_we; a_addr <= cpu_addr; a_wd <= cpu_wdata;
-            st <= cpu_we ? M_LOOKUP : M_MISS;
+          end else if (cpu_req && !cpu_we && !hit && wq_empty) begin
+            a_addr <= cpu_addr;
+            st <= M_MISS;
           end
-
-        M_LOOKUP: st <= M_WRITE;   // a write: the cache word updated on a hit, then memory
 
         M_MISS: if (!ddr_busy) begin beat <= 2'd0; st <= M_FILL; end
 
@@ -228,8 +241,6 @@ module xl_mem #(
           beat <= beat + 2'd1;
           if (beat == 2'd3) st <= M_IDLE;
         end
-
-        M_WRITE: if (!ddr_busy) st <= M_IDLE;
 
         M_BUF_RD: if (!ddr_busy) st <= M_BUF_WAIT;
         M_BUF_WAIT: if (ddr_dout_ready) st <= M_IDLE;

@@ -261,7 +261,7 @@ int main(int argc, char** argv) {
       printf("  cpu %-18s %5.1f%%\n", tops[k].second < (int)names.size() ? names[tops[k].second].c_str() : "?",
              100.0 * tops[k].first / total);
     const char* mmu_names[] = {"IDLE", "W0", "W1", "AGE", "FILL", "HIT", "N1", "N2", "ACCESS", "?", "?", "?", "?", "?", "?", "?"};
-    const char* mem_names[] = {"CLEAR", "IDLE", "LOOKUP", "MISS", "FILL", "WRITE", "BUF_RD", "BUF_WAIT", "BUF_WR", "?", "?", "?", "?", "?", "?", "?"};
+    const char* mem_names[] = {"CLEAR", "IDLE", "MISS", "FILL", "BUF_RD", "BUF_WAIT", "BUF_WR", "?", "?", "?", "?", "?", "?", "?", "?", "?"};
     for (int k = 0; k < 16; k++) if (prof_mmu[k]) printf("  mmu %-8s %5.1f%%\n", mmu_names[k], 100.0 * prof_mmu[k] / total);
     for (int k = 0; k < 16; k++) if (prof_mem[k]) printf("  mem %-8s %5.1f%%\n", mem_names[k], 100.0 * prof_mem[k] / total);
   }
