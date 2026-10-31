@@ -47,6 +47,7 @@ module xl_iob #(
   output logic [15:0] tx_d,
   output logic        tx_enp,
   output logic [11:0] tx_len,
+  output logic        tx_crcgen,
   output logic        tx_clr,
   input  logic        tx_busy,
   output logic        rx_pop,
@@ -151,7 +152,7 @@ module xl_iob #(
     .clk, .reset, .pins_we(eth_pins_we), .pins(eth_pins), .busy(eth_busy), .irq(ether_irq),
     .m_req(eth_req), .m_we(eth_we), .m_word(eth_word), .m_hi(eth_hi), .m_be(eth_be), .m_wdata(eth_wdata),
     .m_ack(eth_ack), .m_rdata(buf_rdata),
-    .tx_push, .tx_stp, .tx_be, .tx_d, .tx_enp, .tx_len, .tx_crcgen(), .tx_clr, .tx_busy,
+    .tx_push, .tx_stp, .tx_be, .tx_d, .tx_enp, .tx_len, .tx_crcgen, .tx_clr, .tx_busy,
     .rx_pop, .rx_clr, .rx_d, .rx_deof, .rx_fifordy, .rx_len, .rx_lpbk, .rx_prom, .rx_padr, .rx_ladrf
   );
 
