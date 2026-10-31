@@ -127,7 +127,15 @@ In the order they'll be done. Bugs come first whenever they turn up.
 8. Network: the 82586 to a real network. Cores can't reach the MiSTer's
    Ethernet themselves; MiSTer's main program bridges it for a few cores
    (Minimig, NeXT, Sun), so this needs a change there.
-9. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
+9. Disk throughput: the SCSI model moves one 1280-byte block a request
+   through MiSTer's image path (three 512-byte sectors into a 2 KB staging
+   buffer, one round trip to the main program each), so Save World wrote at
+   about 125 blocks a second, 160 KB/s, and Load World and paging are
+   bounded the same way; a 1990 SCSI disk did several times that. Measure
+   Load World, Save World and paging on the MiSTer, then move many blocks a
+   request (`sd_blk_cnt` allows 64 sectors) through a bigger staging buffer
+   or straight into DDR3, with read-ahead on sequential reads.
+10. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
 
 Documentation still wanted:
 - The Merlin-II boot PROMs (a dump; the CY7C291 PROMs' data sheet is in the
