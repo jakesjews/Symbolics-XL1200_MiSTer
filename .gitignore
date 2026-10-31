@@ -58,3 +58,4 @@ research/downloads/
 # xlemu NVRAM (written next to where it runs)
 *.nvram
 sim/system/screen.pgm
+build-mac/
