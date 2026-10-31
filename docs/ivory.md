@@ -316,6 +316,25 @@ from `S_FETCH` and from `S_RETIRE`, whose cache lookup uses the next PC
 through `fetch_pc`); the operand pre-read sets `sc_ra` in `decode` and
 `opval` takes `sc_q` (`opv_pre`), or the immediate, in one cycle.
 
+## Memory path
+
+The free-running bench profiles cycles by state (`PROFILE=1`). Build 18's
+core on the FEP boot, 6.79 cycles an instruction: 30% in the memory-wait
+state and 26% with the MMU waiting on the bus (a cached data read cost 4
+cycles: the request cycle, the MMU's bus request, the DDR cache's lookup
+state, the registered ack; the stack cache answers in 2), 15% the
+retire/fetch cycle (one an instruction), 12% execute dispatch, 7% the push
+state (calls, entries, trap frames), misses under 2%.
+
+So: the DDR cache's RAMs are read from the requester's address, which is
+the MMU's registered bus address, and a read hit is acknowledged in the
+cycle the request appears with no state change (the write path keeps its
+lookup state); the MMU passes that ack, the data and the physical address
+straight through instead of registering them (traps and bus errors stay
+registered). A cached read is then 2 cycles. FEP boot simulation: 117.3M
+instructions in the 14 s, 5.97 cycles an instruction (6.79 before), the
+memory-wait share 19% (30%).
+
 ## Order of work
 
 1. Stack cache, verified by a Genera boot, compile-file and fib on the

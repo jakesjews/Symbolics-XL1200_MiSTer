@@ -1,3 +1,7 @@
+#include <algorithm>
+#include <vector>
+#include <fstream>
+#include <map>
 // The RTL XL1200 as it runs on the MiSTer: device time in microseconds of the
 // 50 MHz clock, SCSI commands running while the processor polls, memory
 // cleared at power-up (DDR3 starts with junk), the display clock running.
@@ -110,12 +114,22 @@ int main(int argc, char** argv) {
   // report a hit in VMA=PMA space whose word differs from memory
   const int S_FETCH = 12;   // from rtl/ivory/ivory_cpu_state_enum.svh;
   uint64_t stale = 0;
+  // PROFILE=1: cycles by processor, MMU and memory state (names from the
+  // generated state enum, as sim/system/tb_system.cpp)
+  bool profile = getenv("PROFILE") != nullptr;
+  std::map<int, uint64_t> prof_cpu;
+  uint64_t prof_mmu[16] = {}, prof_mem[16] = {}, prof_insns0 = 0;
   // XLWATCH=va (hex, VMA=PMA space): report what happens to that instruction word
   uint32_t watch = getenv("XLWATCH") ? (uint32_t)strtoul(getenv("XLWATCH"), nullptr, 16) : 0;
   uint64_t watch_mem = watch ? ddr.at(RAM_BASE + (watch & 0x07FFFFFFu)) : 0;
   bool watch_wr = false;
   while (cycles < end) {
     tick();
+    if (profile) {
+      prof_cpu[top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__st]++;
+      prof_mmu[top->rootp->xl_machine__DOT__core__DOT__mmu__DOT__st & 15]++;
+      prof_mem[top->rootp->xl_machine__DOT__mem__DOT__st & 15]++;
+    }
     if (watch) {
       auto& r = *top->rootp;
       static double t_from = getenv("XLFROM") ? atof(getenv("XLFROM")) : 0, t_to = getenv("XLTO") ? atof(getenv("XLTO")) : 0;
@@ -213,6 +227,31 @@ int main(int argc, char** argv) {
     }
   }
   save_screen(screen.c_str());
+  if (profile) {
+    std::vector<std::string> names;
+    std::ifstream en("../../rtl/ivory/ivory_cpu_state_enum.svh");
+    for (std::string line; std::getline(en, line);)
+      for (size_t k = 0; (k = line.find("S_", k)) != std::string::npos;) {
+        size_t e = line.find_first_of(", \n", k);
+        names.push_back(line.substr(k, e - k));
+        k = e;
+      }
+    uint64_t total = 0;
+    for (auto& [k, v] : prof_cpu) total += v;
+    std::vector<std::pair<uint64_t, int>> tops;
+    for (auto& [k, v] : prof_cpu) tops.emplace_back(v, k);
+    std::sort(tops.rbegin(), tops.rend());
+    uint64_t insns = top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__icount;
+    printf("profile: %llu cycles, %llu instructions, %.2f cycles/instruction\n", (unsigned long long)total,
+           (unsigned long long)insns, (double)total / insns);
+    for (size_t k = 0; k < tops.size() && k < 30; k++)
+      printf("  cpu %-18s %5.1f%%\n", tops[k].second < (int)names.size() ? names[tops[k].second].c_str() : "?",
+             100.0 * tops[k].first / total);
+    const char* mmu_names[] = {"IDLE", "W0", "W1", "AGE", "FILL", "HIT", "N1", "N2", "ACCESS", "?", "?", "?", "?", "?", "?", "?"};
+    const char* mem_names[] = {"CLEAR", "IDLE", "LOOKUP", "MISS", "FILL", "FILLED", "WRITE", "BUF_RD", "BUF_WAIT", "BUF_WR", "?", "?", "?", "?", "?", "?"};
+    for (int k = 0; k < 16; k++) if (prof_mmu[k]) printf("  mmu %-8s %5.1f%%\n", mmu_names[k], 100.0 * prof_mmu[k] / total);
+    for (int k = 0; k < 16; k++) if (prof_mem[k]) printf("  mem %-8s %5.1f%%\n", mem_names[k], 100.0 * prof_mem[k] / total);
+  }
   printf("%.2f s simulated, %llu instructions; screen in %s\n", cycles / 50e6, (unsigned long long)top->insn_count,
          screen.c_str());
   delete top;

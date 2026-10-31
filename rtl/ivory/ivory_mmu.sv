@@ -30,7 +30,7 @@ module ivory_mmu
   input  logic        cpu_phys,
   input  logic [31:0] cpu_addr,
   input  word_t       cpu_wdata,
-  output logic        cpu_ack,
+  output logic        cpu_ack,        // in the cycle the bus answers (M_ACCESS), or registered for a trap
   output word_t       cpu_rdata,
   output logic [11:0] cpu_fault,      // with cpu_ack: 0, a trap vector, or 12'hFFF (search runaway)
   output logic        cpu_buserr,
@@ -91,6 +91,12 @@ module ivory_mmu
 
   wire [23:0] vpn = vma[31:8];
 
+  // the data access's ack, data and address come straight from the bus
+  logic ack_r;
+  assign cpu_ack = ack_r || (st == M_ACCESS && bus_ack && !bus_buserr);
+  assign cpu_rdata = bus_rdata;
+  assign cpu_pa = bus_addr;
+
   // lookup of the request's page, and of the control registers' page
   logic [15:0] req_match, ctl_match;
   logic        req_hit;
@@ -115,13 +121,13 @@ module ivory_mmu
     bus_req <= 1'b1; bus_we <= 1'b1; bus_addr <= pa; bus_wdata <= w;
   endtask
   task automatic done(input logic [11:0] fault);
-    cpu_ack <= 1'b1;
+    ack_r <= 1'b1;
     cpu_fault <= fault;
     cpu_buserr <= 1'b0;
     st <= M_IDLE;
   endtask
   task automatic buserr(input logic [31:0] pa);
-    cpu_ack <= 1'b1;
+    ack_r <= 1'b1;
     cpu_fault <= 12'd0;
     cpu_buserr <= 1'b1;
     cpu_bus_pa <= pa;
@@ -173,7 +179,7 @@ module ivory_mmu
   endtask
 
   always_ff @(posedge clk) begin
-    cpu_ack <= 1'b0;
+    ack_r <= 1'b0;
     map_reload <= 1'b0;
     if (map_flush) flush_pend <= 1'b1;
     if (map_load) begin load_pend <= 1'b1; ctl_vpn <= map_vpn; ctl_data <= map_data; end
@@ -212,6 +218,8 @@ module ivory_mmu
           vma <= cpu_addr;
           wd <= cpu_wdata;
           cpu_transport <= 1'b0;
+          cpu_fault <= 12'd0;
+          cpu_buserr <= 1'b0;
           if (cpu_phys) begin
             if (cpu_we) bus_wr(cpu_addr, cpu_wdata); else bus_rd(cpu_addr);
             st <= M_ACCESS;
@@ -299,10 +307,8 @@ module ivory_mmu
       end
 
       M_ACCESS: if (bus_ack) begin
-        cpu_rdata <= bus_rdata;
-        cpu_pa <= bus_addr;
         if (bus_buserr) buserr(bus_addr);
-        else done(12'd0);
+        else st <= M_IDLE;   // the processor has the ack and the data this cycle
       end
 
       default: st <= M_IDLE;

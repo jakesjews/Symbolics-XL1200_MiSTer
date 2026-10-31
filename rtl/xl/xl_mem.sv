@@ -10,7 +10,9 @@
 // The cache is direct-mapped with four-word lines, write-through, allocating
 // on read misses only.  Only the processor reaches main memory (the I/O
 // board's DMA stays in its buffer memory), so nothing else can make a line
-// stale.
+// stale.  Its RAMs are read from the requester's address, which is a
+// register on its side, so a read hit is answered in the cycle the request
+// appears, with no state change.
 //
 // Power-up: DDR3 holds whatever the last core left there; while `init` is
 // high the memory clears main and buffer memory to zero words (as the
@@ -63,7 +65,7 @@ module xl_mem #(
   typedef enum logic [3:0] {
     M_CLEAR, M_IDLE, M_LOOKUP, M_MISS, M_FILL, M_FILLED, M_WRITE, M_BUF_RD, M_BUF_WAIT, M_BUF_WR
   } mstate_t;
-  mstate_t st = M_CLEAR;
+  mstate_t st /*verilator public_flat_rd*/ = M_CLEAR;
 
   // ---------------------------------------------------------------- cache RAMs
   logic [39:0]    cdata [1 << (LINE_AW + 2)];
@@ -76,14 +78,10 @@ module xl_mem #(
   logic [39:0]    cdata_wd;
   logic [TAG_W:0] ctag_wd;
 
-  always_ff @(posedge clk) begin
-    cdata_q <= cdata[cdata_ra];
-    if (cdata_we) cdata[cdata_wa] <= cdata_wd;
-  end
-  always_ff @(posedge clk) begin
-    ctag_q <= ctag[ctag_ra];
-    if (ctag_we) ctag[ctag_wa] <= ctag_wd;
-  end
+  always_ff @(posedge clk) if (cdata_we) cdata[cdata_wa] <= cdata_wd;
+  always_ff @(posedge clk) if (ctag_we) ctag[ctag_wa] <= ctag_wd;
+  assign cdata_q = cdata[cdata_ra];
+  assign ctag_q = ctag[ctag_ra];
 
   // The request being served
   logic              a_we;
@@ -97,7 +95,10 @@ module xl_mem #(
   logic [31:0]       b_wd;
 
   wire [TAG_W-1:0]   a_tag = a_addr[RAM_AW-1 -: TAG_W];
-  wire               hit = ctag_q[TAG_W] && ctag_q[TAG_W-1:0] == a_tag;
+  wire [TAG_W-1:0]   c_tag = cpu_addr[RAM_AW-1 -: TAG_W];
+  // the hit for the request on the port (read from cpu_addr); the write
+  // path's (M_LOOKUP) is the same request, still held on the port
+  wire               hit = ctag_q[TAG_W] && ctag_q[TAG_W-1:0] == c_tag;
 
   // Clearing
   logic [22:0]       clr_addr;     // DDR words from RAM_BASE, then buffer words
@@ -105,11 +106,10 @@ module xl_mem #(
   logic              clr_buf;
   logic [LINE_AW:0]  clr_tag;      // tag entries invalidated (MSB = done)
 
-  // Read addresses: the request on the processor port while idle, so the
-  // lookup state sees the tag and the word.
+  // Read addresses: the request on the processor port
   always_comb begin
-    cdata_ra = (st == M_IDLE) ? cpu_addr[LINE_AW+1:0] : a_addr[LINE_AW+1:0];
-    ctag_ra  = (st == M_IDLE) ? cpu_addr[LINE_AW+1:2] : a_addr[LINE_AW+1:2];
+    cdata_ra = cpu_addr[LINE_AW+1:0];
+    ctag_ra  = cpu_addr[LINE_AW+1:2];
   end
 
   // Writes into the cache
@@ -174,7 +174,7 @@ module xl_mem #(
     buf_ack = 1'b0;
     buf_rdata = ddr_dout[31:0];
     case (st)
-      M_LOOKUP: cpu_ack = !a_we && hit;
+      M_IDLE: cpu_ack = cpu_req && !buf_req && !cpu_we && hit;   // a read hit, answered now
       M_FILLED: begin cpu_ack = 1'b1; cpu_rdata = fill_word; end
       M_WRITE:  cpu_ack = !ddr_busy;
       M_BUF_WAIT: buf_ack = ddr_dout_ready;
@@ -214,15 +214,12 @@ module xl_mem #(
           if (buf_req) begin
             b_we <= buf_we; b_addr <= buf_addr; b_be <= buf_be; b_wd <= buf_wdata;
             st <= buf_we ? M_BUF_WR : M_BUF_RD;
-          end else if (cpu_req) begin
+          end else if (cpu_req && (cpu_we || !hit)) begin
             a_we <= cpu_we; a_addr <= cpu_addr; a_wd <= cpu_wdata;
-            st <= M_LOOKUP;
+            st <= cpu_we ? M_LOOKUP : M_MISS;
           end
 
-        M_LOOKUP:
-          if (a_we) st <= M_WRITE;
-          else if (hit) st <= M_IDLE;
-          else st <= M_MISS;
+        M_LOOKUP: st <= M_WRITE;   // a write: the cache word updated on a hit, then memory
 
         M_MISS: if (!ddr_busy) begin beat <= 2'd0; st <= M_FILL; end
 
