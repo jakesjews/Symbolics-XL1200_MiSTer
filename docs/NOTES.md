@@ -756,6 +756,48 @@ where the distribution world took eighty (its first boot does the site
 and namespace work). Save World logs out first, so the saved world still
 starts at "Please login".
 
+Numbers, typed at the Listener of the saved world and checked against
+Python (Oct 31 2026, build 30): bignums (`(expt 2 100)`, a 30-digit by
+9-digit product, `(isqrt (expt 10 40))`, `(gcd (expt 2 64) (expt 6 20))`,
+`(truncate (expt 3 50) 7)`), ratios (`22/7`, `(+ 1/3 2/3)` = 1,
+`(expt 2/3 10)` = 1024/59049), double floats (`(sqrt 2.0d0)` =
+1.4142135623730951d0, `(exp 1.0d0)`, `(/ 1.0d0 3)`, `(atan 1.0d0 1.0d0)`,
+`(log 100.0d0 10)` = 2.0d0, `(truncate 1.0d19)`), single floats
+(`(sqrt 2.0)` = 1.4142135, `(/ 1.0 3)` = 0.33333334, `(exp 10.0)` =
+22026.465) and complex numbers (`(* #C(1 2) #C(3 4))` = #C(-5 10),
+`(sqrt -2.0d0)` = #C(0.0 1.4142135623730951d0), `(/ #C(1 1) #C(1 -1))` =
+#C(0 1); Genera gives `(sqrt -1)` as the exact #C(0 1)) all agree.
+`(sin 1.0d0)` is 0.8414709848078966d0 against the correctly rounded
+...965, and `(expt 1.1d0 100)` is 13780.61233982241d0 where repeated
+multiplication gives ...2238: Genera's own series and exp-of-log
+algorithms, a few units in the last place, not the FPA's basic
+operations. The basic operations themselves round correctly: `(/ 1.0d0
+7)` = 0.14285714285714285d0, `(* 3.0d0 0.1d0)` and `(+ 0.1d0 0.2d0)` =
+0.30000000000000004d0, `(- 0.3d0 0.1d0)` = 0.19999999999999998d0, `(/
+22.0d0 7)`, `(sqrt 3.0d0)`, `(* 1.0000000000000002d0
+1.0000000000000002d0)` = 1.0000000000000004d0, 1 ± 1d-17/1d-16 = 1.0d0,
+`(/ 1.0d0 1.0d-300)` = 9.999999999999999d299, `(* 123456789.0d0
+987654321.0d0)` = 1.2193263111263526d17, `(/ 2.0d0 3.0d0)`; single `(+
+0.1 0.2)` and `(* 3.0 0.1)` = 0.3, `(/ 1.0 7)` = 0.14285715, 16777217.0
+reads as 1.6777216e7 and 16777216.0 + 1.0 stays there; `(* 1.0d0 (expt
+2 1023))` = 8.98846567431158d307. The traps: `(* 1.0e20 1.0e20)` signals
+the single-float overflow (`cli::signal-single-float-trap`, traps
+134217728, exponent 255, non-trap result +1e∞) with the Debugger's "use
+the infinite result" option; `(* 1.0d300 1.0d10)` and `(float (expt 2
+1024) 1.0d0)` the double-float overflow (in `%double-floating-multiply`
+and `%double-floating-scale`, exponent 2047); `(* 1.0d-200 1.0d-200)` the
+underflow ("too small in magnitude to be representable as a normalized
+double-precision floating-point number", traps 67108864, exponent -306)
+offering the zero result.
+
+Ephemeral GC: `(time (dotimes (i 50) (make-list 100000)))`, 5M words of
+consing, took 7.4 s (4.1 s in the storage system, 3.8 s of it creating
+and destroying pages) and flipped the ephemeral collector; `Show GC
+Status` afterwards: ephemeral GC on, 172 ephemeral GCs in the generation
+count, 5,092,981 words consed since cold boot and 4,835,225 reclaimed,
+with 14.6M words available before a `Start GC :Immediately` might run out
+of space.
+
 The MacIvory animation world (`animation-mac-6-2.ilod`, Genera 8.1.1,
 System 436.39, from the user's collection) boots on the core from its own
 300 MB disk: the banner says "a Symbolics XL1200", 4.0M words physical and
