@@ -18,7 +18,8 @@ Work in progress: [docs/TODO.md](docs/TODO.md).
 
 ## Setup
 
-1. Copy `XL1200_*.rbf` to `_Computer` on the SD card.
+1. Copy the newest `XL1200_*.rbf` from [releases](releases/) to `_Computer` on
+   the SD card.
 2. Build the disk: `python3 tools/fepfs.py mkworld FEPDISK.dd GENERA_8_3.ILOD boot0.vhd --blocks 240000 --paging 120000 --standalone`
    (add `--internet A.B.C.D` for the [network](#network)).
 3. Copy it to `games/XL1200/boot0.vhd`; the core mounts it when it starts.
@@ -42,9 +43,9 @@ carries the frames, as for the Sun and NeXT cores, so nothing runs by hand.
 Build the disk with `--internet A.B.C.D` (a free address on your LAN); the
 OSD's Network option picks the port or turns it off. Genera answers ping and
 serves FTP (Genera 8.3 has no telnet server). Until the bridge is upstream,
-copy the main program built from
-[tools/mister/Main_MiSTer-xl1200-enet.patch](tools/mister/Main_MiSTer-xl1200-enet.patch)
-to the SD card as `MiSTer_xl1200` and add to `MiSTer.ini`:
+copy [releases/MiSTer_xl1200](releases/MiSTer_xl1200), the main program built
+with [tools/mister/Main_MiSTer-xl1200-enet.patch](tools/mister/Main_MiSTer-xl1200-enet.patch),
+to the root of the SD card and add to `MiSTer.ini`:
 
 ```
 [XL1200]
