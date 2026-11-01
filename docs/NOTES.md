@@ -1183,7 +1183,11 @@ memory is shown even while the FEP has the display off.
   coherent with ten named write sites; the WD33C93's 32 bytes are read by
   name throughout the SCSI engine for 256 flops in all. Checked in the
   free-running simulation (FEP boot, Hello and Boot through the DUSCC's
-  receive path, Genera to its herald).
+  receive path, Genera to its herald). Build 39 (seed 3): 33,982 ALMs
+  (81%) and 27,176 registers against build 36's 34,378 and 27,805, the
+  DUSCC a 64 x 8 block RAM, every timing corner met (setup 0.517 ns, hold
+  0.252 ns); seed 2, which had routed build 36, gave up on congestion in
+  22 minutes. The placement lottery doesn't care about 1%.
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's
