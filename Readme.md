@@ -11,52 +11,55 @@ Work in progress: [docs/TODO.md](docs/TODO.md).
 
 ## What you need
 
-- A Genera 8.3 world (`GENERA_8_3.ILOD` from the Genera 8.3 CD)
-- An XL1200 FEP disk image, a raw SCSI2SD dump with 1280-byte blocks (the
-  disk tool builds a disk from one and the world:
-  [docs/NOTES.md](docs/NOTES.md#fep-file-system-layout))
+- The core and the main program from [releases](releases/)
+- An XL1200 disk image: one you have, or one you build
+  ([Building a disk](#building-a-disk))
 - A keyboard and mouse
 - For direct video, a display that takes 1152 × 880 at 60 Hz (54 kHz)
 
 ## Setup
 
-1. Copy the newest `XL1200_*.rbf` from [releases](releases/) to `_Computer` on
-   the SD card.
-2. Build the disk: `python3 tools/fepfs.py mkworld FEPDISK.dd GENERA_8_3.ILOD boot0.vhd --blocks 240000 --paging 120000 --standalone`
-   (add `--internet A.B.C.D` for the [network](#network)).
-3. Copy it to `games/XL1200/boot0.vhd`; the core mounts it when it starts.
-4. Start XL1200 from the Computer menu. At the FEP prompt type `Hello`,
-   `Load World FEP7:>Genera-8-3.ilod`, `Start`.
-5. Once, in Genera: `Login Lisp-Machine`, `Create Directory XL1200:>sys>`,
-   `Create Directory XL1200:>sys>site>`,
-   `Copy File FEP7:>sys-translations.text XL1200:>sys>site>sys.translations`.
-6. Save it: `Save World FEP7:>Genera-8-3-site.ilod`; Y to the herald and the
-   label, Yes to the boot file, Return for its name, Super-C (Windows-C) to
-   write it.
-7. From then on type `Hello` and `Boot` at the FEP; Genera is up in seconds.
+1. Copy the newest `XL1200_*.rbf` from [releases](releases/) to `_Computer`
+   on the SD card.
+2. Copy [releases/MiSTer_xl1200](releases/MiSTer_xl1200) to the root of the
+   SD card, next to `MiSTer`. It is MiSTer's main program with the core's
+   Ethernet bridge; without it the core runs but Genera has no network.
+3. Add to `MiSTer.ini`:
+
+   ```
+   [XL1200]
+   main=MiSTer_xl1200
+   ```
+
+4. Copy your disk image to `games/XL1200/boot0.vhd`; the core mounts it when
+   it starts.
+5. Start XL1200 from the Computer menu. At the FEP prompt type `Hello`, then
+   `Boot`; Genera is up in seconds. (A disk with no boot file: `Hello`,
+   `Load World FEP7:>name.ilod`, `Start`.)
+6. In Genera, `Login Lisp-Machine`.
 
 The Symbolics keys (Select, Function, Abort, Help, ...) are on the PC's
 function keys: [docs/keyboard.md](docs/keyboard.md).
 
-## Network
+## Building a disk
 
-Genera's Ethernet goes out of the MiSTer's wired port; MiSTer's main program
-carries the frames, as for the Sun and NeXT cores, so nothing runs by hand.
-Build the disk with `--internet A.B.C.D` (a free address on your LAN); the
-OSD's Network option picks the port or turns it off. Genera answers ping and
-serves FTP (Genera 8.3 has no telnet server). Until the bridge is upstream,
-copy [releases/MiSTer_xl1200](releases/MiSTer_xl1200), the main program built
-with [tools/mister/Main_MiSTer-xl1200-enet.patch](tools/mister/Main_MiSTer-xl1200-enet.patch),
-to the root of the SD card and add to `MiSTer.ini`:
+You need a Genera 8.3 world (`GENERA_8_3.ILOD` from the Genera 8.3 CD) and an
+XL1200 FEP disk image, a raw SCSI2SD dump with 1280-byte blocks
+([docs/NOTES.md](docs/NOTES.md#fep-file-system-layout)).
 
-```
-[XL1200]
-main=MiSTer_xl1200
-```
+1. `python3 tools/fepfs.py mkworld FEPDISK.dd GENERA_8_3.ILOD boot0.vhd --blocks 240000 --paging 120000 --standalone`
+   (add `--internet A.B.C.D` for the [network](#network)).
+2. Copy it to `games/XL1200/boot0.vhd` and start the core. At the FEP prompt
+   type `Hello`, `Load World FEP7:>Genera-8-3.ilod`, `Start`.
+3. Once, in Genera: `Login Lisp-Machine`, `Create Directory XL1200:>sys>`,
+   `Create Directory XL1200:>sys>site>`,
+   `Copy File FEP7:>sys-translations.text XL1200:>sys>site>sys.translations`.
+4. Save it: `Save World FEP7:>Genera-8-3-site.ilod`; Y to the herald and the
+   label, Yes to the boot file, Return for its name, Super-C (Windows-C) to
+   write it.
+5. From then on type `Hello` and `Boot` at the FEP.
 
-WiFi can't carry it, and every XL1200 core has the same Ethernet address.
-
-## The full disk
+### The full disk
 
 The MacIvory factory disk image that circulates holds a Genera file system
 with Joshua, Concordia, Statice, CLIM, the documentation and fonts, the
@@ -66,6 +69,19 @@ Clock can be "Today":
 [docs/NOTES.md](docs/NOTES.md#the-macivory-disk-and-the-full-image).
 `Hello` and `Boot` start Genera 8.3; for the animation world type `Hello`,
 `Load World FEP7:>animation-mac-6-2-y2k.ilod`, `Start`.
+
+## Network
+
+Genera's Ethernet goes out of the MiSTer's wired port; the main program from
+step 2 carries the frames, as for the Sun and NeXT cores, so nothing runs by
+hand. The disk has to be built with `--internet A.B.C.D` (a free address on
+your LAN); the OSD's Network option picks the port or turns it off. Genera
+answers ping and serves FTP (Genera 8.3 has no telnet server).
+
+WiFi can't carry it, and every XL1200 core has the same Ethernet address.
+The bridge is
+[tools/mister/Main_MiSTer-xl1200-enet.patch](tools/mister/Main_MiSTer-xl1200-enet.patch)
+until it is upstream.
 
 ## Gotchas
 
@@ -81,10 +97,10 @@ Clock can be "Today":
 - "Unable to get time from the network or the calendar clock": Clock to "28 years back".
 - Genera asks for the date right after the MiSTer starts: it loaded before MiSTer set its clock; type the date, or reload the core.
 - "This Lisp world has not been configured for use at the local site": the disk was built without `--standalone`.
-- "Unable to change site to Standalone. The directory >sys does not exist": step 5 hasn't been done on this disk.
+- "Unable to change site to Standalone. The directory >sys does not exist": step 3 of [Building a disk](#building-a-disk) hasn't been done on this disk.
 - A full GC freezes Genera: the paging file is smaller than physical memory; build the disk with `--blocks 240000`.
 - No picture on direct video: the display has to take an 80 MHz, 54 kHz signal.
-- Genera doesn't answer ping: a cable in the MiSTer's port, the main program with the bridge, the disk built with `--internet`.
+- Genera doesn't answer ping: a cable in the MiSTer's port, `MiSTer_xl1200` and its `MiSTer.ini` entry, the disk built with `--internet`.
 - No FEP prompt: a debug build's Debug line shows where it stopped, [docs/NOTES.md](docs/NOTES.md#debug-line).
 
 How the core is built and what was found out about the machine:

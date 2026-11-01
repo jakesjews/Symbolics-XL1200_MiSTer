@@ -76,7 +76,34 @@ In the order they'll be done. Bugs come first whenever they turn up.
    Load World, Save World and paging on the MiSTer, then move many blocks a
    request (`sd_blk_cnt` allows 64 sectors) through a bigger staging buffer
    or straight into DDR3, with read-ahead on sequential reads.
-10. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
+10. A color screen without the FrameThrower, optional: emulate the Univision
+    UDC-3400, the third-party VME color board Symbolics sold for the XL400,
+    whose driver is in source on the 8.3 CD (`sys.sct/color/univision*.lisp`,
+    `vme-color.lisp`) and loaded into every Ivory world's Color system,
+    the animation world's included. (The FrameThrower's driver is binary
+    only, with a 1.9 MB microcode load and a command queue: not an option.)
+    The board is an 8-bit frame buffer with a 2048-pixel pitch, two 1-bit
+    overlay planes, three Bt458 palettes and four control words; its Intel
+    82786 graphics coprocessor is skipped, since the driver's settable
+    `remote-drawing-enabled` makes the Ivory draw into the buffer itself,
+    and the interrupts only restart the coprocessor. To build: the Merlin-II
+    VME window (physical addresses with bits 31:30 set, the polled-access
+    registers at 0x88000040-0x88000100 and the VIC068 error bits, all in
+    `i-sys/vme-bus.lisp` and `vme-defs.lisp`) onto 16 MB of DDR3 for the
+    board's space at VME 0x90000000; a DDR readout client with a line
+    buffer, the palette and the overlays into the video mixer; an OSD
+    Display option (Console, Color, Auto from the board's video-enable bit,
+    which Genera sets when the mouse is on the color screen). Run the screen
+    at 1152 × 880 through a sync format we define, so the video timing never
+    changes; the driver hard-codes 1280 × 1024 only in pan wraparound. On
+    the Genera side an init file saved into the world: define the controller
+    at its address, the sync format, make the screen with remote drawing
+    off. Unverified until it draws: the driver's init against our registers,
+    the S-Graphics programs on a non-FrameThrower screen (they ran on CAD
+    buffers and NuVista cards), the fit (about a thousand ALMs more on a
+    design that fits by seed; a separate color RBF is the fallback). The 8.3
+    world needs the Color system loaded from the CD.
+11. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
 
 ## Documentation still wanted
 
