@@ -1,5 +1,7 @@
 # Symbolics XL1200 for MiSTer
 
+**This core was created with AI**
+
 A Symbolics XL1200 Lisp machine: the Ivory processor, the Merlin-II and I/O
 boards and the floating-point accelerator. It boots the XL1200's front-end
 processor (FEP) from a SCSI disk image and runs Genera 8.3 on the 1152 × 880
