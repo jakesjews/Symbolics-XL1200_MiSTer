@@ -1170,6 +1170,20 @@ memory is shown even while the FEP has the display off.
   (`GLOBAL_SIGNAL` in the qsf). FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION
   made a congested design route where seeds 1-3 failed.
 - DDR3 holds leftovers when a core starts; nothing can assume zeroed memory.
+- Register arrays into RAM, where it pays (Nov 1 2026): the DUSCC's 64
+  registers were 512 flops and a 64-way mux because the reset loop cleared
+  them; without the reset (an `initial` block for the simulator and the
+  power-up contents; the FEP programs every register it uses) and with the
+  read landing in `duscc_q` a cycle later, taken into the polled latch in
+  I_ACK, Quartus infers a RAM. The other two small arrays stay in flops:
+  the processor's whole-word internal registers (`irw`, 16 live of 32) are
+  read by name all over the pipeline (binding stack pointer and limit,
+  control stack limits, catch-block list, event count), so only the
+  %read-internal-register mux could move, against keeping a RAM copy
+  coherent with ten named write sites; the WD33C93's 32 bytes are read by
+  name throughout the SCSI engine for 256 flops in all. Checked in the
+  free-running simulation (FEP boot, Hello and Boot through the DUSCC's
+  receive path, Genera to its herald).
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's

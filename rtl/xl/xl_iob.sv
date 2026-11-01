@@ -190,7 +190,21 @@ module xl_iob #(
   wire       retrace = LOCKSTEP ? ticks[15:6] < 10'd40 : vid_retrace;
 
   // ---------------------------------------------------------------- DUSCC
+  // Its 64 registers live in a RAM (an MLAB), not in flops: the processor
+  // writes them and reads them back through the polled latch, and nothing
+  // else looks at them. No reset, so the array infers as RAM; the FEP
+  // programs every register it uses, and the initial block covers the
+  // simulator and the power-up contents. The read lands in duscc_q the
+  // cycle after the address is on the bus, so the latch takes it in I_ACK.
   logic [7:0] duscc [64];
+  initial for (int i = 0; i < 64; i++) duscc[i] = 8'h00;
+  logic [7:0] duscc_q;
+  logic       duscc_rd, duscc_gsr;
+  wire        duscc_sel = ist == I_IDLE && cpu_req && !reset && !is_buffer && !is_video && is_8bit && cpu_we;
+  always_ff @(posedge clk) begin
+    if (duscc_sel && port == 4'h0) duscc[r8[5:0]] <= cpu_wdata[7:0];
+    duscc_q <= duscc[r8[5:0]];
+  end
 
   // ---------------------------------------------------------------- AM9517
   logic [15:0] dma_base_addr [4], dma_base_count [4], dma_cur_addr [4], dma_count [4];
@@ -303,7 +317,7 @@ module xl_iob #(
     eth_pins_we <= 1'b0;
     if (reset) begin
       ist <= I_IDLE;
-      for (int i = 0; i < 64; i++) duscc[i] <= 8'h00;
+      duscc_rd <= 1'b0;
       for (int i = 0; i < 4; i++) begin
         dma_base_addr[i] <= '0; dma_base_count[i] <= '0; dma_cur_addr[i] <= '0; dma_count[i] <= '0;
         dma_mode[i] <= '0;
@@ -385,14 +399,15 @@ module xl_iob #(
               // ---- register writes
               if (is_8bit) begin
                 case (port)
-                  4'h0: begin   // DUSCC write; channel A transmit FIFO goes to the console
-                    duscc[r8[5:0]] <= cpu_wdata[7:0];
+                  4'h0: begin   // DUSCC write (the RAM above); channel A transmit FIFO goes to the console
                     if (r8[5:0] >= 6'h10 && r8[5:0] <= 6'h13) begin
                       con_rx <= 1'b1; con_rx_byte <= cpu_wdata[7:0];
                     end
                   end
-                  4'h1:          // DUSCC read: GSR says channel A transmitter ready
-                    polled_latch <= (r8[5:0] == 6'h1B) ? 8'h02 : duscc[r8[5:0]];
+                  4'h1: begin    // DUSCC read into the latch (in I_ACK, from duscc_q); GSR says channel A transmitter ready
+                    duscc_rd <= 1'b1;
+                    duscc_gsr <= r8[5:0] == 6'h1B;
+                  end
                   4'h2: begin   // AM9517 write: a byte of a base register (and its current copy)
                     logic [3:0] r;
                     logic [15:0] nb;
@@ -457,7 +472,13 @@ module xl_iob #(
           if (!wd_we) polled_latch <= wd_rdata;
           ist <= I_ACK;
         end
-        I_ACK: ist <= I_IDLE;
+        I_ACK: begin
+          if (duscc_rd) begin
+            polled_latch <= duscc_gsr ? 8'h02 : duscc_q;
+            duscc_rd <= 1'b0;
+          end
+          ist <= I_IDLE;
+        end
         default: ist <= I_IDLE;
       endcase
     end

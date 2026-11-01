@@ -99,11 +99,6 @@ In the order they'll be done. Bugs come first whenever they turn up.
     and dropped: they put list-bound code further behind). The RTL's
     structure follows the chip, not the model; each step is checked on the
     MiSTer, not in lockstep.
-11. Small register arrays into RAM, only if a build needs the room (the
-    color screen is the likely one): the processor's 32 whole-word internal
-    registers (`irw`, 1,280 flops and a 32-way read mux; a cycle of latency
-    on hot registers like the control-stack limit is the catch), the
-    DUSCC's 64 bytes, the WD33C93's 32 bytes.
 
 ## Documentation still wanted
 
