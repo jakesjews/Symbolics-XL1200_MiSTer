@@ -1201,6 +1201,13 @@ memory is shown even while the FEP has the display off.
   held at 1 its outputs freeze after the first cycle: no picture on HDMI or
   direct video, no screenshots. Gamma needs a video clock of four times the
   pixel rate; this core uses `GAMMA(0)`.
+- Never start a second copy of the main program on a running board: it
+  unlinks and recreates `/dev/MiSTer_cmd`, and the one still running keeps
+  reading the old, now nameless pipe, so every later write to the new pipe
+  blocks. The way back without a reboot is the running program's own
+  descriptor: `readlink /proc/PID/fd/*` finds the fd of `/dev/MiSTer_cmd
+  (deleted)`, and `echo load_core ... > /proc/PID/fd/N` reaches it; the
+  restarted program then makes a fresh pipe.
 - Bring-up without a picture: the OSD's "Debug line" also sends the debug
   words to the core's UART, which is the ARM's `/dev/ttyS1`
   (`stty -F /dev/ttyS1 115200 raw -echo; cat /dev/ttyS1` on the MiSTer).
