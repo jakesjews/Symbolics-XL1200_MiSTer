@@ -91,7 +91,17 @@ In the order they'll be done. Bugs come first whenever they turn up.
    about 125 blocks a second, 160 KB/s). Measure Load World, Save World and
    paging on the MiSTer against that; a 1990 SCSI disk did several times
    the old figure. If still short, read straight into DDR3.
-8. A color screen without the FrameThrower, optional: emulate the Univision
+8. A SCSI CD-ROM drive: Genera 8.3 shipped only on CD-ROM for Ivory
+   machines (8.3 Release Notes), and on an XL a drive on the SCSI bus is
+   read as ISO 9660 through `host|CDROMn:` pathnames, n its SCSI address
+   (8.3 installation guides; `SYS:IO;ISO9660-ACCESS-PATH`), and the FEP's
+   Breath of Life can restore from it (8.1 Release Notes). A third target
+   in `xl_scsi` answering as a CD-ROM (2048-byte sectors, INQUIRY,
+   READ CAPACITY, READ(10) and whatever else Genera's driver asks), an
+   OSD slot for an `.iso`, read-only. Test media: the user's
+   `bolix_cd.iso` (the 8.3 distribution CD); `Copy File` of a world from
+   it, then a Breath of Life restore.
+9. A color screen without the FrameThrower, optional: emulate the Univision
    UDC-3400, the third-party VME color board Symbolics sold for the XL400,
    whose driver is in source on the 8.3 CD (`sys.sct/color/univision*.lisp`,
    `vme-color.lisp`) and loaded into every Ivory world's Color system,
@@ -118,7 +128,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    buffers and NuVista cards), the fit (about a thousand ALMs more on a
    design that fits by seed; a separate color RBF is the fallback). The 8.3
    world needs the Color system loaded from the CD.
-9. 16 MW of main memory, the XL1200's maximum (4 MW standard, three 4 MW
+10. 16 MW of main memory, the XL1200's maximum (4 MW standard, three 4 MW
    expansion boards), in the tree and building (Nov 2 2026): the memory
    boards answer at their slots (0x10000000, 0x20000000, 0x30000000) and
    the ECO register's nibbles say they are there, which is what the FEP's
@@ -126,7 +136,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    `Show Configuration` lists them, and build 41's herald on the MiSTer reads
    "16.0M words Physical memory, 29.3M words Swapping space". Left: Peek's
    storage meters against the 4 MW session (which fetched 8 MW from disk).
-10. The master disk: the fat world is built and boots on the MiSTer
+11. The master disk: the fat world is built and boots on the MiSTer
    (Nov 2 2026, [NOTES.md](NOTES.md#the-fat-world-nov-2-2026)): Color,
    CLIM with its port, PostScript, demos and documentation, Statice,
    Concordia, Metering and Hacks, on the full image grown to 2,000,000
@@ -135,8 +145,8 @@ In the order they'll be done. Bugs come first whenever they turn up.
    version deleted). Left: Illustrate and TeX from their tapes; a lock
    server for Concordia's saves; a boot-and-use check per application
    (Concordia, Statice, Metering, Hacks so far only load).
-11. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
-12. Speed, only if the machine is really behind: measured after each step
+12. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
+13. Speed, only if the machine is really behind: measured after each step
     (`PROFILE=1` on `sim/system` counts cycles by state) and against the
     published times. Standing (Oct 2026, build 30 at 50 MHz): `(fib 30)`
     2.80 s against the XL1201's 4.1 s; Gabriel 6.56x the 3600 overall, the
