@@ -77,9 +77,14 @@ In the order they'll be done. Bugs come first whenever they turn up.
    Ethernet address per core. The machine's address: the fat image has
    192.168.50.92 fixed (the user's LAN) in two FEP files, the Hello.boot's
    `Set Network Address` and the standalone namespace's host entry, and
-   Genera 8.3 has no DHCP, BOOTP or RARP client. First `fepfs.py
-   set-address IMAGE A.B.C.D` rewriting both (check that the saved world
-   takes a changed namespace file at boot), then DHCP: a small client in
+   Genera 8.3 has no DHCP, BOOTP or RARP client. A user can type `Set
+   Network Address CHAOS|1200,INTERNET|A.B.C.D` at the FEP after Hello
+   (`|` is Insert on the core): Genera takes it (checked Nov 2 2026, it
+   answered at the typed address only) and notes under the herald that the
+   namespace still has the old one. Next `fepfs.py set-address IMAGE
+   A.B.C.D` rewriting both files (check that the saved world takes a
+   changed namespace file at boot), and a gateway entry for traffic
+   beyond the LAN, then DHCP: a small client in
    Lisp in the fat world asking the router at boot and putting the lease
    in the running namespace (any LAN, the bridge as it is; NAT in the main
    program instead would need port forwards and kernel support).

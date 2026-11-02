@@ -7,7 +7,8 @@ usage: kbd.py TEXT        (run on the MiSTer)
 TEXT is typed as on a PC keyboard; {name} presses a key: {enter}, {f1}..{f12},
 {esc}, {backspace}, {tab}, {home}, {end}, {pageup}, {pagedown}, {insert},
 {delete}, {up}, {down}, {left}, {right}.  '(' and ')' are typed as '[' and ']',
-which the core maps to the Symbolics ( and ) keys (docs/keyboard.md).
+which the core maps to the Symbolics ( and ) keys, and '|' as Insert, the
+Symbolics | key (docs/keyboard.md).
 {m DX DY} moves the mouse; {click L}, {click M}, {click R} click a button ({click R shift} with Shift);
 {wait S} pauses S seconds.  {ctrl x}, {meta x}, {ctrl meta x} are chords
 (Control is the left Control key, Meta the left Alt, Super the left Windows).
@@ -25,9 +26,9 @@ KEYS.update({c: k for k, c in zip(range(30, 39), "asdfghjkl")})
 KEYS.update({c: k for k, c in zip(range(44, 51), "zxcvbnm")})
 KEYS.update({c: k for k, c in zip(range(2, 12), "1234567890")})
 KEYS.update({" ": 57, "-": 12, "=": 13, "[": 26, "]": 27, ";": 39, "'": 40, "`": 41, "\\": 43,
-             ",": 51, ".": 52, "/": 53, "(": 26, ")": 27})
+             ",": 51, ".": 52, "/": 53, "(": 26, ")": 27, "|": 110})
 SHIFTED = {"!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6", "&": "7", "*": "8",
-           "_": "-", "+": "=", "{": "[", "}": "]", ":": ";", '"': "'", "~": "`", "|": "\\",
+           "_": "-", "+": "=", "{": "[", "}": "]", ":": ";", '"': "'", "~": "`",
            "<": ",", ">": ".", "?": "/"}
 NAMED = {"enter": 28, "esc": 1, "backspace": 14, "tab": 15, "home": 102, "end": 107, "pageup": 104,
          "pagedown": 109, "insert": 110, "delete": 111, "up": 103, "down": 108, "left": 105, "right": 106}
