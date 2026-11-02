@@ -1560,13 +1560,59 @@ void Ivory::exec_op(int op, int operand) {
     instruction_exception(0, nullptr);
 
   // ---------------------------------------------------------------- logic variables (Joshua)
-  case 013: case 0237: case 0103: case 055: case 014: {
-    // Not implemented in this model: let Lisp emulate.
-    int nargs = (op == 0237) ? 2 : (op == 055) ? 0 : 1;
+  // Genera 8.3 has no exception handler for these: the chip runs them, as
+  // the VLM's ifunjosh.as.  An unbound variable is a cell holding a
+  // dtp-logic-variable pointer to itself; a reference to a variable is an
+  // EVCP to its cell, which a data-read follows to the binding, and a
+  // data-read of the logic-variable pointer itself returns that EVCP
+  // (cycle_actions), so a variable read from memory is never anything else.
+  case 013: {  // dereference
+    a1 = operand_value(true);
+    switch (wtype(a1)) {
+    case DTP_ONE_Q_FORWARD: case DTP_ELEMENT_FORWARD: case DTP_HEADER_FORWARD:
+    case DTP_EXTERNAL_VALUE_CELL_POINTER:
+      push(mem_read(mkw(DTP_LOCATIVE, wdata(a1)), CYC_DATA_READ));
+      return;
+    case DTP_LOGIC_VARIABLE:
+      push(mkw(DTP_EXTERNAL_VALUE_CELL_POINTER, wdata(a1)));
+      return;
+    default:
+      push(a1);
+      return;
+    }
+  }
+  case 0103: {  // push-local-logic-variables: N unbound variables, each its own cell
+    a1 = operand_value(false);
+    if (!is_fixnum(a1)) { sp = restart_sp; error_trap(E_ONE_OPERAND_FIXNUM_TYPE, 0); }
+    for (uint32_t i = 0; i < wdata(a1); i++) push(mkw(DTP_LOGIC_VARIABLE, sp + 1));
+    return;
+  }
+  case 055: {  // push-global-logic-variable: a new unbound cell at BAR-2
+    // (Genera, "Instructions That Change Ivory Registers": BAR-2), and a
+    // reference to it.  The VLM stores the EVCP it pushes in the cell, a
+    // pointer to itself that a read would follow forever.
+    uint32_t a = wdata(bar[2]);
+    push(mkw(DTP_EXTERNAL_VALUE_CELL_POINTER, a));
+    mem_write(mkw(DTP_LOCATIVE, a), CYC_DATA_WRITE, mkw(DTP_LOGIC_VARIABLE, a), true);
+    bar[2] = setdata(bar[2], a + 1);
+    return;
+  }
+  case 014: {  // logic-tail-test: is a list's tail a variable?
+    a1 = operand_value(true);
+    switch (wtype(a1)) {
+    case DTP_LIST: case DTP_LIST_INSTANCE: push(NILW()); return;
+    case DTP_EXTERNAL_VALUE_CELL_POINTER: push(TW()); return;
+    default: instruction_exception(1, &a1);
+    }
+  }
+  case 0237: {
+    // unify (changes BAR-3, Genera's manual says): its semantics aren't
+    // known, the VLM leaves it unimplemented, and Genera's compiler never
+    // emits it on an Ivory.
     W args[2];
-    if (nargs == 2) { args[1] = operand_value(true); args[0] = pop(); }
-    else if (nargs == 1) args[0] = operand_value(true);
-    instruction_exception(nargs, args);
+    args[1] = operand_value(true);
+    args[0] = pop();
+    instruction_exception(2, args);
   }
 
   default: {

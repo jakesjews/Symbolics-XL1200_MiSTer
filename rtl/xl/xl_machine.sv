@@ -105,7 +105,7 @@ module xl_machine #(
   logic [31:0] cpu_pc;
 
   // ---------------------------------------------------------------- time
-  logic [31:0] ticks;           // LOCKSTEP: instructions so far
+  logic [33:0] ticks;           // LOCKSTEP: instructions so far (the microsecond clock is a quarter)
   // A microsecond every CLK_HZ / 1e6 cycles, fractional: the accumulator
   // gains a million a cycle and ticks when it passes the clock rate.
   logic [26:0] usec_acc;
@@ -117,7 +117,7 @@ module xl_machine #(
     second <= 1'b0;
     if (LOCKSTEP) begin
       if (retire) begin
-        ticks <= ticks + 32'd1;
+        ticks <= ticks + 34'd1;
         if (ticks[1:0] == 2'd3) usec_tick <= 1'b1;
       end
     end else if (usec_acc + 27'd1_000_000 >= 27'(CLK_HZ)) begin
@@ -134,7 +134,7 @@ module xl_machine #(
     end
   end
   wire        dev_tick = LOCKSTEP ? retire : usec_tick;
-  wire [31:0] usec_now = LOCKSTEP ? {2'b00, ticks[31:2]} : usec;
+  wire [31:0] usec_now = LOCKSTEP ? ticks[33:2] : usec;
 
   // ---------------------------------------------------------------- address decode
   logic        iob_dma_busy;
@@ -294,7 +294,7 @@ module xl_machine #(
   logic        iob_ack;
   logic [31:0] iob_rdata;
   xl_iob #(.NT(NT), .LOCKSTEP(LOCKSTEP)) iob (
-    .clk, .reset, .tick(dev_tick), .ticks,
+    .clk, .reset, .tick(dev_tick), .ticks(ticks[31:0]),
     .cpu_req(req && sel_iob), .cpu_we(mem_we), .cpu_addr(pa[27:0]), .cpu_wdata(mem_wdata[31:0]),
     .cpu_ack(iob_ack), .cpu_rdata(iob_rdata), .dma_busy(iob_dma_busy), .scsi_irq, .ether_irq,
     .buf_req, .buf_we, .buf_addr, .buf_be, .buf_wdata, .buf_ack, .buf_rdata,

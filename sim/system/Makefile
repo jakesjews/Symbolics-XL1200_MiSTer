@@ -14,7 +14,7 @@ SV := $(IVORY)/ivory_pkg.sv $(IVORY)/ivory_cpu.sv $(IVORY)/ivory_mmu.sv $(IVORY)
       $(XL)/xl_video.sv $(XL)/xl_iob.sv $(XL)/xl_nvram.sv $(XL)/xl_vme.sv $(XL)/xl_udc3400.sv $(XL)/xl_machine.sv
 SVH := $(wildcard $(IVORY)/*.svh)
 CPP := tb_system.cpp $(EMU)/machine.cpp $(EMU)/fpa.cpp $(EMU)/nvram.cpp $(EMU)/pit.cpp $(EMU)/scsi.cpp $(EMU)/i82586.cpp $(EMU)/ioboard.cpp \
-       $(EMU)/console.cpp $(EMU)/cpu_core.cpp $(EMU)/cpu_insn.cpp
+       $(EMU)/console.cpp $(EMU)/cpu_core.cpp $(EMU)/cpu_insn.cpp $(EMU)/snapshot.cpp
 
 VFLAGS := --cc --exe --build -j 8 -O3 --x-assign fast --x-initial fast --noassert \
   -Wno-fatal -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-MULTIDRIVEN -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM \

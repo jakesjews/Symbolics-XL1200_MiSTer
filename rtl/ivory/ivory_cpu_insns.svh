@@ -1724,7 +1724,45 @@
           end
         end
 
-        // logic-variable instructions: emulated by Lisp
+        // ---------------------------------------------------------------- logic variables (Joshua)
+        // Genera 8.3 has no exception handler for these: the chip runs them.
+        // An unbound variable is a cell holding a dtp-logic-variable pointer
+        // to itself; a reference to one is an EVCP to the cell, which the
+        // data-read cycle follows, and a data-read of the pointer itself
+        // returns that EVCP (cycle_action's logic-variable column)
+        // (emu/cpu_insn.cpp; the VLM's ifunjosh.as).
+        S_DEREF_1:                                                    // dereference
+          case (wtype(opv))
+            DTP_ONE_Q_FORWARD, DTP_ELEMENT_FORWARD, DTP_HEADER_FORWARD, DTP_EXTERNAL_VALUE_CELL_POINTER:
+              mrd(mkw(DTP_LOCATIVE, opv[31:0]), CYC_DATA_READ, S_PUSH_MRD);
+            DTP_LOGIC_VARIABLE: push(mkw(DTP_EXTERNAL_VALUE_CELL_POINTER, opv[31:0]), S_RETIRE);
+            default: push(opv, S_RETIRE);
+          endcase
+        S_PLLV_1: begin                                               // push-local-logic-variables
+          if (!is_fixnum(opv)) err(E_ONE_OPERAND_FIXNUM_TYPE, 32'd0);
+          else begin cnt <= opv[31:0]; st <= S_PLLV_2; end
+        end
+        S_PLLV_2: begin                                               // each one its own cell
+          if (cnt == 32'd0) st <= S_RETIRE;
+          else begin
+            cnt <= cnt - 32'd1;
+            push(mkw(DTP_LOGIC_VARIABLE, sp + 32'd1), S_PLLV_2);
+          end
+        end
+        // push-global-logic-variable: the EVCP pushed, then a new unbound
+        // cell at BAR-2 (the VLM stores the EVCP there, a pointer to itself
+        // that a read would follow forever), then BAR-2 advances
+        S_PGLV_1: mwr(mkw(DTP_LOCATIVE, bar[2][31:0]), CYC_DATA_WRITE, mkw(DTP_LOGIC_VARIABLE, bar[2][31:0]),
+                      1'b1, S_PGLV_2);
+        S_PGLV_2: begin bar[2] <= setdata(bar[2], bar[2][31:0] + 32'd1); st <= S_RETIRE; end
+        S_LTT_1:                                                      // logic-tail-test
+          case (wtype(opv))
+            DTP_LIST, DTP_LIST_INSTANCE: push(NIL_W, S_RETIRE);
+            DTP_EXTERNAL_VALUE_CELL_POINTER: push(T_W, S_RETIRE);
+            default: exc(3'd1, opv, '0, '0);
+          endcase
+        // unify (changes BAR-3, Genera's manual says): its semantics aren't
+        // known, the VLM leaves it unimplemented, and Genera's compiler never
+        // emits it on an Ivory
         S_EXC_POP_1: begin a2 <= opv; pop(S_EXC_POP_1B); end
         S_EXC_POP_1B: exc(3'd2, pop_w, a2, '0);
-        S_EXC_POP_2: exc(3'd1, opv, '0, '0);

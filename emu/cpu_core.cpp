@@ -247,23 +247,28 @@ void Ivory::write_addr(W addr, W w) {
 
 W Ivory::fetch_word(uint32_t vma) { return read_raw(vma); }
 
-// Memory-cycle actions (I-Machine Architecture Specification, Table 13).
-enum { A_NONE = 0, A_IND = 1, A_TRAP = 2, A_MTRAP = 3, A_TRANS = 4 };
-// columns: data null header hfwd efwd 1fwd evcp gc monitor pointer(transport enable)
-static const uint8_t cycle_actions[CYC_COUNT][10] = {
-  /* data-read      */ {0, A_TRAP, A_TRAP, A_IND, A_IND, A_IND, A_IND, A_TRAP, A_MTRAP, A_TRANS},
-  /* data-write     */ {0, 0,      A_TRAP, A_IND, A_IND, A_IND, A_IND, A_TRAP, A_MTRAP, 0},
-  /* bind-read      */ {0, 0,      A_TRAP, A_IND, A_IND, A_IND, 0,     A_TRAP, A_MTRAP, A_TRANS},
-  /* bind-write     */ {0, 0,      A_TRAP, A_IND, A_IND, A_IND, 0,     A_TRAP, A_MTRAP, 0},
-  /* bind-read-nm   */ {0, 0,      A_TRAP, A_IND, A_IND, A_IND, 0,     A_TRAP, A_IND,   A_TRANS},
-  /* bind-write-nm  */ {0, 0,      A_TRAP, A_IND, A_IND, A_IND, 0,     A_TRAP, A_IND,   0},
-  /* header         */ {A_TRAP, A_TRAP, 0, A_IND, A_TRAP, A_TRAP, A_TRAP, A_TRAP, A_TRAP, A_TRANS},
-  /* struct-offset  */ {0, 0,      0,      A_IND, 0,     0,     0,     A_TRAP, 0,       0},
-  /* scavenge       */ {0, 0,      0,      0,     0,     0,     0,     A_TRAP, 0,       A_TRANS},
-  /* cdr            */ {0, 0,      A_TRAP, A_IND, A_IND, 0,     0,     A_TRAP, 0,       0},
-  /* gc-copy        */ {0, 0,      0,      0,     0,     0,     0,     A_TRAP, 0,       0},
-  /* raw            */ {0, 0,      0,      0,     0,     0,     0,     0,      0,       0},
-  /* raw-translate  */ {0, 0,      0,      0,     0,     0,     0,     0,      0,       0},
+// Memory-cycle actions (I-Machine Architecture Specification, Table 13), and
+// the logic-variable column it predates: a data-read (or raw-translate) of a
+// dtp-logic-variable word returns it as an EVCP, cdr code kept (the
+// Symbolics table the VLM took from ISOFT:EMULATOR;DEFS, alpha-emulator/
+// memoryem.lisp: "xfrm"), so a variable read out of a structure is a
+// reference that later reads follow to its binding.
+enum { A_NONE = 0, A_IND = 1, A_TRAP = 2, A_MTRAP = 3, A_TRANS = 4, A_XFRM = 5 };
+// columns: data null header hfwd efwd 1fwd evcp gc monitor pointer(transport enable) lv
+static const uint8_t cycle_actions[CYC_COUNT][11] = {
+  /* data-read      */ {0, A_TRAP, A_TRAP, A_IND, A_IND, A_IND, A_IND, A_TRAP, A_MTRAP, A_TRANS, A_XFRM},
+  /* data-write     */ {0, 0,      A_TRAP, A_IND, A_IND, A_IND, A_IND, A_TRAP, A_MTRAP, 0,       0},
+  /* bind-read      */ {0, 0,      A_TRAP, A_IND, A_IND, A_IND, 0,     A_TRAP, A_MTRAP, A_TRANS, 0},
+  /* bind-write     */ {0, 0,      A_TRAP, A_IND, A_IND, A_IND, 0,     A_TRAP, A_MTRAP, 0,       0},
+  /* bind-read-nm   */ {0, 0,      A_TRAP, A_IND, A_IND, A_IND, 0,     A_TRAP, A_IND,   A_TRANS, 0},
+  /* bind-write-nm  */ {0, 0,      A_TRAP, A_IND, A_IND, A_IND, 0,     A_TRAP, A_IND,   0,       0},
+  /* header         */ {A_TRAP, A_TRAP, 0, A_IND, A_TRAP, A_TRAP, A_TRAP, A_TRAP, A_TRAP, A_TRANS, A_TRAP},
+  /* struct-offset  */ {0, 0,      0,      A_IND, 0,     0,     0,     A_TRAP, 0,       0,       0},
+  /* scavenge       */ {0, 0,      0,      0,     0,     0,     0,     A_TRAP, 0,       A_TRANS, 0},
+  /* cdr            */ {0, 0,      A_TRAP, A_IND, A_IND, 0,     0,     A_TRAP, 0,       0,       0},
+  /* gc-copy        */ {0, 0,      0,      0,     0,     0,     0,     A_TRAP, 0,       0,       0},
+  /* raw            */ {0, 0,      0,      0,     0,     0,     0,     0,      0,       0,       0},
+  /* raw-translate  */ {0, 0,      0,      0,     0,     0,     0,     0,      0,       0,       A_XFRM},
 };
 
 static int action_column(int t) {
@@ -276,6 +281,7 @@ static int action_column(int t) {
   case DTP_EXTERNAL_VALUE_CELL_POINTER: return 6;
   case DTP_GC_FORWARD: return 7;
   case DTP_MONITOR_FORWARD: return 8;
+  case DTP_LOGIC_VARIABLE: return 10;
   default: return 0;
   }
 }
@@ -308,6 +314,7 @@ W Ivory::mem_read(W addr, int cycle, uint32_t* final_vma) {
       continue;
     }
     if (final_vma) *final_vma = a;
+    if (act == A_XFRM) w = (w & ~((W)077 << 32)) | ((W)DTP_EXTERNAL_VALUE_CELL_POINTER << 32);
     return w;
   }
 }

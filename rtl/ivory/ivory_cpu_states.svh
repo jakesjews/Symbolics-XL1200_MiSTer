@@ -117,6 +117,7 @@
   // the checked read's or write's action, or just the result
   task automatic mem_got(input word_t d, input logic trans);
     logic [2:0] act;
+    word_t dx;
     m_trans <= trans;
     if (m_chk) begin
       act = cycle_action(mr_cyc, action_column(wtype(d)));
@@ -139,8 +140,10 @@
         mem_rd(d[31:0], 1'b0);   // stays in the memory stage, m_chk still set
         m_chk <= 1'b1;
       end else begin
-        mr_d <= d; m_rd <= d;
-        rot_x <= d[31:0]; alu_w1 <= d;
+        dx = d;
+        if (act == A_XFRM) dx[37:32] = DTP_EXTERNAL_VALUE_CELL_POINTER;
+        mr_d <= dx; m_rd <= dx;
+        rot_x <= d[31:0]; alu_w1 <= dx;
         m_chk <= 1'b0;
         ret();
       end

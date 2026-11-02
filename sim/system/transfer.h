@@ -89,6 +89,13 @@ struct ModelState {
     for (int i = 0; i < 32; i++) CPU(irw)[i] = irw_field(c, i) ? *irw_field(c, i) : 0;
     for (int i = 0; i < 512; i++) CPU(scratch)[i] = c.scratch[i];
     CPU(icount) = c.icount; CPU(trap_count) = c.trap_count;
+    // the stack cache: the RTL keeps the window's words in it (by address
+    // bits 6:0) and writes them back only when it moves; the model reads memory
+    for (uint32_t i = 0; i < 128; i++) {
+      uint32_t a = (uint32_t)c.stack_cache_lower_bound + i;
+      CPU(sc_data)[a & 127] = c.debug_read(a);
+      CPU(sc_data2)[a & 127] = c.debug_read(a);
+    }
 #undef CPU
 
     // ---- memory (xl_mem: DDR3; its cache is empty after reset)
@@ -97,7 +104,7 @@ struct ModelState {
 
     // ---- main board (xl_machine): device time, registers, VME, interrupt mask
     uint64_t usec = m.cycles / 4;
-    RS(ticks) = (uint32_t)m.cycles;
+    RS(ticks) = m.cycles & ((1ull << 34) - 1);
     RS(usec) = (uint32_t)usec;
     RS(sec_div) = (uint32_t)(usec % 1000000);
     RS(int_mask) = m.interrupt_mask;

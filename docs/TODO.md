@@ -2,18 +2,18 @@
 
 In the order they'll be done. Bugs come first whenever they turn up.
 
-1. The logic-variable instructions (bug, found Nov 2 2026 building the fat
-   world): `dereference` (013), `logic-tail-test` (014),
-   `push-global-logic-variable` (055), `push-local-logic-variables` (0103)
-   and `unify` (0237) raise an instruction exception in the RTL and the
-   model (the VLM leaves them unimplemented too), and Genera 8.3 has no
-   handler for any of them, so the chip runs them itself: `Load System
-   Jericho` stops on "Unexpected trap through 4013" in compiled Joshua
-   code, and Joshua (which loads, given `XL1200:>sys>site>joshua.translations`
-   mapping `JOSHUA:**;` like `SYS:`) can't be trusted until they work.
-   Their semantics from the spec (the logic-variable data type, Table 13's
-   cycles) and Genera's compiler (`i-compiler/i-instruction-set.lisp`);
-   then Joshua and Jericho go into the fat world.
+1. Starting the core from the menu (bug, found Nov 2 2026, in build 41
+   too): the screen stays black and the machine stops after the boot PROM
+   has read the disk label; started while another XL1200 core runs it
+   boots, and with MiSTer.ini's `main=MiSTer_xl1200` commented out it boots
+   from the menu as well. From the menu the official main program releases
+   the core's reset, then restarts as MiSTer_xl1200 (`app_restart`,
+   `fpga_core_reset(1)`), so the core sees a second reset window after it
+   has started; the OSD's Reset doesn't recover it, and the DDR3 safe
+   terminator stops forwarding requests while RESET is held while still
+   passing the port's waitrequest back, so a request made then would look
+   taken and never answer (`xl_mem` isn't reset by RESET). A debug build's
+   UART line (NOTES.md, Debug line) to see where it stops, then the fix.
 2. A compatibility pass, in progress ([NOTES.md](NOTES.md#compatibility)
    has what passed: Zmacs, Document Examiner, Inspector, Debugger, Peek, a
    full GC, Save World and booting the saved world, the MacIvory animation
@@ -48,6 +48,12 @@ In the order they'll be done. Bugs come first whenever they turn up.
    39; neither machine misbehaves for it (the FEP never returns there),
    so `LOCKSTEP_FROM=N` windows are used meanwhile; one of the two entry
    implementations is wrong and the spec decides.
+   And the lockstep inside Genera (`LOCKSTEP_SNAPSHOT`, NOTES.md, RTL
+   boards) stops at the first low-priority sequence break: the model takes
+   it an instruction before the RTL, whose fetch now samples the request in
+   the cycle the previous instruction retires, before the bench's timer
+   tick (the notes' "waits a cycle before the next" predates the speed
+   work). Until then `FREE=1` runs the RTL alone from a snapshot.
    Lockstep only proves the RTL matches our model, so build a regression
    suite with its own expected answers, in place before the speed work:
    - Instruction tests on the RTL processor alone (`sim/ivory`, seconds):
@@ -124,10 +130,11 @@ In the order they'll be done. Bugs come first whenever they turn up.
    (Nov 2 2026, [NOTES.md](NOTES.md#the-fat-world-nov-2-2026)): Color,
    CLIM with its port, PostScript, demos and documentation, Statice,
    Concordia, Metering and Hacks, on the full image grown to 2,000,000
-   blocks with `fepfs.py grow`. Left: Joshua and Jericho once the
-   logic-variable instructions work (item 1); Illustrate and TeX from their
-   tapes; a lock server for Concordia's saves; a boot-and-use check per
-   application (Concordia, Statice, Metering, Hacks so far only load).
+   blocks with `fepfs.py grow`; Joshua and Jericho since the
+   logic-variable instructions work (`Genera-8-3-fat.ilod.2`, the first
+   version deleted). Left: Illustrate and TeX from their tapes; a lock
+   server for Concordia's saves; a boot-and-use check per application
+   (Concordia, Statice, Metering, Hacks so far only load).
 11. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
 12. Speed, only if the machine is really behind: measured after each step
     (`PROFILE=1` on `sim/system` counts cycles by state) and against the

@@ -11,6 +11,7 @@ XLEMU = os.path.join(HERE, '..', 'emu', 'xlemu')
 BASE = 0xF8010000
 
 FIX, NIL, SYM, LOC, LIST, EVENPC = 0o10, 0o24, 0o30, 0o31, 0o25, 0o46
+EVCP, LV = 0o04, 0o44
 NILW = (NIL, 0xF8041200)
 TW = (SYM, 0xF8041208)
 
@@ -136,6 +137,86 @@ def call_return(a):
     a.i('push', 'FP', 2)
     a.i('add', '#', 40)
     a.i('return-single', 0o1000)      # SP|pop: return the top of the stack
+
+
+# Logic variables (Joshua).  The first push lands at 0xF8001001.  An unbound
+# variable is a cell holding a logic-variable pointer to itself; a reference
+# to a variable is an EVCP to its cell, and a data-read of a logic-variable
+# pointer returns it as that EVCP.
+S1 = 0xF8001001
+
+
+@test([(LV, S1), (LV, S1 + 1), (LV, S1 + 2)])
+def push_local_logic_variables(a):
+    a.i('push-local-logic-variables', '#', 3)
+
+
+@test([(EVCP, S1)])
+def dereference_unbound(a):
+    a.i('push-local-logic-variables', '#', 1)
+    a.i('dereference', 'POP')
+
+
+@test([fix(42), fix(42)])
+def dereference_bound(a):
+    # a reference to a cell holding 42 reads the 42
+    a.i('push', '#', 42)
+    a.i('push-address', 'SP', 0)
+    a.i('%set-tag', '#', EVCP)
+    a.i('dereference', 'POP')
+
+
+@test([fix(42), (EVCP, S1), fix(42)])
+def dereference_chain(a):
+    # a reference to a cell holding a reference to 42
+    a.i('push', '#', 42)
+    a.i('push-address', 'SP', 0)
+    a.i('%set-tag', '#', EVCP)
+    a.i('push-address', 'SP', 0)
+    a.i('%set-tag', '#', EVCP)
+    a.i('dereference', 'POP')
+
+
+@test([(LV, S1), (EVCP, S1)])
+def dereference_reference_to_unbound(a):
+    a.i('push-local-logic-variables', '#', 1)
+    a.i('push-address', 'SP', 0)
+    a.i('%set-tag', '#', EVCP)
+    a.i('dereference', 'POP')
+
+
+@test([fix(5)])
+def dereference_constant(a):
+    a.i('dereference', '#', 5)
+
+
+@test([(LV, S1), (EVCP, S1)])
+def data_read_of_logic_variable(a):
+    # car of a locative to an unbound cell: the reference, not the pointer
+    a.i('push-local-logic-variables', '#', 1)
+    a.i('push-address', 'SP', 0)
+    a.i('car', 'POP')
+
+
+@test([(LV, S1), TW, NILW])
+def logic_tail_test(a):
+    a.i('push-local-logic-variables', '#', 1)
+    a.i('push-address', 'SP', 0)
+    a.i('%set-tag', '#', EVCP)
+    a.i('logic-tail-test', 'POP')         # a variable: T
+    a.const((LIST, 0xF8002000))
+    a.i('logic-tail-test', 'POP')         # a list: NIL
+
+
+@test([(EVCP, 0xF8002000), (LOC, 0xF8002001), (EVCP, 0xF8002000)])
+def push_global_logic_variable(a):
+    # a new unbound cell at BAR-2, which advances
+    a.const((LOC, 0xF8002000))
+    a.i('%write-internal-register', 0o406)    # BAR-2
+    a.i('push-global-logic-variable')
+    a.i('%read-internal-register', 0o406)
+    a.const((LOC, 0xF8002000))
+    a.i('car', 'POP')                         # the cell, read: unbound
 
 
 def main():

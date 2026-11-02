@@ -10,13 +10,42 @@
 #include "snapshot.h"
 #include "keyboard.h"
 
-// Print the control stack: each frame's PC and its first few arguments.
+// A string array's characters (art-string, short prefix), or "".
+static std::string lisp_string(Ivory& cpu, uint32_t a) {
+  W h = cpu.debug_read(a);
+  uint32_t d = wdata(h);
+  if (wtype(h) != DTP_HEADER_I || ((d >> 23) & 1) || (((d >> 26) & 077) != 025 && ((d >> 26) & 077) != 024))
+    return "";
+  std::string s;
+  for (uint32_t i = 0; i < (d & 0x7FFF) && i < 100; i++)
+    s += (char)((wdata(cpu.debug_read(a + 1 + i / 4)) >> (8 * (i % 4))) & 0xFF);
+  return s;
+}
+
+// The name of the compiled function holding word PC (its header, then the
+// name in its debugging info), or "".
+static std::string function_name(Ivory& cpu, uint32_t pc) {
+  for (uint32_t back = 0; back < 0x4000; back++) {
+    W h = cpu.debug_read(pc - back);
+    if (wtype(h) != DTP_HEADER_I || wcdr(h) != 0) continue;
+    uint32_t total = wdata(h) & 0x3FFFF, suffix = (wdata(h) >> 18) & 0x3FFF;
+    if (total <= back || suffix >= total) return "";
+    W n = cpu.debug_read(pc - back + total - suffix);
+    if (wtype(n) == DTP_LIST) n = cpu.debug_read(wdata(n));
+    if (wtype(n) == DTP_LIST) n = cpu.debug_read(wdata(n) + 1);   // (:internal f n) etc.: the next element
+    if (wtype(n) != DTP_SYMBOL) return "";
+    return lisp_string(cpu, wdata(cpu.debug_read(wdata(n))));
+  }
+  return "";
+}
+
+// Print the control stack: each frame's PC, function and first few arguments.
 static void backtrace(Ivory& cpu, Bus& m) {
   auto rd = [&](uint32_t vma) { return cpu.debug_read(vma); };
   uint32_t fp = cpu.fp, cr = cpu.cr, sp = cpu.sp;
   W pc = mkw(cpu.pc & 1 ? DTP_ODD_PC : DTP_EVEN_PC, (uint32_t)(cpu.pc >> 1)), ret = cpu.cont;
-  for (int depth = 0; depth < 60 && fp > 0xF8000101u && fp != 0xF8000100u; depth++) {
-    fprintf(stderr, "  #%-2d %08x", depth, wdata(pc));
+  for (int depth = 0; depth < 60 && fp > 0x1000u && fp != 0xF8000100u; depth++) {
+    fprintf(stderr, "  #%-2d %08x %-40s", depth, wdata(pc), function_name(cpu, wdata(pc)).c_str());
     uint32_t nargs = cr & CR_ARG_SIZE_MASK;
     for (uint32_t i = 2; i < nargs && i < 8 && fp + i <= sp; i++) {
       W a = rd(fp + i);
@@ -27,6 +56,7 @@ static void backtrace(Ivory& cpu, Bus& m) {
     ret = rd(fp);
     uint32_t ncr = wdata(rd(fp + 1));
     sp = fp - 1;
+    if (((cr >> CR_CALLER_FRAME_SIZE_SHIFT) & 0xFF) == 0) break;
     fp -= (cr >> CR_CALLER_FRAME_SIZE_SHIFT) & 0xFF;
     cr = ncr;
   }

@@ -614,6 +614,68 @@ every oldspace reference in the page: in the replay the constant 26 words
 before trapped first and the handler's rewrite of the mapping-table
 constant followed 2,000 instructions later; the load went on.
 
+### The logic-variable instructions (Nov 2 2026)
+
+`Load System Jericho` stopped on "Unexpected trap through 4013": compiled
+Joshua code ran `dereference` (opcode 013), which the model and the RTL
+raised as an instruction exception, and Genera 8.3 has no handler for it.
+A check over every instruction rather than application by application: the
+world's trap vector table (instruction exceptions at 0xF8040800 plus the
+opcode) fills 34 of the 256 vectors (car, cdr, the array and
+instance-variable instructions, ldb, dpb, rplaca and so on); the other 222
+go to `UNEXPECTED-TRAP-HANDLER`. Every instruction exception the model or
+the RTL raises is for one of the 34 except the five logic-variable
+instructions (`dereference`, `logic-tail-test`, `push-global-logic-variable`,
+`push-local-logic-variables`, `unify`), and every arithmetic type pair
+either raises has a handler in the arithmetic vectors, so no other program
+should meet this kind of gap.
+
+No spec section covers them (the spec we have still lists
+DTP-LOGIC-VARIABLE among the 3600's types an I machine lacks). What there
+is: Genera's compiler emits only `dereference`, to read a variable declared
+`logic-variable`, and `push-local-logic-variables`, its peephole for
+unbound variables pushed in place (each a logic-variable pointer to its own
+cell); Genera's manual ("Instructions That Change Ivory Registers") says
+BAR-2 and BAR-3 change only by Joshua instructions,
+`push-global-logic-variable` and `unify`; the VLM implements four in
+`alpha-emulator/ifunjosh.as` and leaves `unify` unimplemented; and Joshua's
+own patches say Ivory revisions 0 to 2 had logic variables acting like
+EVCPs. Both implementations now follow the VLM's four.
+
+They need one thing the spec's Table 13 predates: the VLM's memory-action
+table (taken from Symbolics' `ISOFT:EMULATOR;DEFS`, `memoryem.lisp`) has a
+logic-variable column, and a data-read or raw-translate of a
+logic-variable word returns it as an EVCP with its cdr code (a header read
+traps, everything else takes it as data). An unbound variable is a cell
+holding a logic-variable pointer to itself; anything read out of memory
+that refers to a variable is then an EVCP, which later reads follow to the
+binding. Without it the first try smashed a symbol: in Jericho's
+grandparent example a query list built while `?who` was unbound still held
+the logic-variable pointer after `?who` was bound, `car` returned it as it
+was, and Joshua's `unify` took it for an unbound variable
+(`unbound-logic-variable-p` tests the type alone) and stored through it into
+the symbol's header. Following chains in `dereference` instead did not help;
+the transform did. Two choices of ours: `push-global-logic-variable` puts
+the unbound variable in its new cell where the VLM stores the EVCP it
+pushes (a pointer to itself that a read would follow forever), and `unify`
+still raises its exception (its semantics aren't known and the compiler
+never emits it).
+
+Checked: `tools/cputest.py` has each instruction and the transform with
+their expected words; in the emulator Joshua and Jericho load, and
+Jericho's examples answer: "``Me'' is his own grampaw!" and "``Daughter''
+is her own grammaw!", the monkey-and-bananas and blocks-world plans, the
+circuit diagnosis (`HT:M2`), Tweety flying, not flying as a penguin and
+flying again when that is withdrawn, and the Midsummer TMS demo's
+contradiction graph and its backtracking prompt (it asks the user, as
+designed). The RTL machine, started from a snapshot after the load and
+running alone, prints the grandparent answer too. On the MiSTer (seed 5:
+34,766 ALMs, 83%; setup slack +0.436 ns worst, hold +0.199; seeds 2 and 6
+also met timing, 3 could not fit; started from another XL1200 core, see
+docs/TODO.md item 1) the fat world's second version boots with Joshua and
+Jericho in its herald, and the grandparent example, Tweety and the circuit
+diagnosis answer as in the emulator.
+
 ### The emulator as a debugger
 
 What found the third trap in an afternoon, all in `emu/main.cpp`:
@@ -632,7 +694,11 @@ on instruction fetch; `XLEMU_MAPCHECK=1` compares the map cache's PHT bits
 with the PHT on every write (they agreed throughout; the bookkeeping was
 not the fault); `XLEMU_PHTVMA=vma` prints that page's PHT and map entries
 at every flip and at the end. The lockstep bench's model logs the same
-with `XLEMU_ERRLOG=1` (`sim/system/tb_system.cpp`).
+with `XLEMU_ERRLOG=1` (`sim/system/tb_system.cpp`). `-b PC` prints the
+control stack each time the PC reaches that word, and `XLEMU_BT=1` at the
+end, with each frame's function named from its compiled-function header
+(what found the smashed symbol above, from `%UNIFY-VARIABLE` up through
+Joshua's `UNIFY-LIST` to `FIND-OWN-GRANDPARENT`).
 
 ### The fat world (Nov 2 2026)
 
@@ -655,17 +721,26 @@ versions) and updates the boot file. On the MiSTer (build 41) it boots
 with that herald, Color Demo's bars draw on the color board and
 `(clim-demo::start-demo)` opens the demo launcher. The image is
 `~/Downloads/XL1200-Genera-8-3-fat.vhd` on the user's Mac (3.07 GB,
-836,499 blocks free; licensed media, not in the repository).
+832,382 blocks free with the second version below; licensed media, not in
+the repository).
 
 Order matters: CLIM-Demo's browser needs PostScript-CLIM's package, and
 Statice needs Statice-Runtime loaded first. Joshua needs a `JOSHUA`
-logical host: `XL1200:>sys>site>joshua.translations` (now on the disk)
-maps `JOSHUA:**;` to `XL1200:>sys>**>` as `SYS:` is, its files being in
-`>sys>code>`, `>sys>examples>`, `>sys>data>`; it then loads, but Jericho
-stops on "Unexpected trap through 4013" (the logic-variable instructions,
-TODO item 1), so neither is in the world yet. Left out too: Illustrate and
-TeX (tape restores), and Concordia's saving needs a lock server; Statice
-needs a database set up before it does anything. Genera's
+logical host: `XL1200:>sys>site>joshua.translations` (on the disk) maps
+`JOSHUA:**;` to `XL1200:>sys>**>` as `SYS:` is, its files being in
+`>sys>code>`, `>sys>examples>`, `>sys>data>`. Jericho stopped on
+"Unexpected trap through 4013" until the logic-variable instructions
+worked (above); then, from a snapshot of the first fat world booted, login,
+`(load "xl1200:>sys>site>joshua.translations")`, Joshua and Jericho through
+`sct:load-system`, `tv:more-processing-global-enable` and
+`si:inhibit-fdefine-warnings` back to their defaults, and `(si:disk-save
+"FEP7:>Genera-8-3-fat.ilod.2" nil :query nil :boot-file "FEP7:>boot.boot")`
+(85,498 blocks; without the version it asks to overwrite the running
+world's own file, which it still pages from). Booted cold, its herald adds
+Joshua 237.3 and Jericho 237.0 and the grandparent example answers; the
+first version and its boot file are deleted and expunged (81,384 blocks).
+Left out: Illustrate and TeX (tape restores), and Concordia's saving needs
+a lock server; Statice needs a database set up before it does anything. Genera's
 `ignore-errors` in a CL-USER Listener returns NIL and T on an error, not
 the condition (`conditions:handler-case` gives the message): the first
 batch read four failures as successes that way.
@@ -1287,6 +1362,18 @@ keeps both, and recomputes the wire (`pit_out` was set instead of
 `pit.out`, so in about half the windows the RTL missed one OUT1 edge and its
 interval timer fired 8 instructions late). The bench also compares the 82C54s
 after every instruction and reports the first difference.
+`LOCKSTEP_SNAPSHOT=FILE` starts both from an xlemu snapshot instead (`-W`;
+the disk argument a copy of `FILE.disk`; steps and typing counted from it),
+and `FREE=1` then runs the RTL alone, for what it does with the state on its
+own screen. Starting inside Genera found the bench behind the speed work:
+the transfer now fills the RTL's stack cache (128 words by address bits 6:0)
+from the model's memory, the comparison takes a word in the stack cache
+window from the cache (the RTL writes the window back only when it moves;
+the lower bound is 0 until Genera sets it, so runs from reset never saw
+this), and the lockstep instruction count is 34 bits (the microsecond clock
+is a quarter of it, and a snapshot is past 2^32). It still stops at the
+first low-priority sequence break, which the model takes an instruction
+before the RTL (docs/TODO.md).
 `obj_free/Vxl_machine` runs it as on the
 MiSTer (microseconds of the 50 MHz clock, SCSI commands running while the FEP
 polls, memory cleared from junk, the dot clock running) and saves the screen.

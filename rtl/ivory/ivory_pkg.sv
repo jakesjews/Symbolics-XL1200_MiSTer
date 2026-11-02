@@ -179,8 +179,11 @@ package ivory_pkg;
   endfunction
 
   // Memory-cycle actions (spec Table 13): columns are
-  // data null header hfwd efwd 1fwd evcp gc monitor, plus "pointer transports".
-  localparam logic [2:0] A_NONE = 3'd0, A_IND = 3'd1, A_TRAP = 3'd2, A_MTRAP = 3'd3;
+  // data null header hfwd efwd 1fwd evcp gc monitor, plus "pointer transports",
+  // and the logic-variable column Table 13 predates: a data-read or
+  // raw-translate of a dtp-logic-variable word returns it as an EVCP, cdr
+  // code kept (A_XFRM; the Symbolics table in the VLM's memoryem.lisp)
+  localparam logic [2:0] A_NONE = 3'd0, A_IND = 3'd1, A_TRAP = 3'd2, A_MTRAP = 3'd3, A_XFRM = 3'd4;
 
   function automatic logic [3:0] action_column(logic [5:0] t);
     case (t)
@@ -192,25 +195,28 @@ package ivory_pkg;
       DTP_EXTERNAL_VALUE_CELL_POINTER: return 4'd6;
       DTP_GC_FORWARD: return 4'd7;
       DTP_MONITOR_FORWARD: return 4'd8;
+      DTP_LOGIC_VARIABLE: return 4'd9;
       default: return 4'd0;
     endcase
   endfunction
 
   function automatic logic [2:0] cycle_action(logic [3:0] cycle, logic [3:0] col);
-    logic [26:0] row;   // 9 columns x 3 bits, column 0 in the low bits
+    logic [29:0] row;   // 10 columns x 3 bits, column 0 in the low bits
     case (cycle)
-      CYC_DATA_READ:  row = {A_MTRAP, A_TRAP, A_IND, A_IND, A_IND, A_IND, A_TRAP, A_TRAP, A_NONE};
-      CYC_DATA_WRITE: row = {A_MTRAP, A_TRAP, A_IND, A_IND, A_IND, A_IND, A_TRAP, A_NONE, A_NONE};
-      CYC_BIND_READ:  row = {A_MTRAP, A_TRAP, A_NONE, A_IND, A_IND, A_IND, A_TRAP, A_NONE, A_NONE};
-      CYC_BIND_WRITE: row = {A_MTRAP, A_TRAP, A_NONE, A_IND, A_IND, A_IND, A_TRAP, A_NONE, A_NONE};
+      CYC_DATA_READ:  row = {A_XFRM, A_MTRAP, A_TRAP, A_IND, A_IND, A_IND, A_IND, A_TRAP, A_TRAP, A_NONE};
+      CYC_DATA_WRITE: row = {A_NONE, A_MTRAP, A_TRAP, A_IND, A_IND, A_IND, A_IND, A_TRAP, A_NONE, A_NONE};
+      CYC_BIND_READ:  row = {A_NONE, A_MTRAP, A_TRAP, A_NONE, A_IND, A_IND, A_IND, A_TRAP, A_NONE, A_NONE};
+      CYC_BIND_WRITE: row = {A_NONE, A_MTRAP, A_TRAP, A_NONE, A_IND, A_IND, A_IND, A_TRAP, A_NONE, A_NONE};
       CYC_BIND_READ_NO_MONITOR, CYC_BIND_WRITE_NO_MONITOR:
-                      row = {A_IND, A_TRAP, A_NONE, A_IND, A_IND, A_IND, A_TRAP, A_NONE, A_NONE};
-      CYC_HEADER:     row = {A_TRAP, A_TRAP, A_TRAP, A_TRAP, A_TRAP, A_IND, A_NONE, A_TRAP, A_TRAP};
+                      row = {A_NONE, A_IND, A_TRAP, A_NONE, A_IND, A_IND, A_IND, A_TRAP, A_NONE, A_NONE};
+      CYC_HEADER:     row = {A_TRAP, A_TRAP, A_TRAP, A_TRAP, A_TRAP, A_TRAP, A_IND, A_NONE, A_TRAP, A_TRAP};
       CYC_STRUCTURE_OFFSET:
-                      row = {A_NONE, A_TRAP, A_NONE, A_NONE, A_NONE, A_IND, A_NONE, A_NONE, A_NONE};
+                      row = {A_NONE, A_NONE, A_TRAP, A_NONE, A_NONE, A_NONE, A_IND, A_NONE, A_NONE, A_NONE};
       CYC_SCAVENGE, CYC_GC_COPY:
-                      row = {A_NONE, A_TRAP, A_NONE, A_NONE, A_NONE, A_NONE, A_NONE, A_NONE, A_NONE};
-      CYC_CDR:        row = {A_NONE, A_TRAP, A_NONE, A_NONE, A_IND, A_IND, A_TRAP, A_NONE, A_NONE};
+                      row = {A_NONE, A_NONE, A_TRAP, A_NONE, A_NONE, A_NONE, A_NONE, A_NONE, A_NONE, A_NONE};
+      CYC_CDR:        row = {A_NONE, A_NONE, A_TRAP, A_NONE, A_NONE, A_IND, A_IND, A_TRAP, A_NONE, A_NONE};
+      CYC_RAW_TRANSLATE:
+                      row = {A_XFRM, 27'd0};
       default:        row = '0;
     endcase
     return row[col*3 +: 3];

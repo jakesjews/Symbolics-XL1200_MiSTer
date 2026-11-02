@@ -9,6 +9,12 @@
 // consoles from step TYPE-AT ('|' is Return, {w N} waits N million steps).
 // LOCKSTEP_FROM=N: the model runs alone for the first N steps, then its state
 // is copied into the RTL (transfer.h) and the lockstep starts there.
+// LOCKSTEP_SNAPSHOT=FILE: the model resumes from an xlemu snapshot (-W FILE;
+// DISK.dd is then a copy of FILE.disk) and the RTL starts from its state;
+// STEPS and TYPE-AT count from the snapshot.
+// FREE=1: after the model's steps alone, the RTL runs alone (no comparison):
+// what it does with the state, on its screen.  (In lockstep the RTL samples
+// a sequence break a step later than the model once Genera enables them.)
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -31,6 +37,7 @@
 #include "keyboard.h"
 #include "machine.h"
 #include "transfer.h"
+#include "snapshot.h"
 
 const char* ivory_opcode_name(int op);
 
@@ -167,7 +174,15 @@ int main(int argc, char** argv) {
   };
   if (getenv("XLEMU_ERRLOG")) ref.log_errors = true;   // the model's trap log, as xlemu's
   uint64_t from = getenv("LOCKSTEP_FROM") ? strtoull(getenv("LOCKSTEP_FROM"), nullptr, 0) : 0;
-  if (from) {
+  if (const char* snap = getenv("LOCKSTEP_SNAPSHOT")) {
+    if (!Snapshot::load(snap, ref, rbus)) return 1;
+    from = ref.icount;
+    steps += from;
+    next_key += from;
+    ModelState::to_rtl(ref, rbus, top, ddr, RAM_BASE, BUF_BASE, sd.f[0], dir / "ref.dd", dir / "rtl.dd");
+    printf("model resumed from %s at step %llu; the RTL starts from its state\n", snap,
+           (unsigned long long)from);
+  } else if (from) {
     auto f0 = std::chrono::steady_clock::now();
     for (uint64_t n = 0; n < from; n++) {
       type_keys(n, false);
@@ -196,11 +211,30 @@ int main(int argc, char** argv) {
 
   uint64_t n;
   bool pit_checked = true;   // report the first step after which the 82C54s differ
+  const bool free_run = getenv("FREE") != nullptr;
   for (n = from; n < steps; n++) {
     uint64_t pc0 = ref.pc;
     rlog.clear();
     dlog.clear();
     type_keys(n, true);
+    if (free_run) {
+      uint64_t c0 = cycles;
+      do {
+        tick();
+        if (top->halted || cycles - c0 > 4000000) {
+          printf("RTL %s at step %llu pc=%08llx\n", top->halted ? "halted" : "hung", (unsigned long long)n,
+                 (unsigned long long)R(pc));
+          status = 1;
+          break;
+        }
+      } while (!top->retire);
+      if (status) break;
+      if ((n + 1) % 1000000 == 0) {
+        printf("%llu steps\n", (unsigned long long)(n + 1));
+        fflush(stdout);
+      }
+      continue;
+    }
     try {
       ref.step();
     } catch (ProcessorHalt& h) {
@@ -269,11 +303,27 @@ int main(int argc, char** argv) {
     std::set<uint32_t> addrs(rlog.begin(), rlog.end());
     for (uint32_t a : dlog)
       if (a >= RAM_BASE && a < RAM_BASE + (16u << 20)) addrs.insert(a - RAM_BASE);
+    // The RTL keeps the stack cache window's words in the cache (write-back),
+    // the model in memory: a word there is the cache's.  The window is 128
+    // words from the lower bound (0 until Genera sets it), at most two pages.
+    uint32_t lb = R(stack_cache_lower_bound), wpage[2] = {~0u, ~0u};
+    for (int k = 0; k < 2; k++) {
+      uint32_t pa;
+      if (ref.debug_translate((lb + 127u * k) & ~0xFFu, pa)) wpage[k] = Machine::ram_index(pa) >> 8;
+    }
+    auto rtl_word = [&](uint32_t a) {
+      for (int k = 0; k < 2; k++)
+        if ((a >> 8) == wpage[k]) {
+          uint32_t vma = (((lb + 127u * k) & ~0xFFu) | (a & 0xFF));
+          if (vma - lb < 128u) return (W)(R(sc_data)[vma & 127] & 0xFFFFFFFFFFull);
+        }
+      return ram_word(a);
+    };
     for (uint32_t a : addrs)
-      if (rbus.ram[a] != ram_word(a)) {
+      if (rbus.ram[a] != rtl_word(a)) {
         char name[32];
         snprintf(name, sizeof name, "mem %08x", a);
-        chk(name, rbus.ram[a], ram_word(a));
+        chk(name, rbus.ram[a], rtl_word(a));
       }
     if (!bad.empty()) {
       printf("MISMATCH at step %llu (icount %llu), instruction at %08x.%d:\n%s", (unsigned long long)n,

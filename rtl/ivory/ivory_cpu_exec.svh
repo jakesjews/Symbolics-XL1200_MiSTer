@@ -232,10 +232,12 @@
             8'o056: st <= S_RETIRE;                                   // no-op
             8'o057, 8'o015: exc(3'd0, '0, '0, '0);                    // %halt, %proc-breakpoint
 
-            // logic variables: emulated by Lisp
-            8'o237: opval(1'b1, S_EXC_POP_1);
-            8'o013, 8'o103, 8'o014: opval(1'b1, S_EXC_POP_2);
-            8'o055: exc(3'd0, '0, '0, '0);
+            // logic variables (Joshua)
+            8'o013: opval(1'b1, S_DEREF_1);                           // dereference
+            8'o103: opval(1'b0, S_PLLV_1);                            // push-local-logic-variables
+            8'o055: push(mkw(DTP_EXTERNAL_VALUE_CELL_POINTER, bar[2][31:0]), S_PGLV_1);   // push-global-logic-variable
+            8'o014: opval(1'b1, S_LTT_1);                             // logic-tail-test
+            8'o237: opval(1'b1, S_EXC_POP_1);                         // unify
 
             default: exc(3'd0, '0, '0, '0);
           endcase
