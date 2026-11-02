@@ -111,7 +111,7 @@ the FEP disk as on a real machine.
 
 | PA | What | Evidence |
 |----|------|----------|
-| 0x00000000– | Main memory (4 MW on the reference XL1201 main board) | |
+| 0x00000000–0x003FFFFF, 0x10000000–0x103FFFFF, 0x20000000–0x203FFFFF, 0x30000000–0x303FFFFF | Main memory: 4 MW on the main board at 0 and a 4 MW memory expansion board in each of the three memory slots (16 MW, the XL1200's most; the reference XL1201's main board has 4 MW and no boards). The FEP's hardware tables size the main board in 2 MW chunks, at most four (probes at 0, 0o10000000, 0x400000, 0x600000: a contiguous 16 MW shows as 8 MW), then take the memory boards from the ECO register's nibbles 1-3 (F = empty, `find-merlin-boards` in i-sys/configuration.lisp does the same) and size each present board at its slot (0x10000000, 0x20000000, 0x30000000, in 4 MW steps); it also probes 0x58000000 and 0x68000000 for other boards. With ECO 0xFFF51111 `Show Configuration` lists Memory Expansion Boards 0-2 and 2048k, 2048k, 4096k, 4096k, 4096k words. In DDR3 at word 0x0600_0000 + {slot, offset} (byte 0x30000000), a 40-bit word a DDR word; the I/O board's buffer memory at 0x0700_0000, the color board's 16 MB at 0x0710_0000 | FEP `Show Configuration` in the emulator, Nov 2026 |
 | 0x07FE0000–0x07FEFFFF | Boot PROM | spec 2.1.4 |
 | 0x09000000–0x090007FF | NVRAM, byte per word; clock at 0x7F8–0x7FF (MK48T02-style); FEP options in bank 0 | sysdef `MERLIN-NVRAM-FEP-OPTIONS`; kernel uses 0x090007F8 |
 | 0x0A000000 | Merlin-II control (bit 1 = run light) | wired-screen.lisp |
@@ -552,6 +552,21 @@ for one more), with the sync format and `color::make-mister-color-screen`
 from `tools/genera/mister-color.lisp` defined; the boot file still loads
 the full world.
 
+A freeze (Nov 1 2026, build 40, the full world with Color loaded in the
+session, MORE off): `Load System CLIM` stopped four minutes in, reading
+`sys:clim;rel-2;clim;output-protocol.ibin` (the who-line said 12%): the
+who-line clock stayed at 5:40:59, the screen never changed again, the mouse
+did not move the cursor, and Genera did not answer pings; MiSTer's main
+program was polling normally and the card logged no errors. Nothing in a
+release build says what the processor or the DDR3 port were doing, hence
+the OSD notices in XL1200.sv for the next build. Recovered by reloading
+the core; the session's Color load was lost (save the world before the
+next long load). Incremental saves need IDS on first: Genera 8.3's `Save
+World` only offers Incremental when `si:*sysout-enabled-p*` is true, which
+`(si:enable-sysout)` sets (the `Enable IDS` command typed at the Listener
+left no trace); `Save World Incremental FEP7:>Genera-8-3-color.ilod` then
+asks the herald and label questions as a full save does.
+
 ### Paging with 4 MW
 
 Peek's storage meters (Select P, Meters, "Storage meters") on the MiSTer
@@ -670,6 +685,10 @@ Published numbers for real machines:
   `(defun fib (n) (if (or (= n 0) (= n 1)) 1 (+ (fib (- n 1)) (fib (- n 2)))))`
   after `(compile 'fib)`: (fib 20) 0.0334 s, (fib 30) 4.097 s, (fib 36) 73.9 s,
   (fib 38) 192.1 s; a MacIvory III (same chip) 4.097 s for (fib 30).
+  Interpreted, the same defun typed at a Listener and not compiled: (fib 20)
+  4.13 s on the core against 0.026 s compiled (Nov 2 2026, build 40), 160x,
+  so an interpreted (fib 30) is about seven minutes and a real XL1200's
+  longer still; a user's "fib 30 ran five minutes" was this.
 - XL1200, de Kleer, "An Improved Incremental Algorithm for Generating Prime
   Implicates" (AAAI 1992, Table 1, trie column): K44 0.46 s, K54 1.1 s, K55
   8.6 s, K66 224 s, K67 2541 s, Regulator 85 s, BD 38 s, Adder 721 s. The
@@ -1281,6 +1300,33 @@ memory is shown even while the FEP has the display off.
 
 ## Quartus and MiSTer lessons
 
+- Screenshots with direct video on: MiSTer's own `screenshot` command grabs
+  the scaler's frame buffer, which with direct video is a low-resolution
+  shadow of the picture, so the tests used to turn direct video off in the
+  `[XL1200]` section of MiSTer.ini. The RetroTink 4K (firmware 1.99.9 and
+  later) captures its input to a PNG on its SD card: AUX 5 on the remote
+  asks "Capture now? [Cancel] [OK]" in its OSD. `tools/mister/rt4k.py
+  capture OUT.png` does the whole round through the DonutShop bridge's
+  WebSocket (ws://donutshop.local:81, the RetroTink's serial bytes as binary
+  messages: `remote aux5`, `remote right`, `remote ok`, `ls screenshots`
+  until the file stops growing, `get -- screenshots/NAME` as RTL1 frames
+  with the device's SHA-256, `rm`); 84 s for the 6 MB of a 1920 x 1080
+  capture at 2 Mbaud. The replies arrive prefixed with the port they came
+  in on (`[COM] `). The web client in the DonutShop page is the protocol
+  reference (its sections 3.2 and 3.3). At 84 s a capture it is for checking
+  the direct-video output itself; ordinary tests keep using MiSTer's
+  screenshots with `direct_video=0` in the `[XL1200]` section for the test
+  and removed after.
+
+- `make lint` (Nov 2 2026): Verilator with its full warning set over XL1200.sv
+  and rtl/, the framework parsed for the interfaces the top level instantiates
+  and every diagnostic from sys/ off (lint/exclusions.vlt; sys/ is never linted
+  or formatted). Waived with reasons: the SCSI engine's blocking temporaries
+  (BLKSEQ), registers written from two always_ff blocks on the one clock
+  (MULTIDRIVEN), unused signals and parameters (to prune), and the framework
+  ports the top level leaves unconnected, each by name. Clean at that date;
+  it would have caught a register used before its declaration in XL1200.sv
+  that a Quartus run would have found an hour later.
 - Quartus 17 (Lite) infers byte-enabled block RAM only from the SystemVerilog
   packed form (`logic [3:0][7:0] ram [N]`, `ram[a][i] <= byte`); with part
   selects a 64 KB RAM became flip-flops and synthesis ran for tens of minutes.

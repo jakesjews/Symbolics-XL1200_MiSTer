@@ -113,7 +113,7 @@ int main(int argc, char** argv) {
     else usage();
   }
 
-  Machine m(4u << 20);   // 4 MW, like the reference XL1201
+  Machine m(16u << 20);  // 16 MW, the XL1200's most
   // The calendar clock runs 28 years behind (same weekdays), as the core does
   // by default: Genera 8.3 doesn't accept a two-digit year past 1999.
   if (!getenv("XLEMU_CLOCK_TODAY"))

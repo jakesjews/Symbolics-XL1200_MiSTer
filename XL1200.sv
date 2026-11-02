@@ -52,6 +52,7 @@ localparam CONF_STR = {
 `endif
 	"O[10:8],Network,eth0,Off,eth1,macvlan,tap0;",
 	"-;",
+	"I,Processor halted,Memory port stalled;",
 	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
 	"v,0;",
@@ -75,6 +76,9 @@ wire    [13:0] sd_buff_addr;
 wire     [7:0] sd_buff_dout;
 wire     [7:0] sd_buff_din[NT];
 wire           sd_buff_wr;
+
+reg        info_req = 0;      // an OSD message, below
+reg  [7:0] info = 0;
 
 hps_io #(.CONF_STR(CONF_STR), .VDNUM(NT), .BLKSZ(2)) hps_io
 (
@@ -104,7 +108,10 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(NT), .BLKSZ(2)) hps_io
 
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
-	.RTC(rtc)
+	.RTC(rtc),
+
+	.info_req(info_req),
+	.info(info)
 );
 
 ///////////////////////   CLOCKS   ///////////////////////////////
@@ -132,6 +139,24 @@ reg  mount_reset;
 always @(posedge clk_sys) begin
 	mount_reset <= |img_mounted && halted;
 	reset <= RESET | status[0] | buttons[1] | power_on | mount_reset;
+end
+
+// A message on the screen when the machine stops, through the framework's
+// info strings (the I line of CONF_STR): 1 when the processor halts once a
+// disk is there (a real XL1200's FEP announces a halt on the console; the
+// boot PROM's halt for want of a disk is not news), 2 when the DDR3 port
+// has held a command for 168 ms (a wedged port stops everything).
+reg        halted_q = 0, disk_seen = 0, ddr_stalled = 0;
+reg [22:0] ddr_wait = 0;
+always @(posedge clk_sys) begin
+	halted_q <= halted;
+	if (|img_mounted) disk_seen <= 1;
+	if (!(DDRAM_BUSY && (DDRAM_RD || DDRAM_WE))) ddr_wait <= 0;
+	else if (!(&ddr_wait)) ddr_wait <= ddr_wait + 1'd1;
+	ddr_stalled <= &ddr_wait;
+	info_req <= 0;
+	if (halted && !halted_q && disk_seen) begin info_req <= 1; info <= 8'd1; end
+	else if (&ddr_wait && !ddr_stalled) begin info_req <= 1; info <= 8'd2; end
 end
 
 ///////////////////////   CONSOLE   //////////////////////////////

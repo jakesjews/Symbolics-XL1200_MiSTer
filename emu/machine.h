@@ -25,7 +25,15 @@ public:
   bool low_priority_sb() override { return lp_sb; }
   bool reset_request() override { return false; }
 
-  // Main-board memory at physical 0 (4 MW on the reference XL1201: two 2 MW banks).
+  // Main memory: 4 MW on the main board at physical 0 and a 4 MW board in
+  // each of the three expansion slots the FEP probes, at 0x10000000,
+  // 0x20000000 and 0x30000000 (16 MW, the XL1200's most; the reference
+  // XL1201 has the 4 MW).  ram_index maps a physical address to its word in
+  // ram (the core's DDR3 word, the same way), ~0u where there is no memory;
+  // ram holds the boards that are fitted, from the main board up.
+  static uint32_t ram_index(uint32_t pa) {
+    return (pa & 0xCFC00000u) == 0 ? ((pa >> 28) & 3) << 22 | (pa & 0x3FFFFFu) : ~0u;
+  }
   std::vector<W> ram;
   Nvram nvram;
   std::vector<W> prom;            // boot PROM, physical 0x07FE0000, 64K words
@@ -45,8 +53,9 @@ public:
 
   // Merlin-II ECO register (0x0A000008): one 4-bit ECO level per board slot.
   // Nibble 0 = main board, 1-3 = memory boards, 4-6 = I/O boards; F = absent.
-  // Values match the reference XL1201 (main board ECO 1, I/O board ECO 5).
-  static const uint32_t ECO_REGISTER = 0xFFF5FFF1u;
+  // Main board ECO 1 and I/O board ECO 5 as the reference XL1201's; the three
+  // memory boards (ECO 1) are what makes the FEP size the expansion slots.
+  static const uint32_t ECO_REGISTER = 0xFFF51111u;
 
   void attach_disk(int scsi_id, const std::string& path, uint32_t block_size = 1280, uint32_t stride = 1536);
   void load_fep_file(const std::string& path);  // FEP kernel load format

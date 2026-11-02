@@ -27,10 +27,10 @@
 // high the memory clears main and buffer memory to zero words (as the
 // reference model starts) and invalidates the cache, then raises `ready`.
 module xl_mem #(
-  parameter int          RAM_AW  = 22,              // 4 MW of main memory
+  parameter int          RAM_AW  = 24,              // 16 MW of main memory, the XL1200's most
   parameter int          LINE_AW = 11,              // 2048 cache lines of 4 words
   parameter logic [28:0] RAM_BASE = 29'h0600_0000,  // DDR word addresses (byte 0x30000000)
-  parameter logic [28:0] BUF_BASE = 29'h0640_0000,
+  parameter logic [28:0] BUF_BASE = 29'h0700_0000,
   parameter bit          CLEAR = 1'b1               // 0: assume DDR3 already zero (simulation)
 ) (
   input  logic              clk,
@@ -131,7 +131,7 @@ module xl_mem #(
   wire [3:0]         word_bit = 4'b0001 << cpu_addr[1:0];
 
   // Clearing
-  logic [22:0]       clr_addr;     // DDR words from RAM_BASE, then buffer words
+  logic [RAM_AW:0]   clr_addr;     // DDR words from RAM_BASE, then buffer words
   logic [6:0]        clr_beat;
   logic              clr_buf;
   logic [LINE_AW:0]  clr_tag;      // tag entries invalidated (MSB = done)
@@ -181,7 +181,7 @@ module xl_mem #(
       M_IDLE: ddr_we = !wq_empty;                 // drain the write queue
       M_CLEAR: begin
         ddr_we = CLEAR && !init && !(clr_buf && clr_addr[16]);
-        ddr_addr = (clr_buf ? BUF_BASE : RAM_BASE) + 29'(clr_addr - 23'(clr_beat));
+        ddr_addr = (clr_buf ? BUF_BASE : RAM_BASE) + 29'(clr_addr) - 29'(clr_beat);
         ddr_burstcnt = 8'(CLEAR_BURST);
         ddr_din = '0;
       end
@@ -252,10 +252,10 @@ module xl_mem #(
             // One beat of a CLEAR_BURST-word burst; the burst's address is
             // the address of its first beat.
             clr_beat <= (clr_beat == 7'(CLEAR_BURST - 1)) ? 7'd0 : clr_beat + 7'd1;
-            if (!clr_buf && clr_addr == 23'((1 << RAM_AW) - 1)) begin
+            if (!clr_buf && clr_addr == {1'b0, {RAM_AW{1'b1}}}) begin
               clr_buf <= 1'b1;
               clr_addr <= '0;
-            end else clr_addr <= clr_addr + 23'd1;
+            end else clr_addr <= clr_addr + 1'b1;
           end
         end
 

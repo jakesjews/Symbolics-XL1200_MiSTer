@@ -22,7 +22,7 @@
 // not there: bus error, like anything else nobody answers.
 module xl_vme #(
   parameter bit          CLEAR = 1'b1,
-  parameter logic [28:0] MEM_BASE = 29'h0680_0000   // DDR word address of the board's memory
+  parameter logic [28:0] MEM_BASE = 29'h0710_0000   // DDR word address of the board's memory
 ) (
   input  logic        clk,
   input  logic        reset,

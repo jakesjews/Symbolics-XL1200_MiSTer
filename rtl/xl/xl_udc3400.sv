@@ -29,7 +29,7 @@
 // fetched into a line buffer while the one before shows.
 module xl_udc3400 #(
   parameter bit          CLEAR = 1'b1,
-  parameter logic [28:0] BASE = 29'h0680_0000
+  parameter logic [28:0] BASE = 29'h0710_0000
 ) (
   input  logic        clk,
   input  logic        reset,
@@ -141,32 +141,9 @@ module xl_udc3400 #(
   wire  [28:0] f_addr = f_part == 2'd0 ? BASE + FB_OFF + {11'd0, f_line, 8'd0} + 29'(f_beat)
                       : (f_part == 2'd1 ? BASE + OV0_OFF : BASE + OV1_OFF) + {14'd0, f_line, 5'd0} + 29'(f_beat);
 
-  always_comb begin
-    ddr_rd = 1'b0;
-    ddr_we = 1'b0;
-    ddr_burstcnt = 8'd1;
-    ddr_addr = BASE + {7'd0, v_addr[21:1]};
-    ddr_din = {v_wdata, v_wdata};
-    ddr_be = v_addr[0] ? {be4, 4'd0} : {4'd0, be4};
-    case (st)
-      D_CLEAR: begin
-        ddr_we = CLEAR && !init && !clr_addr[21];
-        ddr_addr = BASE + 29'(clr_addr[20:0] - 21'(clr_beat));   // the burst's first beat
-        ddr_burstcnt = 8'(CLEAR_BURST);
-        ddr_din = '0;
-        ddr_be = 8'hFF;
-      end
-      D_MEM_WR: ddr_we = 1'b1;
-      D_MEM_RD: ddr_rd = 1'b1;
-      D_FETCH: begin
-        ddr_rd = 1'b1;
-        ddr_addr = f_addr;
-        ddr_burstcnt = f_burst;
-      end
-      default: ;
-    endcase
-  end
-
+  // The DDR3 commands are registers: set as a state is entered, held until
+  // the port takes them (ddr_busy low while they are up), so the address
+  // adders and the command muxes end at flops and not in the arbiter.
   assign ready = st != D_CLEAR;
 
   always_ff @(posedge clk) begin
@@ -189,12 +166,33 @@ module xl_udc3400 #(
       clr_addr <= '0;
       clr_beat <= '0;
       f_active <= 1'b0;
+      ddr_rd <= 1'b0;
+      ddr_we <= 1'b0;
+      ddr_addr <= BASE;
+      ddr_burstcnt <= 8'(CLEAR_BURST);
+      ddr_din <= '0;
+      ddr_be <= 8'hFF;
     end else case (st)
       D_CLEAR:
-        if (!CLEAR || clr_addr[21]) st <= D_IDLE;
-        else if (!ddr_busy) begin
-          clr_beat <= clr_beat == 5'(CLEAR_BURST - 1) ? 5'd0 : clr_beat + 5'd1;
-          clr_addr <= clr_addr + 22'd1;
+        // bursts of CLEAR_BURST zero words; the address is the burst's first
+        // beat's, moved on as its last beat goes.  The write drops in the
+        // cycle the last beat of the last burst is taken: a beat later would
+        // open a burst nobody finishes (the arbiter would flush it after 2^16
+        // cycles, with the port stalled meanwhile).
+        if (!CLEAR) st <= D_IDLE;
+        else begin
+          ddr_we <= 1'b1;
+          if (ddr_we && !ddr_busy) begin
+            clr_addr <= clr_addr + 22'd1;
+            if (clr_beat == 5'(CLEAR_BURST - 1)) begin
+              clr_beat <= 5'd0;
+              ddr_addr <= ddr_addr + 29'(CLEAR_BURST);
+            end else clr_beat <= clr_beat + 5'd1;
+            if (clr_addr == 22'h1FFFFF) begin    // the last of the 2M words
+              ddr_we <= 1'b0;
+              st <= D_IDLE;
+            end
+          end
         end
 
       D_IDLE:
@@ -220,14 +218,24 @@ module xl_udc3400 #(
           end else if (a_dac) begin
             v_ack <= 1'b1;
             v_rdata <= {8'hFF, dac_rdata[dac_n], 8'hFF, dac_rdata[dac_n]};
-          end else st <= v_we ? D_MEM_WR : D_MEM_RD;
+          end else begin
+            ddr_addr <= BASE + {7'd0, v_addr[21:1]};
+            ddr_burstcnt <= 8'd1;
+            ddr_din <= {v_wdata, v_wdata};
+            ddr_be <= v_addr[0] ? {be4, 4'd0} : {4'd0, be4};
+            if (v_we) begin ddr_we <= 1'b1; st <= D_MEM_WR; end
+            else begin ddr_rd <= 1'b1; st <= D_MEM_RD; end
+          end
         end else if (f_active) begin
+          ddr_rd <= 1'b1;
+          ddr_addr <= f_addr;
+          ddr_burstcnt <= f_burst;
           f_n <= f_burst;
           st <= D_FETCH;
         end
 
-      D_MEM_WR: if (!ddr_busy) begin v_ack <= 1'b1; st <= D_IDLE; end
-      D_MEM_RD: if (!ddr_busy) st <= D_MEM_RD_WAIT;
+      D_MEM_WR: if (!ddr_busy) begin ddr_we <= 1'b0; v_ack <= 1'b1; st <= D_IDLE; end
+      D_MEM_RD: if (!ddr_busy) begin ddr_rd <= 1'b0; st <= D_MEM_RD_WAIT; end
       D_MEM_RD_WAIT: if (ddr_dout_ready) begin
         v_ack <= 1'b1;
         v_rdata <= v_addr[0] ? ddr_dout[63:32] : ddr_dout[31:0];
@@ -235,7 +243,7 @@ module xl_udc3400 #(
         st <= D_IDLE;
       end
 
-      D_FETCH: if (!ddr_busy) st <= D_FETCH_WAIT;
+      D_FETCH: if (!ddr_busy) begin ddr_rd <= 1'b0; st <= D_FETCH_WAIT; end
       D_FETCH_WAIT: if (ddr_dout_ready) begin
         f_beat <= f_beat + 8'd1;
         f_n <= f_n - 8'd1;

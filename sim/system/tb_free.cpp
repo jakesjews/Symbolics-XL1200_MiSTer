@@ -30,7 +30,7 @@ static DdrModel ddr;
 static SdModel<Vxl_machine> sd;
 static const double CLK_HZ = 50000000.0; // the machine's clock, as XL1200.sv sets it
 static uint64_t cycles = 0;            // clock cycles
-static const uint32_t RAM_BASE = 0x06000000, BUF_BASE = 0x06400000, COLOR_BASE = 0x06800000;
+static const uint32_t RAM_BASE = 0x06000000, BUF_BASE = 0x07000000, COLOR_BASE = 0x07100000;
 static std::deque<std::pair<bool, uint8_t>> keys;
 
 static void tick() {
@@ -135,8 +135,8 @@ static int color_test() {
       }
     }
   fclose(f);
-  printf("color test: %d of %d pixels wrong\n", bad, 1152 * 880);
-  return bad != 0;
+  printf("color test: %d of %d pixels wrong, %d write bursts left open\n", bad, 1152 * 880, ddr.open_bursts);
+  return bad != 0 || ddr.open_bursts != 0;
 }
 
 int main(int argc, char** argv) {
@@ -277,7 +277,7 @@ int main(int argc, char** argv) {
     if (top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__st == S_FETCH &&
         top->rootp->xl_machine__DOT__core__DOT__icache__DOT__hit) {
       uint32_t va = (uint32_t)(top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__pc >> 1);
-      if (va >= 0xF8000000u && (va & 0x07FFFFFFu) < 0x400000u) {
+      if (va >= 0xF8000000u && (va & 0x07FFFFFFu) < 0x400000u) {   // the main board, through the PMA window
         uint64_t mem = ddr.at(RAM_BASE + (va & 0x07FFFFFFu)) & 0xFFFFFFFFFFull;
         uint64_t got = top->rootp->xl_machine__DOT__core__DOT__icache__DOT__word;
         if (mem != got && stale++ < 10) {

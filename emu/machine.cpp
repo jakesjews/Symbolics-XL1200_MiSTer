@@ -43,7 +43,8 @@ static bool main_board_register(uint32_t pa) {
 }
 
 W Machine::phys_read(uint32_t pa) {
-  if (pa < ram.size()) return ram[pa];
+  uint32_t ri = ram_index(pa);
+  if (ri < ram.size()) return ram[ri];
   if (pa >= PROM_BASE && pa < PROM_BASE + PROM_SIZE) return prom[pa - PROM_BASE];
   if (pa >= 0x09000000u && pa < 0x09000800u) return nvram.read(pa - 0x09000000u);
   if (iob.claims(pa)) return iob.read(pa);
@@ -60,9 +61,10 @@ W Machine::phys_read(uint32_t pa) {
 }
 
 void Machine::phys_write(uint32_t pa, W w) {
-  if (pa < ram.size()) {
-    ram[pa] = w;
-    if (write_log) write_log->push_back(pa);
+  uint32_t ri = ram_index(pa);
+  if (ri < ram.size()) {
+    ram[ri] = w;
+    if (write_log) write_log->push_back(ri);
     return;
   }
   if (pa >= PROM_BASE && pa < PROM_BASE + PROM_SIZE) return;

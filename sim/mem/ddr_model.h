@@ -18,6 +18,8 @@ struct DdrModel {
   uint64_t cycle = 0;
   uint32_t waddr = 0;
   int wleft = 0;
+  int wstall = 0;          // cycles a write burst has waited for its next beat
+  int open_bursts = 0;     // write bursts left waiting 4096 cycles (a master's bug)
   bool busy = false;
   bool watch = false;
   uint32_t watch_addr = 0;
@@ -62,6 +64,11 @@ struct DdrModel {
       if (write_log) write_log->push_back(waddr & 0x1FFFFFFF);
       waddr++;
       wleft--;
+      wstall = 0;
+    } else if (wleft > 0 && ++wstall == 4096) {
+      open_bursts++;
+      printf("[ddr] write burst left open: %d beats still owed at %08x (cycle %llu)\n", wleft, waddr,
+             (unsigned long long)cycle);
     }
     d->ddr_dout_ready = 0;
     if (!pending.empty() && pending.front().first <= cycle) {

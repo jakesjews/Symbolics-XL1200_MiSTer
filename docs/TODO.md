@@ -9,6 +9,21 @@ In the order they'll be done. Bugs come first whenever they turn up.
    Left: an overnight run; the collection's applications that need a file
    or tape route in (Macsyma, Illustrate, TeX). Anything that breaks is
    reproduced in the free-running simulation or the model.
+   Open: the machine froze four minutes into `Load System CLIM` on build
+   40 (Nov 1 2026, the full world after `Load System Color`: the who-line
+   clock stopped at output-protocol.ibin 12%, no response to the mouse,
+   MiSTer's side fine; docs/NOTES.md). A release build has no readout, so
+   the next build announces a processor halt or a stalled DDR3 port on
+   the OSD (the framework's info strings, XL1200.sv), and the load is
+   repeated from a saved Color world to see whether it recurs.
+   Also open: the lockstep from reset on the master disk stops at step
+   1,822,307, the FEP kernel's first function entry after the boot PROM's
+   `%jump` (an entry-rest-not-accepted with more arguments than it takes):
+   the RTL writes the frame word {DTP-CALL-COMPILED-EVEN, the entry's PC}
+   at physical 0x103 and the model does not. Present at least since build
+   39; neither machine misbehaves for it (the FEP never returns there),
+   so `LOCKSTEP_FROM=N` windows are used meanwhile; one of the two entry
+   implementations is wrong and the spec decides.
    Lockstep only proves the RTL matches our model, so build a regression
    suite with its own expected answers, in place before the speed work:
    - Instruction tests on the RTL processor alone (`sim/ivory`, seconds):
@@ -77,11 +92,13 @@ In the order they'll be done. Bugs come first whenever they turn up.
    design that fits by seed; a separate color RBF is the fallback). The 8.3
    world needs the Color system loaded from the CD.
 8. 16 MW of main memory, the XL1200's maximum (4 MW standard, three 4 MW
-   expansion boards; the FEP probes the slots at 0x10000000, 0x20000000 and
-   0x30000000): the memory module and decode a few address bits wider, the
-   DDR3 clear longer, the FEP's sizing answered so the herald reads 16.0M
-   words. A 4 MW session fetched 8 MW from disk (Peek's storage meters,
-   docs/NOTES.md), so this is what makes a fat world comfortable.
+   expansion boards), in the tree and building (Nov 2 2026): the memory
+   boards answer at their slots (0x10000000, 0x20000000, 0x30000000) and
+   the ECO register's nibbles say they are there, which is what the FEP's
+   hardware tables go by (docs/NOTES.md, the address map); the emulator's
+   `Show Configuration` lists them. Left: the herald on the MiSTer, Peek's
+   storage meters against the 4 MW session (which fetched 8 MW from disk),
+   and paging space grown to match on the master disk.
 9. The master disk: one Genera 8.3 world with the applications preloaded
    (Color, CLIM with Genera-CLIM and the demos, Concordia, Statice, Joshua
    and Jericho, Metering, Illustrate and TeX if they load, the documentation)

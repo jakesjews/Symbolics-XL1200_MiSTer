@@ -140,7 +140,10 @@ module xl_machine #(
   logic        iob_dma_busy;
   wire         req = mem_req && !(LOCKSTEP && iob_dma_busy);
   wire  [31:0] pa = mem_addr;
-  wire         sel_ram   = pa < 32'h0040_0000;
+  // Main memory: 4 MW on the main board at 0 and a 4 MW board in each of the
+  // three expansion slots the FEP probes, at 0x10000000, 0x20000000 and
+  // 0x30000000 (16 MW, the XL1200's most); DDR3 word {slot, offset}.
+  wire         sel_ram   = pa[31:30] == 2'd0 && pa[27:22] == 6'd0;
   wire         sel_prom  = pa[31:16] == 16'h07FE;
   wire         sel_pit   = pa[31:2] == 30'(32'h0800_0000 >> 2);
   wire         sel_nvram = pa[31:11] == 21'(32'h0900_0000 >> 11);
@@ -159,9 +162,9 @@ module xl_machine #(
   logic        ram_ack;
   logic [39:0] ram_rdata;
   logic [3:0] mem_state;
-  xl_mem #(.CLEAR(MEM_CLEAR)) mem (
+  xl_mem #(.CLEAR(MEM_CLEAR), .RAM_AW(24), .RAM_BASE(29'h0600_0000), .BUF_BASE(29'h0700_0000)) mem (
     .clk, .init(power_on), .ready(mem_ready), .busy(mem_busy), .dbg_state(mem_state),
-    .cpu_req(req && sel_ram), .cpu_we(mem_we), .cpu_addr(pa[21:0]), .cpu_wdata(mem_wdata),
+    .cpu_req(req && sel_ram), .cpu_we(mem_we), .cpu_addr({pa[29:28], pa[21:0]}), .cpu_wdata(mem_wdata),
     .cpu_ack(ram_ack), .cpu_rdata(ram_rdata),
     .buf_req, .buf_we, .buf_addr, .buf_be, .buf_wdata, .buf_ack, .buf_rdata,
     .ddr_addr(m0_addr), .ddr_burstcnt(m0_burstcnt), .ddr_rd(m0_rd), .ddr_we(m0_we), .ddr_din(m0_din),
@@ -243,10 +246,12 @@ module xl_machine #(
   );
 
   // Merlin-II registers (words 0x0A000000 + 0, 4, 8, C): control (bit 1 =
-  // run light), cache control, ECO levels (one nibble per slot: main board 1,
-  // I/O board 0 5, F = empty; the reference XL1201's), interrupts (reads give
-  // the pending sources, writes set the mask; i-sys/io-register-definitions)
-  localparam logic [31:0] ECO_REGISTER = 32'hFFF5_FFF1;
+  // run light), cache control, ECO levels (one nibble per slot: main board 1
+  // and I/O board 0 5 as the reference XL1201's, the three memory boards 1,
+  // F = empty; the FEP and Genera's find-merlin-boards take a memory board's
+  // slot from its nibble), interrupts (reads give the pending sources, writes
+  // set the mask; i-sys/io-register-definitions)
+  localparam logic [31:0] ECO_REGISTER = 32'hFFF5_1111;
   logic [31:0] mb_reg [3];
   logic [31:0] int_mask;
 
@@ -275,7 +280,7 @@ module xl_machine #(
   logic [4:0]  r_px;
   logic [10:0] r_vc, r_v_visible, r_v_total;
   logic        r_run, r_retrace;
-  xl_vme #(.CLEAR(MEM_CLEAR)) vme (
+  xl_vme #(.CLEAR(MEM_CLEAR), .MEM_BASE(29'h0710_0000)) vme (
     .clk, .reset, .init(power_on), .ready(vme_ready),
     .cpu_req(req && sel_vme), .cpu_we(mem_we), .cpu_addr(pa), .cpu_wdata(mem_wdata[31:0]),
     .cpu_ack(vme_ack), .cpu_buserr(vme_buserr), .cpu_rdata(vme_rdata),

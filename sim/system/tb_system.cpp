@@ -46,7 +46,7 @@ static uint64_t cycles = 0;
 static std::map<int, uint64_t> prof_cpu;   // PROFILE: cycles by processor state
 static uint64_t prof_mmu[16], prof_mem[16];
 static const time_t BOOT_TIME = 625000000;   // 1989-10-21, for both NVRAM clocks
-static const uint32_t RAM_BASE = 0x06000000, BUF_BASE = 0x06400000;
+static const uint32_t RAM_BASE = 0x06000000, BUF_BASE = 0x07000000;
 
 static SdModel<Vxl_machine> sd;
 
@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
   fs::copy_file(argv[1], dir / "rtl.dd");
 
   // the reference
-  Machine rbus(4u << 20, "");
+  Machine rbus(16u << 20, "");
   Ivory ref(&rbus);
   rbus.log_io = false;
   rbus.iob.log_io = false;
@@ -267,7 +267,7 @@ int main(int argc, char** argv) {
     chk("icount", ref.icount, R(icount));
     std::set<uint32_t> addrs(rlog.begin(), rlog.end());
     for (uint32_t a : dlog)
-      if (a >= RAM_BASE && a < RAM_BASE + (4u << 20)) addrs.insert(a - RAM_BASE);
+      if (a >= RAM_BASE && a < RAM_BASE + (16u << 20)) addrs.insert(a - RAM_BASE);
     for (uint32_t a : addrs)
       if (rbus.ram[a] != ram_word(a)) {
         char name[32];

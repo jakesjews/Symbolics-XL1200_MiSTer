@@ -8,7 +8,7 @@ TEXT is typed as on a PC keyboard; {name} presses a key: {enter}, {f1}..{f12},
 {esc}, {backspace}, {tab}, {home}, {end}, {pageup}, {pagedown}, {insert},
 {delete}, {up}, {down}, {left}, {right}.  '(' and ')' are typed as '[' and ']',
 which the core maps to the Symbolics ( and ) keys (docs/keyboard.md).
-{m DX DY} moves the mouse; {click L}, {click M}, {click R} click a button;
+{m DX DY} moves the mouse; {click L}, {click M}, {click R} click a button ({click R shift} with Shift);
 {wait S} pauses S seconds.  {ctrl x}, {meta x}, {ctrl meta x} are chords
 (Control is the left Control key, Meta the left Alt, Super the left Windows).
 """
@@ -76,8 +76,8 @@ def main():
                     emit(fd, EV_SYN, 0, 0)
                     dx, dy = dx - sx, dy - sy
                     time.sleep(0.01)
-            elif word[0] == "click":
-                press(fd, BUTTONS[word[1]])
+            elif word[0] == "click":   # {click R}, {click R shift}
+                press(fd, BUTTONS[word[1]], len(word) > 2 and word[2] == "shift")
             elif word[0] == "wait":
                 time.sleep(float(word[1]))
             elif word[0] in MODS:   # {ctrl x}, {meta x}, {ctrl meta x}: a chord

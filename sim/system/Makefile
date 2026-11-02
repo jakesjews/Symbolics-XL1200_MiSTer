@@ -32,5 +32,12 @@ obj_free/Vxl_machine: $(SV) $(SVH) tb_free.cpp sd_model.h $(PROM) $(MEM)/ddr_mod
 	$(VERILATOR) $(VFLAGS) --Mdir obj_free -GPROM_FILE='"$(PROM)"' \
 	  -CFLAGS "-std=c++17 -O2 -I$(EMU) -I$(MEM)" $(SV) tb_free.cpp
 
+# As obj_free, but clearing the DDR3 at power-up as the core on the MiSTer does
+# (MEM_CLEAR=1): exercises the memories' clear bursts on the DDR port.
+obj_clear/Vxl_machine: $(SV) $(SVH) tb_free.cpp sd_model.h $(PROM) $(MEM)/ddr_model.h
+	python3 ../../tools/gen_ivory_states.py
+	$(VERILATOR) $(VFLAGS) --Mdir obj_clear -GMEM_CLEAR=1 -GPROM_FILE='"$(PROM)"' \
+	  -CFLAGS "-std=c++17 -O2 -I$(EMU) -I$(MEM)" $(SV) tb_free.cpp
+
 clean:
-	rm -rf obj_dir obj_free
+	rm -rf obj_dir obj_free obj_clear
