@@ -17,6 +17,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_keyboard.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_video.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_iob.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_nvram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_vme.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_udc3400.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_machine.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/xl/xl_debug_uart.sv
 set_global_assignment -name SDC_FILE XL1200.sdc

@@ -11,7 +11,7 @@ PROM := $(XL)/boot_prom.mem
 
 SV := $(IVORY)/ivory_pkg.sv $(IVORY)/ivory_cpu.sv $(IVORY)/ivory_mmu.sv $(IVORY)/ivory_icache.sv $(IVORY)/ivory_core.sv \
       $(XL)/xl_mem.sv $(XL)/ddram_arb.sv $(XL)/xl_eth_hps.sv $(XL)/xl_scsi.sv $(XL)/xl_i82586.sv $(XL)/xl_pit.sv $(XL)/xl_fpa_unit.sv $(XL)/xl_fpa.sv $(XL)/xl_console.sv \
-      $(XL)/xl_video.sv $(XL)/xl_iob.sv $(XL)/xl_nvram.sv $(XL)/xl_machine.sv
+      $(XL)/xl_video.sv $(XL)/xl_iob.sv $(XL)/xl_nvram.sv $(XL)/xl_vme.sv $(XL)/xl_udc3400.sv $(XL)/xl_machine.sv
 SVH := $(wildcard $(IVORY)/*.svh)
 CPP := tb_system.cpp $(EMU)/machine.cpp $(EMU)/fpa.cpp $(EMU)/nvram.cpp $(EMU)/pit.cpp $(EMU)/scsi.cpp $(EMU)/i82586.cpp $(EMU)/ioboard.cpp \
        $(EMU)/console.cpp $(EMU)/cpu_core.cpp $(EMU)/cpu_insn.cpp

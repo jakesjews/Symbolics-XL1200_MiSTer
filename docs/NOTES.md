@@ -530,6 +530,28 @@ What it took (first in the model, then the RTL):
   core's default, runs the clock 28 years behind (`XLEMU_CLOCK_TODAY` turns
   that off).
 
+### Loading systems on the full disk
+
+The full disk's world came from the MacIvory image, and its SYS logical host
+still carries the translations of the site that restored the distribution
+(`SYS:COLOR;**;` to `DISTRIBUTION|DIS-R-HOST:>rel-8-3>sys>color>**>` and
+so on for every directory), while the file on the disk,
+`XL1200:>sys>site>sys.translations`, has the two entries that point at
+`XL1200:>sys>`. So `Load System Color` fails at once with "The host
+DISTRIBUTION|DIS-R-HOST is not accessible" even though every file it needs
+is in `XL1200:>sys>color>`. Loading the file into the world first fixes it:
+`(load "xl1200:>sys>site>sys.translations")`; then `Load System Color`
+finds the system's own site files (`sys:site;color.system` and those of
+its components Graphics Support, Genera Extensions, Essential Image
+Substrate, Color System Documentation, SGD Book Design, FrameThrower and
+its XL interface) and loads Color 426 with its documentation, about four
+minutes on the core, with a `**MORE**` to answer now and then. A world
+saved after that keeps the translations. `FEP7:>Genera-8-3-color.ilod` on
+the user's MiSTer is that world (56,873 blocks; the FEP partition had room
+for one more), with the sync format and `color::make-mister-color-screen`
+from `tools/genera/mister-color.lisp` defined; the boot file still loads
+the full world.
+
 ## FPA (Weitek WTL3164)
 
 The XL1200's floating-point accelerator is a Weitek WTL3164 behind the
@@ -741,7 +763,11 @@ misses early and posting writes (build 27: Stak and the recursive Div2
 Puzzle (2.4x: Genera 8.3's version does more work) the outlier. Builds
 28-31 (the prefetcher waiting for the memory, a miss passing the write
 queue, a valid bit per cached word, the framework's YC and ALSA paths
-compiled out; the YC encoder is back in since, only ALSA stays out)
+compiled out with its own `MISTER_DISABLE_YC` and `MISTER_DISABLE_ALSA`
+flags; the YC encoder came back for a while and is out again since Nov 1
+2026: it only modulates color onto the core's own timing, and composite or
+S-Video needs 15.7 kHz lines, not this machine's 54.35 kHz, so no TV can
+lock to it; 246 ALMs and two multipliers in build 39)
 measured the same, 6.56x and 2.80 s, and the speed work stops there;
 the clock is the one lever left.
 
@@ -1133,6 +1159,88 @@ server: `Hello|Load World FEP7:>Genera-8-3.ilod|~~Start|` and twelve
 `~`, then `Login Lisp-Machine|~`, the load of the benchmarks' ibin and
 `~~~`, then `(gabriel::run-one 'gabriel::boyer)|`; Genera's Listener is
 up by 150 s of simulated time (Oct 2026).
+
+## VMEbus and the color screen (Univision UDC-3400)
+
+The XL1200 has no color output of its own; the color option Symbolics sold
+for the XL400 was a third-party VMEbus board, the Univision UDC-3400, and
+Genera 8.3's driver for it is in source on the CD (`sys.sct/color/univision.lisp`,
+`univision-82786.lisp`, `vme-color.lisp`, `imach-common-color.lisp`) and
+loaded into every Ivory world's Color system. The core puts one of those
+boards on the Merlin-II's VMEbus (`rtl/xl/xl_vme.sv`, `xl_udc3400.sv`) and
+shows its picture on the console's raster (the OSD's Display option; the
+FrameThrower's driver is binary only, with a 1.9 MB microcode load, so it
+was never an option).
+
+How Genera reaches the bus (`i-sys/vme-defs.lisp`, `vme-bus.lisp`,
+`sys/istack.lisp`):
+
+- The direct window: a physical address with bits 31:30 set is VME word
+  address A29:2 in bits 27:0; A31:30 come from the direct access register at
+  0x88000040 (the Lisp keeps that and the VIC068's request level and release
+  mode per process, rewritten at every stack-group switch). Every transfer
+  is 32 bits; bits 29:28 pick a "shuffle" of the data: 0 as is, 1 bytes
+  reversed, 2 nibbles, 3 bits. Lisp arrays are little-endian (element 0 in
+  the low bits) and VME bytes big-endian, so an 8-bit raster is a bus array
+  with the byte shuffle and a 1-bit one with the bit shuffle.
+- Polled access (`sys:bus-read`, `bus-write`), for other sizes and for
+  probing: data in the register at 0x88000080 (read or written through the
+  shuffle in bits 29:28), the size in bits 15:14 of 0x88000140 (0 = 4
+  bytes), the VME byte address written to 0x88000100 for a read or
+  0x880000C0 for a write; the VIC068's bus error status register (word
+  0x8800022E) then says whether anything answered (the Lisp clears it
+  first, tests 0x6F after). A 16-bit or 8-bit value sits in the lanes of
+  its offset (lane 0 is D31:24); the Lisp shifts it there and back.
+- The slave buffer (0x80000000) and the window with nothing in it are bus
+  errors (nothing is there; the interface's other registers and the VIC068's
+  read back as written, which the FEP's boot and Genera's VME initialization
+  expect).
+
+The board, at VME 0x90000000, 16 MB: four control words (status with the
+board ID 0xC000 in bits 31:16, bit 9 the sticky vertical blanking flag
+cleared by writing 1, bit 5 video enable, bits 1-2 interrupts; vector,
+control and plane mask kept), three Bt458 RAMDACs at +0x100, +0x110, +0x120
+(address, palette data, control, overlay data; a byte each), the Intel
+82786's registers at +0x200 (memory, except that the status register at
+0x226 always shows the poll bit), overlay planes at +0x100000 and +0x140000
+(a bit a pixel, 256 bytes a line), the 82786's display list at +0x180000
+and the frame buffer at +0x800000 (a byte a pixel, 2048 a line, 1024
+lines). All but the registers is DDR3 (two VME words a DDR word, 16 MB at
+0x34000000, cleared at power-up with the rest). A byte-wide register takes
+D7:0 of whatever transfer reaches it: lane 3 of a longword, the odd lane of
+a 16-bit cycle (the driver writes the RAMDACs both ways: `%memory-write`
+through the window and `bus-write :byte-size 2` in the commented-out
+Univision console of `i-sys/console.lisp`); it answers on D7:0 with the
+other lanes floating high, which is how `ramdac-type` tells a Bt458 (the
+address register reading 0xF01 after four palette reads) from a Bt457.
+
+The 82786 graphics coprocessor isn't there. Its driver flavor has a
+settable `remote-drawing-enabled`; with it off every drawing method falls
+back to drawing into the bus arrays, the init program it writes is never
+waited for, and the interrupts (which only restart it) never come. The
+display processor's pan, zoom and wraparound live in its window descriptor
+in the display list, which the core doesn't read: the picture is always
+line 0, pixel 0 of the frame buffer, through the green Bt458's palette (the
+one the driver loads with the colors in 8-bit mode; red and blue get zeros)
+with the overlay planes as its command register enables them (bit 6
+palette enable, bits 1:0 the overlays; overlay colors from its overlay
+registers). The 1152 x 880 raster comes from a sync format the init file
+defines (`tools/genera/mister-color.lisp`): the driver hard-codes 1280 x
+1024 only in pan wraparound. Each line is fetched into a line buffer (the
+pixels in 8-pixel DDR beats, bursts of up to 32; then the two overlays)
+while the line before shows, the fetch of the next line started at the
+first dot of each; the board's DDR master goes first in the arbiter chain
+(`arb_hi`: board, then `arb_lo`: memory, network) so a fetch never waits on
+a cache miss, and the processor's bus accesses to the board slot in between
+the bursts.
+
+The Color system finds the board itself: `find-univision-controllers`
+(`:finder` in `color/support/imach-parts.lisp`) polls a 32-bit read at
+0x00000000, 0x01000000, ... 0xFF000000, catching the bus errors, and
+defines a controller wherever bits 31:16 read 0xC000. The cache of found
+controllers is cleared before a cold boot, so a saved world probes again.
+Function-X moves the mouse between the screens (the Color System manual,
+"Additional Color System Features").
 
 ## Debug line
 

@@ -63,6 +63,8 @@ module xl_machine #(
   output logic        vs,
   output logic        hblank,
   output logic        vblank,
+  output logic [23:0] rgb,             // the color board's picture on the same raster
+  output logic        video_on,        // the board's video enable (clk)
 
   // lights and status
   output logic        run_light,
@@ -90,7 +92,7 @@ module xl_machine #(
   logic        hp_sb, lp_sb;
 
   ivory_core core (
-    .clk, .reset, .run(mem_ready), .hold(LOCKSTEP && retire),
+    .clk, .reset, .run(mem_ready && vme_ready), .hold(LOCKSTEP && retire),
     .bus_req(mem_req), .bus_we(mem_we), .bus_addr(mem_addr), .bus_wdata(mem_wdata),
     .bus_ack(mem_ack), .bus_rdata(mem_rdata), .bus_buserr(mem_buserr), .bus_busy(mem_busy),
     .cop_req, .cop_we, .cop_reg, .cop_wdata, .cop_ack, .cop_rdata, .cop_err(1'b0),
@@ -143,7 +145,7 @@ module xl_machine #(
   wire         sel_pit   = pa[31:2] == 30'(32'h0800_0000 >> 2);
   wire         sel_nvram = pa[31:11] == 21'(32'h0900_0000 >> 11);
   wire         sel_mb    = pa[31:4] == 28'h0A0_0000;
-  wire         sel_vme   = pa[31:12] == 20'h88000;
+  wire         sel_vme   = pa[31];                 // the VMEbus interface and bus
   wire         sel_iob   = pa[31:28] == 4'h4;
   wire         sel_none  = !(sel_ram || sel_prom || sel_pit || sel_nvram || sel_mb || sel_vme || sel_iob);
 
@@ -166,8 +168,9 @@ module xl_machine #(
     .ddr_be(m0_be), .ddr_dout(ddr_dout), .ddr_dout_ready(m0_dout_ready), .ddr_busy(m0_busy)
   );
 
-  // The network: the 82586's frames cross a mailbox in DDR3 to Main_MiSTer's
-  // bridge (xl_eth_hps), a second master of the DDR port behind the memory.
+  // The DDR port's masters: the memory, the network (the 82586's frames
+  // cross a mailbox in DDR3 to Main_MiSTer's bridge, xl_eth_hps) and the
+  // color board, whose line fetches go first so the picture never waits.
   logic        m0_rd, m0_we, m0_dout_ready, m0_busy;
   logic [28:0] m0_addr;
   logic [7:0]  m0_burstcnt, m0_be;
@@ -176,12 +179,29 @@ module xl_machine #(
   logic [28:0] m1_addr;
   logic [7:0]  m1_burstcnt, m1_be;
   logic [63:0] m1_din;
-  ddram_arb arb (
+  logic        m2_rd, m2_we, m2_dout_ready, m2_busy;
+  logic [28:0] m2_addr;
+  logic [7:0]  m2_burstcnt, m2_be;
+  logic [63:0] m2_din;
+  logic        lo_rd, lo_we, lo_dout_ready, lo_busy;
+  logic [28:0] lo_addr;
+  logic [7:0]  lo_burstcnt, lo_be;
+  logic [63:0] lo_din;
+  ddram_arb arb_lo (
     .clk, .reset(power_on),
     .m0_waitrequest(m0_busy), .m0_burstcount(m0_burstcnt), .m0_address(m0_addr), .m0_read(m0_rd),
     .m0_write(m0_we), .m0_writedata(m0_din), .m0_byteenable(m0_be), .m0_readdata(), .m0_readdatavalid(m0_dout_ready),
     .m1_waitrequest(m1_busy), .m1_burstcount(m1_burstcnt), .m1_address(m1_addr), .m1_read(m1_rd),
     .m1_write(m1_we), .m1_writedata(m1_din), .m1_byteenable(m1_be), .m1_readdata(), .m1_readdatavalid(m1_dout_ready),
+    .s_waitrequest(lo_busy), .s_burstcount(lo_burstcnt), .s_address(lo_addr), .s_read(lo_rd),
+    .s_write(lo_we), .s_writedata(lo_din), .s_byteenable(lo_be), .s_readdata(ddr_dout), .s_readdatavalid(lo_dout_ready)
+  );
+  ddram_arb arb_hi (
+    .clk, .reset(power_on),
+    .m0_waitrequest(m2_busy), .m0_burstcount(m2_burstcnt), .m0_address(m2_addr), .m0_read(m2_rd),
+    .m0_write(m2_we), .m0_writedata(m2_din), .m0_byteenable(m2_be), .m0_readdata(), .m0_readdatavalid(m2_dout_ready),
+    .m1_waitrequest(lo_busy), .m1_burstcount(lo_burstcnt), .m1_address(lo_addr), .m1_read(lo_rd),
+    .m1_write(lo_we), .m1_writedata(lo_din), .m1_byteenable(lo_be), .m1_readdata(), .m1_readdatavalid(lo_dout_ready),
     .s_waitrequest(ddr_busy), .s_burstcount(ddr_burstcnt), .s_address(ddr_addr), .s_read(ddr_rd),
     .s_write(ddr_we), .s_writedata(ddr_din), .s_byteenable(ddr_be), .s_readdata(ddr_dout), .s_readdatavalid(ddr_dout_ready)
   );
@@ -247,16 +267,23 @@ module xl_machine #(
   wire  [31:0] int_on = int_pending & int_mask;
   assign hp_sb = (int_on & ~32'd2) != 32'd0;
   assign lp_sb = int_on[1];
-  // VME interface (VIC068 registers at 0x88000200+n): reads return what was
-  // written, in the first 1K words
-  logic [31:0] vme [1024];
-  logic [31:0] vme_q;
-  logic        vme_hi;
-  always_ff @(posedge clk) begin
-    if (req && sel_vme && mem_we && !dev_ack && pa[11:10] == 2'd0) vme[pa[9:0]] <= mem_wdata[31:0];
-    vme_q <= vme[pa[9:0]];
-    vme_hi <= pa[11:10] != 2'd0;
-  end
+  // The VMEbus interface, with the color board on the bus (its memory in
+  // DDR3 behind the port's third master)
+  logic        vme_ack, vme_buserr, vme_ready;
+  logic [31:0] vme_rdata;
+  logic [7:0]  r_hc, r_h_total;
+  logic [4:0]  r_px;
+  logic [10:0] r_vc, r_v_visible, r_v_total;
+  logic        r_run, r_retrace;
+  xl_vme #(.CLEAR(MEM_CLEAR)) vme (
+    .clk, .reset, .init(power_on), .ready(vme_ready),
+    .cpu_req(req && sel_vme), .cpu_we(mem_we), .cpu_addr(pa), .cpu_wdata(mem_wdata[31:0]),
+    .cpu_ack(vme_ack), .cpu_buserr(vme_buserr), .cpu_rdata(vme_rdata),
+    .ddr_addr(m2_addr), .ddr_burstcnt(m2_burstcnt), .ddr_rd(m2_rd), .ddr_we(m2_we), .ddr_din(m2_din),
+    .ddr_be(m2_be), .ddr_dout(ddr_dout), .ddr_dout_ready(m2_dout_ready), .ddr_busy(m2_busy),
+    .clk_vid, .hc(r_hc), .px(r_px), .vc(r_vc), .h_total(r_h_total), .v_visible(r_v_visible), .v_total(r_v_total),
+    .run_v(r_run), .retrace(r_retrace), .rgb, .video_on
+  );
 
   // I/O board
   logic        iob_ack;
@@ -272,6 +299,7 @@ module xl_machine #(
     .img_mounted, .img_readonly, .img_size, .sd_lba, .sd_blk_cnt, .sd_rd, .sd_wr, .sd_ack,
     .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .disk_busy(disk_light),
     .clk_vid, .white, .hs, .vs, .hblank, .vblank,
+    .r_hc, .r_px, .r_vc, .r_h_total, .r_v_visible, .r_v_total, .r_run, .r_retrace,
     .debug, .dbg, .dbg_scsi, .dbg_blocks, .dbg_video
   );
 
@@ -303,9 +331,9 @@ module xl_machine #(
     dbg[7] <= {mounts, resets, prom_entries};
   end
 
-  // The simple targets (PROM, timer, main board, VME, nothing) answer a cycle
+  // The simple targets (PROM, timer, main board, nothing) answer a cycle
   // after the request; writes take effect then.
-  wire  sel_simple = sel_prom || sel_pit || sel_mb || sel_vme || sel_none;
+  wire  sel_simple = sel_prom || sel_pit || sel_mb || sel_none;
   always_ff @(posedge clk) begin
     dev_ack <= req && sel_simple && !dev_ack;
     if (reset) begin
@@ -318,15 +346,15 @@ module xl_machine #(
   end
 
   always_comb begin
-    mem_ack = ram_ack || nv_ack || iob_ack || dev_ack;
-    mem_buserr = dev_ack && sel_none;
+    mem_ack = ram_ack || nv_ack || iob_ack || dev_ack || vme_ack;
+    mem_buserr = (dev_ack && sel_none) || vme_buserr;
     mem_rdata = fixnum(32'd0);
     if (sel_ram) mem_rdata = ram_rdata;
     else if (sel_prom) mem_rdata = prom_hi ? fixnum(32'd0) : prom_q;
     else if (sel_nvram) mem_rdata = fixnum({24'd0, nv_rdata});
     else if (sel_mb) mem_rdata = fixnum(pa[1:0] != 2'd0 ? 32'd0 : pa[3:2] == 2'd3 ? int_pending :
                                         pa[3:2] == 2'd2 ? ECO_REGISTER : mb_reg[pa[3:2]]);
-    else if (sel_vme) mem_rdata = fixnum(vme_hi ? 32'd0 : vme_q);
+    else if (sel_vme) mem_rdata = fixnum(vme_rdata);
     else if (sel_iob) mem_rdata = fixnum(iob_rdata);
   end
 

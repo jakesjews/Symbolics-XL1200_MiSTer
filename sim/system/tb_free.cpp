@@ -30,7 +30,7 @@ static DdrModel ddr;
 static SdModel<Vxl_machine> sd;
 static const double CLK_HZ = 50000000.0; // the machine's clock, as XL1200.sv sets it
 static uint64_t cycles = 0;            // clock cycles
-static const uint32_t RAM_BASE = 0x06000000, BUF_BASE = 0x06400000;
+static const uint32_t RAM_BASE = 0x06000000, BUF_BASE = 0x06400000, COLOR_BASE = 0x06800000;
 static std::deque<std::pair<bool, uint8_t>> keys;
 
 static void tick() {
@@ -61,6 +61,84 @@ static void save_screen(const char* path) {
   fclose(f);
 }
 
+// The color board's screen: the frame buffer (DDR words from COLOR_BASE +
+// 0x100000, 256 a line, two VME words each, a pixel a byte from the top)
+// through the green Bt458's palette; the overlays are left out.
+static void save_color(const char* path) {
+  auto& pal = top->rootp->xl_machine__DOT__vme__DOT__board__DOT__green__DOT__pal;
+  FILE* f = fopen(path, "wb");
+  fprintf(f, "P6\n1152 880\n255\n");
+  for (int y = 0; y < 880; y++)
+    for (int x = 0; x < 1152; x++) {
+      uint64_t beat = ddr.at(COLOR_BASE + 0x100000 + y * 256 + x / 8);
+      uint32_t w = (x & 4) ? (uint32_t)(beat >> 32) : (uint32_t)beat;
+      uint32_t c = pal[(w >> (24 - 8 * (x & 3))) & 0xFF];
+      fputc(c >> 16, f); fputc((c >> 8) & 0xFF, f); fputc(c & 0xFF, f);
+    }
+  fclose(f);
+}
+
+// A frame as the core puts it out: rgb is registered a dot after the raster
+// position it belongs to (as the console's white is), so each cycle's rgb
+// goes to the position the raster had before the clock.
+static void capture_frame(const char* path) {
+  auto& r = *top->rootp;
+  auto at_origin = [&]() {
+    return r.xl_machine__DOT__iob__DOT__video__DOT__vc == 0 && r.xl_machine__DOT__iob__DOT__video__DOT__hc == 0 &&
+           r.xl_machine__DOT__iob__DOT__video__DOT__px == 0;
+  };
+  std::vector<uint32_t> frame(1152 * 880, 0);
+  while (!at_origin()) tick();
+  for (;;) {
+    int x = r.xl_machine__DOT__iob__DOT__video__DOT__hc * 32 + r.xl_machine__DOT__iob__DOT__video__DOT__px;
+    int y = r.xl_machine__DOT__iob__DOT__video__DOT__vc;
+    tick();
+    if (x < 1152 && y < 880) frame[y * 1152 + x] = top->rgb;
+    if (at_origin()) break;
+  }
+  FILE* f = fopen(path, "wb");
+  fprintf(f, "P6\n1152 880\n255\n");
+  for (uint32_t c : frame) { fputc(c >> 16, f); fputc((c >> 8) & 0xFF, f); fputc(c & 0xFF, f); }
+  fclose(f);
+}
+
+// XLCOLORTEST=1: no disk needed; once the memories are cleared, put a pattern
+// and a palette into the color board from here, capture a frame from the
+// output and compare it with what the pattern should show.
+static int color_test() {
+  auto& r = *top->rootp;
+  while (!r.xl_machine__DOT__mem_ready || r.xl_machine__DOT__vme__DOT__board__DOT__st == 0) tick();
+  auto& pal = r.xl_machine__DOT__vme__DOT__board__DOT__green__DOT__pal;
+  for (int i = 0; i < 256; i++) pal[i] = (uint32_t)i << 16 | (uint32_t)(255 - i) << 8 | (uint32_t)((i * 3) & 0xFF);
+  auto pix = [](int x, int y) { return (uint8_t)((x / 8 + y / 8 + (x == y ? 100 : 0)) & 0xFF); };
+  for (int y = 0; y < 880; y++)
+    for (int x = 0; x < 1152; x += 8) {
+      uint64_t beat = 0;
+      for (int p = 0; p < 8; p++) {
+        uint64_t b = pix(x + p, y);
+        int lane = p & 3, shift = (p & 4 ? 32 : 0) + (24 - 8 * lane);
+        beat |= b << shift;
+      }
+      ddr.at(COLOR_BASE + 0x100000 + y * 256 + x / 8) = beat;
+    }
+  for (int i = 0; i < 2000000; i++) tick();   // a frame or so for the line fetches to pick it up
+  capture_frame("color_test.ppm");
+  FILE* f = fopen("color_test.ppm", "rb");
+  char hdr[32]; fgets(hdr, 32, f); fgets(hdr, 32, f); fgets(hdr, 32, f);
+  int bad = 0, shown = 0;
+  for (int y = 0; y < 880; y++)
+    for (int x = 0; x < 1152; x++) {
+      uint32_t got = (uint32_t)fgetc(f) << 16; got |= (uint32_t)fgetc(f) << 8; got |= (uint32_t)fgetc(f);
+      if (got != pal[pix(x, y)]) {
+        if (shown++ < 10) printf("mismatch at (%d,%d): got %06x expected %06x\n", x, y, got, pal[pix(x, y)]);
+        bad++;
+      }
+    }
+  fclose(f);
+  printf("color test: %d of %d pixels wrong\n", bad, 1152 * 880);
+  return bad != 0;
+}
+
 int main(int argc, char** argv) {
   Verilated::commandArgs(argc, argv);
   if (argc < 3) {
@@ -71,6 +149,7 @@ int main(int argc, char** argv) {
   uint64_t type_at = argc > 4 ? (uint64_t)(atof(argv[3]) * CLK_HZ) : ~0ull;
   std::string text = argc > 4 ? argv[4] : "";
   std::string screen = argc > 5 ? argv[5] : "screen.pgm";
+  std::string color = screen.substr(0, screen.rfind('.')) + "-color.ppm";
 
   namespace fs = std::filesystem;
   fs::path dir = fs::temp_directory_path() / ("xlfree-" + std::to_string(getpid()));
@@ -79,7 +158,7 @@ int main(int argc, char** argv) {
 
   // DDR3 with junk in it
   ddr.flat_base = RAM_BASE;
-  ddr.flat.resize(BUF_BASE + 0x10000 - RAM_BASE);
+  ddr.flat.resize(COLOR_BASE + 0x200000 - RAM_BASE);
   for (auto& w : ddr.flat) w = ((uint64_t)rand() << 33) ^ ((uint64_t)rand() << 11) ^ rand();
   sd.f[0] = fopen((dir / "disk.dd").string().c_str(), "r+b");
 
@@ -106,6 +185,7 @@ int main(int argc, char** argv) {
   top->img_mounted = 0;
   for (int i = 0; i < 10; i++) tick();
   top->reset = 0;
+  if (getenv("XLCOLORTEST")) return color_test();
 
   size_t typed = 0;
   uint64_t next_key = type_at, next_shot = (uint64_t)CLK_HZ;
@@ -247,9 +327,11 @@ int main(int argc, char** argv) {
              top->rootp->xl_machine__DOT__mem_ready ? "ready" : "clearing");
       fflush(stdout);
       save_screen(screen.c_str());
+      save_color(color.c_str());
     }
   }
   save_screen(screen.c_str());
+  save_color(color.c_str());
   if (profile) {
     uint64_t total = 0;
     for (auto v : prof_cpu) total += v;

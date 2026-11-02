@@ -46,6 +46,7 @@ localparam CONF_STR = {
 	"O[2],Aspect ratio,Original,Full Screen;",
 	"O[5:3],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer,HV-Integer;",
 	"O[6],Clock,28 years back,Today;",
+	"O[12:11],Display,Auto,Console,Color;",
 `ifdef XL_DEBUG
 	"O[7],Debug line,Off,On;",
 `endif
@@ -171,6 +172,8 @@ wire [63:0] ddr_din, ddr_dout;
 wire  [7:0] ddr_be;
 
 wire white, hs, vs, hblank, vblank;
+wire [23:0] rgb;
+wire        video_on;
 wire run_light, disk_light;
 
 xl_machine #(.NT(NT), .CLK_HZ(50_000_000), .PROM_FILE("rtl/xl/boot_prom.mem")) machine
@@ -219,6 +222,8 @@ xl_machine #(.NT(NT), .CLK_HZ(50_000_000), .PROM_FILE("rtl/xl/boot_prom.mem")) m
 	.vs(vs),
 	.hblank(hblank),
 	.vblank(vblank),
+	.rgb(rgb),
+	.video_on(video_on),
 
 	.run_light(run_light),
 	.disk_light(disk_light),
@@ -285,16 +290,24 @@ f2sdram_safe_terminator #(.DATA_WIDTH(64), .BURSTCOUNT_WIDTH(8)) ddr_terminator
 ///////////////////////   VIDEO   ////////////////////////////////
 
 // The console monitor: 1152 x 880, black on white, 80 MHz dot clock
-// (54.35 kHz, 60.45 Hz) as the FEP programs the SCN2674.
-wire [7:0] grey = {8{white}};
-wire       vga_de;
+// (54.35 kHz, 60.45 Hz) as the FEP programs the SCN2674.  The color
+// board's screen runs on the same raster; Display picks which one shows,
+// Auto the color screen while Genera has its video enabled.
+reg  [2:0]  video_on_s;
+reg         show_color;
+always @(posedge clk_vid) begin
+	video_on_s <= {video_on_s[1:0], video_on};
+	show_color <= status[12:11] == 2'd2 || (status[12:11] == 2'd0 && video_on_s[2]);
+end
+wire [23:0] pix = show_color ? rgb : {24{white}};
+wire        vga_de;
 
 assign CLK_VIDEO = clk_vid;
 assign VGA_SL = 0;
 
 // No gamma: gamma_corr samples on the rising edge of ce_pix, which needs a
 // video clock four times the pixel rate, and the dot clock is the pixel rate.
-video_mixer #(.LINE_LENGTH(1152), .HALF_DEPTH(1), .GAMMA(0)) video_mixer
+video_mixer #(.LINE_LENGTH(1152), .HALF_DEPTH(0), .GAMMA(0)) video_mixer
 (
 	.CLK_VIDEO(CLK_VIDEO),
 	.CE_PIXEL(CE_PIXEL),
@@ -304,9 +317,9 @@ video_mixer #(.LINE_LENGTH(1152), .HALF_DEPTH(1), .GAMMA(0)) video_mixer
 	.hq2x(1'b0),
 	.gamma_bus(),
 
-	.R(grey[7:4]),
-	.G(grey[7:4]),
-	.B(grey[7:4]),
+	.R(pix[23:16]),
+	.G(pix[15:8]),
+	.B(pix[7:0]),
 
 	.HSync(hs),
 	.VSync(vs),

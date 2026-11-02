@@ -47,7 +47,16 @@ module xl_video (
   output logic        hs,
   output logic        vs,
   output logic        hblank,
-  output logic        vblank
+  output logic        vblank,
+
+  // the raster, for the color board
+  output logic [7:0]  r_hc,
+  output logic [4:0]  r_px,
+  output logic [10:0] r_vc,
+  output logic [7:0]  r_h_total,
+  output logic [10:0] r_v_visible,
+  output logic [10:0] r_v_total,
+  output logic        r_run
 );
 
   // ---------------------------------------------------------------- video memory
@@ -137,9 +146,9 @@ module xl_video (
     inv_v <= inv_s[2];
   end
 
-  logic [4:0]  px;      // pixel within the character
-  logic [7:0]  hc;      // character
-  logic [10:0] vc;      // line
+  logic [4:0]  px /*verilator public_flat_rd*/;      // pixel within the character
+  logic [7:0]  hc /*verilator public_flat_rd*/;      // character
+  logic [10:0] vc /*verilator public_flat_rd*/;      // line
   logic [31:0] shift;
   wire         last_char = hc == h_total - 8'd1;
   wire  [10:0] next_line = (vc == v_total - 11'd1) ? 11'd0 : vc + 11'd1;
@@ -216,6 +225,14 @@ module xl_video (
     if (vs && !vs_q) frames <= frames + 8'd1;
   end
   assign dbg_video = {control[7:0], 3'd0, display_on, ir_ptr, frames, 8'd0};
+
+  assign r_hc = hc;
+  assign r_px = px;
+  assign r_vc = vc;
+  assign r_h_total = h_total;
+  assign r_v_visible = v_visible;
+  assign r_v_total = v_total;
+  assign r_run = run_v;
 
   // ---------------------------------------------------------------- back to the processor
   // Line number as Gray code across the clock domains.

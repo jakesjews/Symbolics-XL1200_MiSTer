@@ -104,7 +104,7 @@ struct ModelState {
     auto io = [&](uint32_t pa) { auto it = m.io_regs.find(pa); return it == m.io_regs.end() ? 0u : wdata(it->second); };
     RS(mb_reg)[0] = io(0x0A000000u);
     RS(mb_reg)[1] = io(0x0A000004u);
-    for (uint32_t i = 0; i < 1024; i++) RS(vme)[i] = io(0x88000000u + i);
+    for (uint32_t i = 0; i < 1024; i++) RS(vme__DOT__regs)[i] = io(0x88000000u + i);
 
     // ---- 82C54 (xl_pit)
     uint8_t msb = 0, pend = 0, cnt = 0, out = 0;

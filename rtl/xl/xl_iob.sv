@@ -92,6 +92,14 @@ module xl_iob #(
   output logic        vs,
   output logic        hblank,
   output logic        vblank,
+  output logic [7:0]  r_hc,          // the raster, for the color board
+  output logic [4:0]  r_px,
+  output logic [10:0] r_vc,
+  output logic [7:0]  r_h_total,
+  output logic [10:0] r_v_visible,
+  output logic [10:0] r_v_total,
+  output logic        r_run,
+  output logic        r_retrace,     // clk domain
 
   // debug line
   input  logic        debug,
@@ -181,8 +189,10 @@ module xl_iob #(
     .ir_we(sync_ir_we), .cmd_we(sync_cmd_we), .wdata(sync_wdata), .control(video_control),
     .scanline(vid_scanline), .retrace(vid_retrace),
     .debug, .dbg, .dbg_video,
-    .clk_vid, .white, .hs, .vs, .hblank, .vblank
+    .clk_vid, .white, .hs, .vs, .hblank, .vblank,
+    .r_hc, .r_px, .r_vc, .r_h_total, .r_v_visible, .r_v_total, .r_run
   );
+  assign r_retrace = vid_retrace;
 
   // Video counters as the processor reads them.  The model's: a "frame
   // counter" of instructions / 64, retrace for 40 of each 1024.
