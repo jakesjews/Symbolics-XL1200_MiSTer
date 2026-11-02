@@ -1310,6 +1310,18 @@ memory is shown even while the FEP has the display off.
   DUSCC a 64 x 8 block RAM, every timing corner met (setup 0.517 ns, hold
   0.252 ns); seed 2, which had routed build 36, gave up on congestion in
   22 minutes. The placement lottery doesn't care about 1%.
+- Build 40 (Nov 2 2026, `releases/XL1200_20261102.rbf`): the Ivory's
+  fast-aref-1/fast-aset-1 following a physical-address array base
+  (docs/ivory.md) and the framework's Y/C encoder compiled out, nothing
+  else; the color board is not in it. Seed 2: 33,919 ALMs (81%), setup slack
+  1.422 ns on the core clock, 0.036 ns in the HDMI PLL domain, hold 0.25 ns;
+  seed 4 also met timing (0.146 / 0.264 ns); seed 3 passed the hour and was
+  killed; the same seed 2 with the encoder still in had fitted with a 0.115
+  ns miss in the HDMI domain. Both good seeds booted the full world on the
+  MiSTer (FEP, Hello, Boot, login, evaluation). The color build of the same
+  tree fits at 82-83% but its first two seeds (2, 3) missed the core clock by
+  0.7-1.0 ns on the Ivory's own paths (ooff/t0/st into p_w and sp, TNS -41
+  ns): the lottery at that density, not a new path; more seeds running.
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's
