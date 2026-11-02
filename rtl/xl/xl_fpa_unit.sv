@@ -133,7 +133,7 @@ module xl_fpa_unit (
   function automatic logic [6:0] lzc(logic [63:0] v);
     logic [6:0] n;
     n = 7'd64;
-    for (int i = 0; i < 64; i++) if (v[i]) n = 63 - i;
+    for (int i = 0; i < 64; i++) if (v[i]) n = 7'(63 - i);
     return n;
   endfunction
 

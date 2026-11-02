@@ -145,7 +145,7 @@ module ivory_mmu
   function automatic logic [7:0] write_need(word_t w);
     logic [7:0] n;
     n = 8'h80;
-    if (is_pointer_type(wtype(w)) && w[31:27] == 5'd0) n[w[25:24]] = 1'b1;
+    if (is_pointer_type(wtype(w)) && w[31:27] == 5'd0) n[{1'b0, w[25:24]}] = 1'b1;
     return n;
   endfunction
 

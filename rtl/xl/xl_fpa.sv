@@ -115,7 +115,7 @@ module xl_fpa (
         logic [31:0] v;
         v = addr == 9'd1 ? r1l : addr == 9'd2 ? r0h : addr == 9'd3 ? r0l : addr == 9'o400 ? r0_int :
             pred_addr(addr) ? {31'd0, cond} :
-            addr >= 9'o600 && addr < 9'o614 ? {sr[addr - 9'o600], 24'd0} : 32'd0;
+            addr >= 9'o600 && addr < 9'o614 ? {sr[4'(addr - 9'o600)], 24'd0} : 32'd0;
         rdata <= mkw(sr[11][7] ? DTP_FIXNUM : DTP_SINGLE_FLOAT, v);
       end
       if (act && we) begin
@@ -128,7 +128,7 @@ module xl_fpa (
           9'o374: begin r0h <= {11'd0, wdata[31:11]}; r0l <= {wdata[10:0], 21'd0}; end
           9'o624: for (int i = 0; i < 12; i++) sr[i] <= '0;
           default:
-            if (addr >= 9'o600 && addr < 9'o614) sr[addr - 9'o600] <= wdata[31:24];
+            if (addr >= 9'o600 && addr < 9'o614) sr[4'(addr - 9'o600)] <= wdata[31:24];
             else if (addr[1:0] == 2'd1 && addr < 9'o600) begin
               dec_t d;
               logic int_in;
