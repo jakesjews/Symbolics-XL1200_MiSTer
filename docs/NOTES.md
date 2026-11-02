@@ -1502,6 +1502,18 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   tree fits at 82-83% but its first two seeds (2, 3) missed the core clock by
   0.7-1.0 ns on the Ivory's own paths (ooff/t0/st into p_w and sp, TNS -41
   ns): the lottery at that density, not a new path; more seeds running.
+- Build 41 (Nov 2 2026, `releases/XL1200_20261102.rbf`, replacing build 40,
+  which was never published): the 16 MW of memory boards, the Univision
+  color board, the three CLIM fixes (instance-variable index and
+  exceptions, the transport trap on an instruction fetch), ten SCSI blocks
+  a request, the shared FPA shifter and MMU comparators, no scandoubler,
+  OSD gamma. Seed 5 (Mac): 34,199 ALMs (82%), block memory 56% (61%
+  before), setup slack +0.383 ns core, +0.298 HPS, +0.406 HDMI, +2.509
+  video; seed 1 also met timing (+0.145 core); seeds 2 and 4 could not
+  fit. On the MiSTer: the Color world boots, `(time (sct:load-system
+  "CLIM" :query nil))` 367.3 s with 1.4 s waiting for pages (seed 19 of
+  the previous commit: 364.5 s), floating point through the FPA correct,
+  the color board draws, `(fib 30)` 2.80 s as before.
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's

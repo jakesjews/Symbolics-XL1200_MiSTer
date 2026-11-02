@@ -448,6 +448,14 @@ def cmd_get(args):
     print(f"{e.path}: {os.path.getsize(args.out)} bytes to {args.out}")
 
 
+def cmd_grow(args):
+    disk = Disk(args.image, args.stride, write=True)
+    fs = FEPFS(disk, args.label)
+    fs.resize(args.blocks)
+    print(f"{args.image}: {fs.free_blocks()} blocks free")
+    disk.f.close()
+
+
 def cmd_mkworld(args):
     name, _, typ = args.name.rpartition('.')
     if not name or not typ:
@@ -615,6 +623,11 @@ def main():
     s.add_argument('path', help="e.g. >Hello.boot or >douglas>test2.text.1")
     s.add_argument('out')
     s.set_defaults(fn=cmd_get)
+    s = sub.add_parser('grow', help="make the disk BLOCKS blocks: the image, the label's "
+                       "cylinders and a bigger free map; never while Genera runs on it")
+    s.add_argument('image')
+    s.add_argument('blocks', type=int, help="the new size in blocks, a whole number of cylinders")
+    s.set_defaults(fn=cmd_grow)
     s = sub.add_parser('mkworld', help="copy TEMPLATE to OUT and add a world load file to it")
     s.add_argument('template', help="FEPFS image to start from (not changed)")
     s.add_argument('world', help="Ivory world load file, e.g. GENERA_8_3.ILOD")
