@@ -671,10 +671,11 @@ contradiction graph and its backtracking prompt (it asks the user, as
 designed). The RTL machine, started from a snapshot after the load and
 running alone, prints the grandparent answer too. On the MiSTer (seed 5:
 34,766 ALMs, 83%; setup slack +0.436 ns worst, hold +0.199; seeds 2 and 6
-also met timing, 3 could not fit; started from another XL1200 core, see
-docs/TODO.md item 1) the fat world's second version boots with Joshua and
-Jericho in its herald, and the grandparent example, Tweety and the circuit
-diagnosis answer as in the emulator.
+also met timing, 3 could not fit; started from another XL1200 core, as a
+start from the menu hung then, see "Quartus and MiSTer lessons") the fat
+world's second version boots with Joshua and Jericho in its herald, and the
+grandparent example, Tweety and the circuit diagnosis answer as in the
+emulator.
 
 ### The emulator as a debugger
 
@@ -1495,7 +1496,10 @@ Function-X moves the mouse between the screens (the Color System manual,
 A debug build (`XL_DEBUG` in XL1200.qsf; the release build leaves it out,
 a few hundred ALUTs) has an OSD "Debug line" that shows eight words in hex
 across the top of the picture and sends them to the UART (`/dev/ttyS1` on
-the MiSTer, 115200 8N1) twice a second (`xl_machine`):
+the MiSTer, 115200 8N1) twice a second while the option is on (bit 7 of
+the first byte of `config/XL1200.CFG`, so a test can set it before a
+start and read `stty -F /dev/ttyS1 115200 raw; cat /dev/ttyS1` over ssh;
+`xl_machine`):
 
 1. instructions executed (low 32 bits)
 2. PC (word address of the next instruction)
@@ -1641,6 +1645,26 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's
   `f2sdram_safe_terminator` (sys/) on any DDR3 master that can be reset.
+- The terminator isn't enough on its own (Nov 2 2026): while RESET is up it
+  forwards nothing but the transaction it is finishing, yet still passes the
+  port's waitrequest back, so a command started then looks taken and is
+  never answered. Started from MiSTer's menu, the official Main releases
+  the core's reset, then restarts as MiSTer_xl1200 (MiSTer.ini's `main=`)
+  and raises RESET again with the machine running; the memory controller,
+  which RESET doesn't stop, finished the processor's last access with a
+  read in that window, the arbiter (which hands read data back in the
+  order it took the commands) gave every later read's data to the master
+  before it, and the memory controller waited in `M_BUF_WAIT` for good: a
+  black screen, the debug line frozen at PC FFFE006E in the boot PROM. Every
+  start from the menu did it (build 41 too); a start from another XL1200
+  core has no second RESET, and with `main=` commented out the menu start
+  worked. `xl_machine` now owns the port: the terminator behind a gate that
+  starts no command while RESET is up or for 1024 cycles after, letting a
+  waiting command or the rest of a write burst through. Four starts from
+  the menu on the debug build reached the FEP prompt. `tb_free`'s
+  `MENU=a,b,c,d` (and `MENU_MOUNT=early`) raise RESET in that pattern; the
+  bench boots either way, its model port answering differently, so the
+  hardware was the test.
 - F options with a load address (`FC1,EXT,Title,24200000`) make Main_MiSTer
   write the file straight into DDR3 (fast) and remember it; the core sees only
   ioctl_download, with the size in ioctl_addr. Streaming through ioctl_wr ran

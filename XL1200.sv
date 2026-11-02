@@ -140,6 +140,8 @@ always @(posedge clk_sys) begin
 	mount_reset <= |img_mounted && halted;
 	reset <= RESET | status[0] | buttons[1] | power_on | mount_reset;
 end
+reg ddr_reset;   // RESET alone, for the DDR3 port (xl_machine)
+always @(posedge clk_sys) ddr_reset <= RESET;
 
 // A message on the screen when the machine stops, through the framework's
 // info strings (the I line of CONF_STR): 1 when the processor halts once a
@@ -207,6 +209,7 @@ xl_machine #(.NT(NT), .CLK_HZ(50_000_000), .PROM_FILE("rtl/xl/boot_prom.mem")) m
 	.clk_vid(clk_vid),
 	.power_on(power_on),
 	.reset(reset),
+	.fw_reset(ddr_reset),
 
 	.ddr_addr(ddr_addr),
 	.ddr_burstcnt(ddr_burstcnt),
@@ -281,36 +284,18 @@ assign UART_TXD = 1'b1;
 assign LED_USER = run_light;
 assign LED_DISK = {1'b1, disk_light};
 
-// DDR3: a burst cut short by a reset (e.g. when another core loads) would
-// wedge the HPS port; the terminator finishes it.
+// DDR3: the machine's port (xl_machine: MiSTer's safe terminator, and no new
+// command while RESET is up).
 assign DDRAM_CLK = clk_sys;
-reg ddr_reset;
-always @(posedge clk_sys) ddr_reset <= RESET;
-f2sdram_safe_terminator #(.DATA_WIDTH(64), .BURSTCOUNT_WIDTH(8)) ddr_terminator
-(
-	.clk(clk_sys),
-	.rst_req_sync(ddr_reset),
-
-	.waitrequest_master(DDRAM_BUSY),
-	.burstcount_master(DDRAM_BURSTCNT),
-	.address_master(DDRAM_ADDR),
-	.readdata_master(DDRAM_DOUT),
-	.readdatavalid_master(DDRAM_DOUT_READY),
-	.read_master(DDRAM_RD),
-	.writedata_master(DDRAM_DIN),
-	.byteenable_master(DDRAM_BE),
-	.write_master(DDRAM_WE),
-
-	.waitrequest_slave(ddr_busy),
-	.burstcount_slave(ddr_burstcnt),
-	.address_slave(ddr_addr),
-	.readdata_slave(ddr_dout),
-	.readdatavalid_slave(ddr_dout_ready),
-	.read_slave(ddr_rd),
-	.writedata_slave(ddr_din),
-	.byteenable_slave(ddr_be),
-	.write_slave(ddr_we)
-);
+assign DDRAM_ADDR = ddr_addr;
+assign DDRAM_BURSTCNT = ddr_burstcnt;
+assign DDRAM_RD = ddr_rd;
+assign DDRAM_WE = ddr_we;
+assign DDRAM_DIN = ddr_din;
+assign DDRAM_BE = ddr_be;
+assign ddr_dout = DDRAM_DOUT;
+assign ddr_dout_ready = DDRAM_DOUT_READY;
+assign ddr_busy = DDRAM_BUSY;
 
 ///////////////////////   VIDEO   ////////////////////////////////
 

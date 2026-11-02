@@ -139,6 +139,7 @@ int main(int argc, char** argv) {
   top = new Vxl_machine;
   top->power_on = 1;
   top->reset = 1;
+  top->fw_reset = 0;
   top->rtc_back28 = 0;
   top->net_ena = 0;
   set_rtc();

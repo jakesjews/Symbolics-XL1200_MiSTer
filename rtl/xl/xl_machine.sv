@@ -19,6 +19,7 @@ module xl_machine #(
   input  logic        clk_vid,
   input  logic        power_on,            // first reset after configuration
   input  logic        reset,
+  input  logic        fw_reset,            // the framework's RESET (a core loading, Main restarting), clk-synchronous
 
   // DDR3
   output logic [28:0] ddr_addr,
@@ -199,14 +200,61 @@ module xl_machine #(
     .s_waitrequest(lo_busy), .s_burstcount(lo_burstcnt), .s_address(lo_addr), .s_read(lo_rd),
     .s_write(lo_we), .s_writedata(lo_din), .s_byteenable(lo_be), .s_readdata(ddr_dout), .s_readdatavalid(lo_dout_ready)
   );
+  logic        a_rd, a_we, a_busy;
+  logic [28:0] a_addr;
+  logic [7:0]  a_burstcnt, a_be;
+  logic [63:0] a_din;
   ddram_arb arb_hi (
     .clk, .reset(power_on),
     .m0_waitrequest(m2_busy), .m0_burstcount(m2_burstcnt), .m0_address(m2_addr), .m0_read(m2_rd),
     .m0_write(m2_we), .m0_writedata(m2_din), .m0_byteenable(m2_be), .m0_readdata(), .m0_readdatavalid(m2_dout_ready),
     .m1_waitrequest(lo_busy), .m1_burstcount(lo_burstcnt), .m1_address(lo_addr), .m1_read(lo_rd),
     .m1_write(lo_we), .m1_writedata(lo_din), .m1_byteenable(lo_be), .m1_readdata(), .m1_readdatavalid(lo_dout_ready),
-    .s_waitrequest(ddr_busy), .s_burstcount(ddr_burstcnt), .s_address(ddr_addr), .s_read(ddr_rd),
-    .s_write(ddr_we), .s_writedata(ddr_din), .s_byteenable(ddr_be), .s_readdata(ddr_dout), .s_readdatavalid(ddr_dout_ready)
+    .s_waitrequest(a_busy), .s_burstcount(a_burstcnt), .s_address(a_addr), .s_read(a_rd),
+    .s_write(a_we), .s_writedata(a_din), .s_byteenable(a_be), .s_readdata(ddr_dout), .s_readdatavalid(ddr_dout_ready)
+  );
+
+  // The framework's RESET (another core loading, or Main restarting: from
+  // the menu the official Main releases it, then restarts as MiSTer_xl1200
+  // and raises it again) must not cut a DDR3 transaction: MiSTer's safe
+  // terminator completes the one under way.  While RESET is up it forwards
+  // nothing else but still passes the port's waitrequest back, so a command
+  // started then would look taken and never be answered; the arbiter would
+  // then give each later read's data to the master before it (the color
+  // board fetches lines whenever the raster runs, so one was always there).
+  // So no new command starts while RESET is up or for a while after (the
+  // terminator may still be finishing a burst): a command already waiting,
+  // or the rest of a write burst, goes on.
+  logic        g_pending, g_burst;
+  logic [7:0]  g_left;
+  logic [9:0]  g_quiet;
+  logic        g_rd, g_we, g_busy;
+  wire         g_hold = (fw_reset || g_quiet != 10'd0) && !g_pending && !g_burst;
+  assign g_rd = a_rd && !g_hold;
+  assign g_we = a_we && !g_hold;
+  assign a_busy = g_hold || g_busy;
+  always_ff @(posedge clk) begin
+    g_pending <= (g_rd || g_we) && g_busy;
+    if (g_we && !g_busy) begin
+      if (!g_burst) begin
+        g_burst <= a_burstcnt > 8'd1;
+        g_left <= a_burstcnt - 8'd1;
+      end else begin
+        g_left <= g_left - 8'd1;
+        if (g_left == 8'd1) g_burst <= 1'b0;
+      end
+    end
+    g_quiet <= fw_reset ? 10'd1023 : g_quiet - 10'(g_quiet != 10'd0);
+    if (power_on) begin g_pending <= 1'b0; g_burst <= 1'b0; g_quiet <= 10'd0; end
+  end
+  f2sdram_safe_terminator #(.DATA_WIDTH(64), .BURSTCOUNT_WIDTH(8)) ddr_terminator (
+    .clk, .rst_req_sync(fw_reset),
+    .waitrequest_master(ddr_busy), .burstcount_master(ddr_burstcnt), .address_master(ddr_addr),
+    .readdata_master(ddr_dout), .readdatavalid_master(ddr_dout_ready), .read_master(ddr_rd),
+    .writedata_master(ddr_din), .byteenable_master(ddr_be), .write_master(ddr_we),
+    .waitrequest_slave(g_busy), .burstcount_slave(a_burstcnt), .address_slave(a_addr),
+    .readdata_slave(), .readdatavalid_slave(), .read_slave(g_rd),
+    .writedata_slave(a_din), .byteenable_slave(a_be), .write_slave(g_we)
   );
   logic        tx_push, tx_stp, tx_enp, tx_crcgen, tx_clr, tx_busy, tx_fifordy;
   logic [1:0]  tx_be;

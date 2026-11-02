@@ -2,24 +2,12 @@
 
 In the order they'll be done. Bugs come first whenever they turn up.
 
-1. Starting the core from the menu (bug, found Nov 2 2026, in build 41
-   too): the screen stays black and the machine stops after the boot PROM
-   has read the disk label; started while another XL1200 core runs it
-   boots, and with MiSTer.ini's `main=MiSTer_xl1200` commented out it boots
-   from the menu as well. From the menu the official main program releases
-   the core's reset, then restarts as MiSTer_xl1200 (`app_restart`,
-   `fpga_core_reset(1)`), so the core sees a second reset window after it
-   has started; the OSD's Reset doesn't recover it, and the DDR3 safe
-   terminator stops forwarding requests while RESET is held while still
-   passing the port's waitrequest back, so a request made then would look
-   taken and never answer (`xl_mem` isn't reset by RESET). A debug build's
-   UART line (NOTES.md, Debug line) to see where it stops, then the fix.
-2. A compatibility pass, in progress ([NOTES.md](NOTES.md#compatibility)
+1. A compatibility pass, in progress ([NOTES.md](NOTES.md#compatibility)
    has what passed: Zmacs, Document Examiner, Inspector, Debugger, Peek, a
    full GC, Save World and booting the saved world, the MacIvory animation
    world's programs, ephemeral GC flips, the number types through the FPA).
    Left: an overnight run; the collection's applications that need a file
-   route in (Macsyma; Illustrate and TeX restore from a disk file, item 9).
+   route in (Macsyma; Illustrate and TeX restore from a disk file, item 8).
    Anything that breaks is reproduced in the free-running simulation or the
    model.
    Found and fixed in the tree (Nov 2 2026, docs/NOTES.md): `Load System
@@ -72,27 +60,27 @@ In the order they'll be done. Bugs come first whenever they turn up.
      and loads the tests, the RTL runs them.
    - Gabriel and fib as speed regressions: cycle counts in Verilator, times
      on the MiSTer.
-3. Check the device models against their manuals
+2. Check the device models against their manuals
    (`research/downloads/xl1200-documentation-addendum`): the 82586 (Intel
    reference manual), the DUSCC (SCN26562/68562 users' guide, AN416, AN419),
    the SCN2674 (Signetics data sheet), the WD33C93A (data sheet, version
    differences and bug list; decide which revision the XL1200 has).
-4. FPA timing, once the processor's is close: the manual's latencies in FPA
+3. FPA timing, once the processor's is close: the manual's latencies in FPA
    clocks (the FPA has its own clock on the Merlin-II) scaled to the Ivory's,
    and the busy tag (dtp-null) on an early read. The status queue (registers
    4, 5, 7, 8, 9, 10: destinations and previous status).
-5. Calendar clock as GMT: Genera reads it as GMT, MiSTer's RTC is local time.
-6. Network, what's left after the wired port: the bridge into MiSTer's main
+4. Calendar clock as GMT: Genera reads it as GMT, MiSTer's RTC is local time.
+5. Network, what's left after the wired port: the bridge into MiSTer's main
    program upstream (a pull request); WiFi through a tap interface with
    proxy ARP on the MiSTer; namespace entries for the hosts Genera should
    talk to (its FTP and file servers refuse strangers), from `mkworld`; an
    Ethernet address per core.
-7. Disk throughput: the SCSI model now moves ten blocks a request with a
+6. Disk throughput: the SCSI model now moves ten blocks a request with a
    read window (before: one 1280-byte block a round trip, Save World at
    about 125 blocks a second, 160 KB/s). Measure Load World, Save World and
    paging on the MiSTer against that; a 1990 SCSI disk did several times
    the old figure. If still short, read straight into DDR3.
-8. A SCSI CD-ROM drive: Genera 8.3 shipped only on CD-ROM for Ivory
+7. A SCSI CD-ROM drive: Genera 8.3 shipped only on CD-ROM for Ivory
    machines (8.3 Release Notes), and on an XL a drive on the SCSI bus is
    read as ISO 9660 through `host|CDROMn:` pathnames, n its SCSI address
    (8.3 installation guides; `SYS:IO;ISO9660-ACCESS-PATH`), and the FEP's
@@ -102,7 +90,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    OSD slot for an `.iso`, read-only. Test media: the user's
    `bolix_cd.iso` (the 8.3 distribution CD); `Copy File` of a world from
    it, then a Breath of Life restore.
-9. A SCSI tape drive: the XL's optional tape unit, in the top drive slot,
+8. A SCSI tape drive: the XL's optional tape unit, in the top drive slot,
    is a 3M MCD-40 SCSI cartridge drive taking DC 2000 cartridges (XL
    User's Guide: "MCD-405/SCSI"), which Genera drives as
    `3M-MCD-40-SCSI-tape-drive` with QIC-100 8192-byte blocks
@@ -114,7 +102,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    RESTORING notes: concatenate the `*.dist.*` pieces, then `Restore
    Distribution :Use Disk Yes` naming the file), which only needs the file
    on the machine.
-10. A color screen without the FrameThrower, optional: emulate the Univision
+9. A color screen without the FrameThrower, optional: emulate the Univision
    UDC-3400, the third-party VME color board Symbolics sold for the XL400,
    whose driver is in source on the 8.3 CD (`sys.sct/color/univision*.lisp`,
    `vme-color.lisp`) and loaded into every Ivory world's Color system,
@@ -141,7 +129,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    buffers and NuVista cards), the fit (about a thousand ALMs more on a
    design that fits by seed; a separate color RBF is the fallback). The 8.3
    world needs the Color system loaded from the CD.
-11. 16 MW of main memory, the XL1200's maximum (4 MW standard, three 4 MW
+10. 16 MW of main memory, the XL1200's maximum (4 MW standard, three 4 MW
    expansion boards), in the tree and building (Nov 2 2026): the memory
    boards answer at their slots (0x10000000, 0x20000000, 0x30000000) and
    the ECO register's nibbles say they are there, which is what the FEP's
@@ -149,18 +137,18 @@ In the order they'll be done. Bugs come first whenever they turn up.
    `Show Configuration` lists them, and build 41's herald on the MiSTer reads
    "16.0M words Physical memory, 29.3M words Swapping space". Left: Peek's
    storage meters against the 4 MW session (which fetched 8 MW from disk).
-12. The master disk: the fat world is built and boots on the MiSTer
+11. The master disk: the fat world is built and boots on the MiSTer
    (Nov 2 2026, [NOTES.md](NOTES.md#the-fat-world-nov-2-2026)): Color,
    CLIM with its port, PostScript, demos and documentation, Statice,
    Concordia, Metering and Hacks, on the full image grown to 2,000,000
    blocks with `fepfs.py grow`; Joshua and Jericho since the
    logic-variable instructions work (`Genera-8-3-fat.ilod.2`, the first
    version deleted). Left: Illustrate and TeX from their distribution
-   files (item 9); a lock server for Concordia's saves; a boot-and-use
+   files (item 8); a lock server for Concordia's saves; a boot-and-use
    check per application (Concordia, Statice, Metering, Hacks so far only
    load).
-13. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
-14. Speed, only if the machine is really behind: measured after each step
+12. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
+13. Speed, only if the machine is really behind: measured after each step
     (`PROFILE=1` on `sim/system` counts cycles by state) and against the
     published times. Standing (Oct 2026, build 30 at 50 MHz): `(fib 30)`
     2.80 s against the XL1201's 4.1 s; Gabriel 6.56x the 3600 overall, the

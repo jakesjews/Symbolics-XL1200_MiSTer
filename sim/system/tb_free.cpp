@@ -7,6 +7,10 @@
 // cleared at power-up (DDR3 starts with junk), the display clock running.
 // No reference model; it prints what the console shows by saving the screen.
 //   ./obj_free/Vxl_machine DISK.dd SECONDS [AT-SECONDS TEXT] [SCREEN.pgm]
+// MENU=a,b,c,d: start as from MiSTer's menu: the framework's RESET up from
+// a to b and from c to d seconds (the official Main releasing the core, then
+// restarting as MiSTer_xl1200), the disk mounted after d (MENU_MOUNT=early:
+// before a, so the second reset can catch the machine busy).
 // TEXT is typed from AT-SECONDS of simulated time ('|' is Return, a key
 // every 50 ms, 3 s after a Return, '~' waits 10 s); the screen (the 1152 x
 // 880 raster from video memory) is saved every simulated second and at the end.
@@ -176,13 +180,31 @@ int main(int argc, char** argv) {
     top->rtc[1] = bcd(tm.tm_mon + 1) | bcd(tm.tm_year % 100) << 8 | (uint32_t)tm.tm_wday << 16 | 0x40u << 24;
     top->rtc[2] = 1;
   }
+  top->fw_reset = 0;
   for (int i = 0; i < 300; i++) tick();
   top->power_on = 0;
-  top->img_size = fs::file_size(dir / "disk.dd");
-  top->img_readonly = 0;
-  top->img_mounted = 1;
-  tick();
-  top->img_mounted = 0;
+  const bool mount_early = getenv("MENU_MOUNT") && !strcmp(getenv("MENU_MOUNT"), "early");
+  auto mount = [&]() {
+    top->img_size = fs::file_size(dir / "disk.dd");
+    top->img_readonly = 0;
+    top->img_mounted = 1;
+    tick();
+    top->img_mounted = 0;
+  };
+  if (const char* menu = getenv("MENU")) {
+    double w[4] = {};
+    sscanf(menu, "%lf,%lf,%lf,%lf", &w[0], &w[1], &w[2], &w[3]);
+    if (mount_early) mount();
+    top->reset = 0;
+    for (int k = 0; k < 4; k++) {
+      while (cycles < (uint64_t)(w[k] * CLK_HZ)) tick();
+      top->fw_reset = top->reset = k % 2 == 0;
+    }
+    printf("RESET up %.3f-%.3f s and %.3f-%.3f s; memory ready %d\n", w[0], w[1], w[2], w[3],
+           (int)top->rootp->xl_machine__DOT__mem_ready);
+    top->reset = 1;
+  }
+  if (!(getenv("MENU") && mount_early)) mount();
   for (int i = 0; i < 10; i++) tick();
   top->reset = 0;
   if (getenv("XLCOLORTEST")) return color_test();
