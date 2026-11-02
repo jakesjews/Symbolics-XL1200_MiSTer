@@ -718,9 +718,13 @@
             post_trap(TV_INSTRUCTION_EXCEPTION + {4'd0, op}, 3'd1, inst_pc + {{23{operand[9]}}, operand});
           end
         end
-        S_LOOPINC_1: begin t0 <= m_rd; sread(sp - 32'd1, S_LOOPINC_2); end
+        S_LOOPINC_1: begin
+          t0 <= m_rd;
+          t0_max <= m_rd[31:0] == 32'h7FFFFFFF;   // compared here, not on the next cycle's SP paths
+          sread(sp - 32'd1, S_LOOPINC_2);
+        end
         S_LOOPINC_2: begin
-          if (fix2(t0, m_rd) && t0[31:0] != 32'h7FFFFFFF) begin
+          if (fix2(t0, m_rd) && !t0_max) begin
             if ($signed(t0[31:0]) < $signed(m_rd[31:0])) branch(operand);
             write_tos(fixnum(t0[31:0] + 32'd1), S_RETIRE);
           end else if (!is_numeric_type(wtype(t0)) || !is_numeric_type(wtype(m_rd)))
@@ -887,8 +891,8 @@
           nlp = apply ? sp : sp + 32'd1;
           ncr = cr & ~32'h074FFFFF;
           ncr[19:18] = operand[9:8];
-          ncr[7:0] = nlp - nfp;
-          ncr[16:9] = nfp - fp;
+          ncr[7:0] = 8'(nlp - nfp);
+          ncr[16:9] = 8'(nfp - fp);
           ncr[CR_APPLY] = apply;
           if (ncr[CR_CALL_TRACE]) ncr[CR_TRACE_PENDING] = 1'b1;
           npc = cont_to_pc(cont);
@@ -1294,7 +1298,6 @@
         end
 
         // ---------------------------------------------------------------- instance variables
-        S_IVM_1: begin x0 <= opv[31:0]; sread(fp + 32'd2, S_IVM_2); end
         S_IVM_2: begin
           if (wtype(m_rd) != DTP_ARRAY) err(E_SELF_MAPPING_TABLE_TYPE, 32'd0);
           else mrd(mkw(DTP_LOCATIVE, m_rd[31:0]), CYC_HEADER, S_IVM_3);
@@ -1304,8 +1307,16 @@
           else mrd(mkw(DTP_LOCATIVE, mr_final + 32'd1 + x0), CYC_DATA_READ, S_IVM_4);
         end
         S_IVM_4: begin
-          if (!is_fixnum(mr_d)) err(E_ILLEGAL_INSTANCE_VARIABLE_INDEX, 32'd0);
-          else begin
+          // Not an offset: a CLOS reader, writer or locative in the table.
+          // An instruction exception, with the value (pop and movem: popped,
+          // the movem handler returns it) and the index as its arguments,
+          // as the VLM's prepare-exception and Genera's handlers (itrap.lisp)
+          // have it.  An error trap here reached Genera's error path, which
+          // knows only flavors and :UPDATE entries: "invalid mapping table".
+          if (!is_fixnum(mr_d)) begin
+            if (op == 8'o320 || op == 8'o321) read_tos(S_IVM_EXC);
+            else exc(3'd1, fixnum(x0), '0, '0);
+          end else begin
             t0 <= mr_d;
             sread(fp + 32'd3, S_IVM_5);
           end
@@ -1339,7 +1350,10 @@
           if (op == 8'o320 || op == 8'o322) sp <= sp - 32'd1;
           st <= S_RETIRE;
         end
-        S_IVU_1: begin x0 <= opv[31:0]; sread(fp + 32'd3, S_IVU_2); end
+        S_IVM_EXC: begin
+          sp <= sp - 32'd1;
+          exc(3'd2, m_rd, fixnum(x0), '0);
+        end
         S_IVU_2: begin
           if (!is_instance_type(wtype(m_rd))) err(E_SELF_TYPE, 32'd0);
           else begin

@@ -175,15 +175,13 @@
             8'o250, 8'o251, 8'o252, 8'o253, 8'o254, 8'o255, 8'o256, 8'o257:
               opval(1'b1, S_LEXW_1);
 
-            // instance variables
-            8'o110, 8'o320, 8'o321, 8'o111: begin                     // mapped
-              if (omode != 2'd3) opval(1'b0, S_IVM_1);
-              else begin x0 <= {24'd0, operand[7:0]}; sread(fp + 32'd2, S_IVM_2); end
-            end
-            8'o112, 8'o322, 8'o323, 8'o113: begin                     // unmapped
-              if (omode != 2'd3) opval(1'b0, S_IVU_1);
-              else begin x0 <= {24'd0, operand[7:0]}; sread(fp + 32'd3, S_IVU_2); end
-            end
+            // instance variables: the index is the operand field's low eight
+            // bits whatever the mode bits say (the VLM's :10-bit-immediate
+            // format takes the "truncated 8 bit" operand, one entry for all
+            // modes); CLOS puts other values in the mode bits, which decoded
+            // as an FP-relative operand sent self's address as the index
+            8'o110, 8'o320, 8'o321, 8'o111: begin x0 <= {24'd0, operand[7:0]}; sread(fp + 32'd2, S_IVM_2); end   // mapped
+            8'o112, 8'o322, 8'o323, 8'o113: begin x0 <= {24'd0, operand[7:0]}; sread(fp + 32'd3, S_IVU_2); end   // unmapped
             8'o324, 8'o325, 8'o326: opval(1'b0, S_IREF_1);            // %instance-ref/set/loc
 
             // subprimitives

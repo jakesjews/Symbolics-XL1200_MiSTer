@@ -567,6 +567,31 @@ World` only offers Incremental when `si:*sysout-enabled-p*` is true, which
 left no trace); `Save World Incremental FEP7:>Genera-8-3-color.ilod` then
 asks the herald and label questions as a full save does.
 
+The trap behind it (Nov 2 2026, the second attempt, from the saved Color
+world): "The PUSH-INSTANCE-VARIABLE microcode ran into an invalid mapping
+table" at PC 11 of a CLOS :around method while loading ptypes2.ibin. In the
+Debugger the frame's mapping table was sound (short prefix, 255 entries) and
+entry 3 was the compiled function CLOS-INTERNALS::MAPPING-TABLE-CALL-READER,
+the designed "reader" case; Genera's handler for the push-instance-variable
+instruction exception (debugger/itrap.lisp) calls such an entry, but the
+core had raised an error trap, whose path (the SUBSCRIPT-BOUNDS-ERROR
+dispatch) knows only flavors and :UPDATE entries. Two things were wrong, in
+the RTL and the model alike: the index came through the addressing-mode
+decode, so an operand whose mode bits aren't 3 (CLOS writes other values
+there) read FP|3, self's address, as the index and failed the bounds check
+against the table's 255; and a non-fixnum entry raised an error trap. The
+VLM (the authority on the chip's behavior; its :10-bit-immediate format
+comment: "10 bit operand is in arg1, truncated 8 bit is in arg2", and the
+instance-variable code uses arg2 with one entry point for all modes)
+takes the operand's low byte as the index whatever the mode bits say, and
+sends a non-fixnum entry to the instruction exception with the index (after
+the value for pop and movem) as arguments. Taking all ten bits instead
+looped the FEP in traps; the eight-bit form is what both implementations do
+now. The emulator reproduced the load in three minutes (the second trap
+it hit, a data read at a mapping table's header in a pop-instance-variable,
+was the same decode with mode bits 1 or 2), which is how the fix was tried
+before any build.
+
 ### Paging with 4 MW
 
 Peek's storage meters (Select P, Meters, "Storage meters") on the MiSTer

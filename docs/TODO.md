@@ -9,13 +9,19 @@ In the order they'll be done. Bugs come first whenever they turn up.
    Left: an overnight run; the collection's applications that need a file
    or tape route in (Macsyma, Illustrate, TeX). Anything that breaks is
    reproduced in the free-running simulation or the model.
-   Open: the machine froze four minutes into `Load System CLIM` on build
-   40 (Nov 1 2026, the full world after `Load System Color`: the who-line
-   clock stopped at output-protocol.ibin 12%, no response to the mouse,
-   MiSTer's side fine; docs/NOTES.md). A release build has no readout, so
-   the next build announces a processor halt or a stalled DDR3 port on
-   the OSD (the framework's info strings, XL1200.sv), and the load is
-   repeated from a saved Color world to see whether it recurs.
+   Found and fixed in the tree (Nov 2 2026, docs/NOTES.md): `Load System
+   CLIM` trapped in the processor's instance-variable instructions, which
+   decoded the operand field's mode bits as an addressing mode (CLOS puts
+   other values there; the chip takes the low byte as the index whatever
+   the mode bits say) and raised an error trap on a non-fixnum mapping
+   table entry where the chip raises an instruction exception (CLOS
+   readers and writers live in the table as compiled functions). The
+   emulator replays the whole Color and CLIM load from the master disk in
+   minutes; the fix is checked there first, then in lockstep and on the
+   MiSTer. Still open: the freeze four minutes into the first CLIM load on
+   build 40 (the who-line clock stopped, no response; the second attempt
+   got further and trapped instead), which the OSD halt and stall notices
+   in the next build would name if it comes back.
    Also open: the lockstep from reset on the master disk stops at step
    1,822,307, the FEP kernel's first function entry after the boot PROM's
    `%jump` (an entry-rest-not-accepted with more arguments than it takes):

@@ -349,6 +349,9 @@
         operand <= h[9:0];
         omode <= h[9:8];
         ooff <= h[7:0];
+        oaddr_r <= h[9:8] == 2'd0 ? fp + {24'd0, h[7:0]} :
+                   h[9:8] == 2'd1 ? lp + {24'd0, h[7:0]} :
+                                    sp + {24'd0, h[7:0]} - 32'd255;
         // a stack operand (FP, LP or SP relative) is read from the stack
         // cache now, so S_EXEC has it (opval)
         oa = h[9:8] == 2'd0 ? fp + {24'd0, h[7:0]} :
@@ -845,8 +848,8 @@
           ncr = cr & ~32'h074FFFFF & ~(32'd7 << 27);
           ncr[31:30] = m;
           ncr[19:18] = VD_VALUE;
-          ncr[7:0] = (sp + 32'd1 - fp);
-          ncr[16:9] = fp - tr_oldfp;
+          ncr[7:0] = 8'(sp + 32'd1 - fp);
+          ncr[16:9] = 8'(fp - tr_oldfp);
           cr <= ncr;
           lp <= sp + 32'd1;
           cont <= pc_word(tr_post ? tr_retpc : inst_pc);

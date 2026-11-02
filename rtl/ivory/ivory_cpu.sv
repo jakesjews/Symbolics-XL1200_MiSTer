@@ -168,11 +168,13 @@ module ivory_cpu
   logic [9:0]  operand;
   logic [1:0]  omode;
   logic [7:0]  ooff;
+  logic [31:0] oaddr_r;               // the operand address, summed at decode for S_EXEC
   logic        opv_sign;              // OPV: sign-extend an immediate
   word_t       opv;                   // OPV result
   logic        opv_popped;
   logic        opv_pre;               // the operand was read from the stack cache at decode
   word_t       a1, a2, a3, val, t0, t1, t2;
+  logic        t0_max;                // loop-increment: t0 is the most positive fixnum
   logic [31:0] addr, cnt, x0, x1;
   logic [63:0] q64;
   logic [10:0] guard;
@@ -323,10 +325,11 @@ module ivory_cpu
     return m[31:0];
   endfunction
 
-  // Operand address (operand_address); mode 3 is an error trap, checked by the caller
-  wire [31:0] oaddr = omode == 2'd0 ? fp + {24'd0, ooff} :
-                      omode == 2'd1 ? lp + {24'd0, ooff} :
-                                      sp + {24'd0, ooff} - 32'd255;
+  // Operand address (operand_address); mode 3 is an error trap, checked by the
+  // caller.  Summed at decode into oaddr_r (FP, LP and SP are final by then:
+  // the retiring instruction's pushes and pops are done before it decodes
+  // the next), so S_EXEC's paths start at a register and not at the adder.
+  wire [31:0] oaddr = oaddr_r;
 
   // %alu, %block-n-read-alu and %block-n-read-test (alu_compute)
   typedef struct packed {

@@ -1237,15 +1237,22 @@ void Ivory::exec_op(int op, int operand) {
 
   // ---------------------------------------------------------------- instance variables
   case 0110: case 0320: case 0321: case 0111: {  // mapped access to self
+    // the index is the operand field's low eight bits whatever the mode bits
+    // say (the VLM's "truncated 8 bit" operand, one entry for all modes)
     uint32_t n = operand & 0xFF;
-    if (operand_mode != 3) n = wdata(operand_value(false));
     W map = sread(fp + 2);
     if (wtype(map) != DTP_ARRAY) { sp = restart_sp; error_trap(E_SELF_MAPPING_TABLE_TYPE, 0); }
     uint32_t maddr;
     W mh = mem_read(mkw(DTP_LOCATIVE, wdata(map)), CYC_HEADER, &maddr);
     if (n >= (wdata(mh) & 0x7FFF)) { sp = restart_sp; error_trap(E_MAPPING_TABLE_INDEX_BOUNDS, 0); }
     W off = mem_read(mkw(DTP_LOCATIVE, maddr + 1 + n), CYC_DATA_READ);
-    if (wtype(off) != DTP_FIXNUM) { sp = restart_sp; error_trap(E_ILLEGAL_INSTANCE_VARIABLE_INDEX, 0); }
+    if (wtype(off) != DTP_FIXNUM) {
+      // a CLOS reader, writer or locative entry: an instruction exception
+      // with the value (pop, movem) and the index as arguments
+      if (op == 0320 || op == 0321) { W args[2] = {sread(sp), fixnum((int32_t)n)}; sp--; instruction_exception(2, args); }
+      W args[1] = {fixnum((int32_t)n)};
+      instruction_exception(1, args);
+    }
     W self = sread(fp + 3);
     int st = wtype(self);
     if (st < DTP_INSTANCE || st > DTP_STRING_INSTANCE) { sp = restart_sp; error_trap(E_SELF_TYPE, 0); }
@@ -1267,8 +1274,7 @@ void Ivory::exec_op(int op, int operand) {
     return;
   }
   case 0112: case 0322: case 0323: case 0113: {  // ordered (unmapped) access to self
-    uint32_t n = operand & 0xFF;
-    if (operand_mode != 3) n = wdata(operand_value(false));
+    uint32_t n = operand & 0xFF;   // the low eight bits, as above
     W self = sread(fp + 3);
     int st = wtype(self);
     if (st < DTP_INSTANCE || st > DTP_STRING_INSTANCE) { sp = restart_sp; error_trap(E_SELF_TYPE, 0); }
