@@ -452,6 +452,10 @@ void Ivory::error_trap(int cond, uint32_t vma) {
             cond, vma, (uint32_t)(pc >> 1), (int)(pc & 1), cur_opcode, (unsigned long long)icount,
             wtype(sread(restart_sp)), wdata(sread(restart_sp)), wtype(sread(restart_sp - 1)),
             wdata(sread(restart_sp - 1)));
+  if (log_errors && iv_phase)
+    fprintf(stderr, "[cpu]   instance variable: phase %d operand %03o fp=%08x map=%02o:%08x self=%02o:%08x off=%02o:%08x\n",
+            iv_phase, iv_operand, fp, wtype(iv_map), wdata(iv_map), wtype(iv_self), wdata(iv_self), wtype(iv_off), wdata(iv_off));
+  iv_phase = 0;
   take_pre_trap(TV_ERROR, 2, args);
   throw InstructionAbort{};
 }

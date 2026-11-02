@@ -111,7 +111,7 @@ the FEP disk as on a real machine.
 
 | PA | What | Evidence |
 |----|------|----------|
-| 0x00000000–0x003FFFFF, 0x10000000–0x103FFFFF, 0x20000000–0x203FFFFF, 0x30000000–0x303FFFFF | Main memory: 4 MW on the main board at 0 and a 4 MW memory expansion board in each of the three memory slots (16 MW, the XL1200's most; the reference XL1201's main board has 4 MW and no boards). The FEP's hardware tables size the main board in 2 MW chunks, at most four (probes at 0, 0o10000000, 0x400000, 0x600000: a contiguous 16 MW shows as 8 MW), then take the memory boards from the ECO register's nibbles 1-3 (F = empty, `find-merlin-boards` in i-sys/configuration.lisp does the same) and size each present board at its slot (0x10000000, 0x20000000, 0x30000000, in 4 MW steps); it also probes 0x58000000 and 0x68000000 for other boards. With ECO 0xFFF51111 `Show Configuration` lists Memory Expansion Boards 0-2 and 2048k, 2048k, 4096k, 4096k, 4096k words. In DDR3 at word 0x0600_0000 + {slot, offset} (byte 0x30000000), a 40-bit word a DDR word; the I/O board's buffer memory at 0x0700_0000, the color board's 16 MB at 0x0710_0000 | FEP `Show Configuration` in the emulator, Nov 2026 |
+| 0x00000000–0x003FFFFF, 0x10000000–0x103FFFFF, 0x20000000–0x203FFFFF, 0x30000000–0x303FFFFF | Main memory: 4 MW on the main board at 0 and a 4 MW memory expansion board in each of the three memory slots (16 MW, the XL1200's most; the reference XL1201's main board has 4 MW and no boards). The FEP's hardware tables size the main board in 2 MW chunks, at most four (probes at 0, 0o10000000, 0x400000, 0x600000: a contiguous 16 MW shows as 8 MW), then take the memory boards from the ECO register's nibbles 1-3 (F = empty, `find-merlin-boards` in i-sys/configuration.lisp does the same) and size each present board at its slot (0x10000000, 0x20000000, 0x30000000, in 4 MW steps); it also probes 0x58000000 and 0x68000000 for other boards. With ECO 0xFFF51111 `Show Configuration` lists Memory Expansion Boards 0-2 and 2048k, 2048k, 4096k, 4096k, 4096k words, in the emulator, on the RTL bench and on the MiSTer (seed 9 of Nov 2 2026). In DDR3 at word 0x0600_0000 + {slot, offset} (byte 0x30000000), a 40-bit word a DDR word; the I/O board's buffer memory at 0x0700_0000, the color board's 16 MB at 0x0710_0000 | FEP `Show Configuration` in the emulator, Nov 2026 |
 | 0x07FE0000–0x07FEFFFF | Boot PROM | spec 2.1.4 |
 | 0x09000000–0x090007FF | NVRAM, byte per word; clock at 0x7F8–0x7FF (MK48T02-style); FEP options in bank 0 | sysdef `MERLIN-NVRAM-FEP-OPTIONS`; kernel uses 0x090007F8 |
 | 0x0A000000 | Merlin-II control (bit 1 = run light) | wired-screen.lisp |
@@ -1219,6 +1219,15 @@ server: `Hello|Load World FEP7:>Genera-8-3.ilod|~~Start|` and twelve
 up by 150 s of simulated time (Oct 2026).
 
 ## VMEbus and the color screen (Univision UDC-3400)
+
+On the MiSTer (Nov 2 2026, seed 9 of the 16 MW tree, build 41 candidate): the
+incremental Color world boots with "16.0M words Physical memory" in the
+herald; after the sync format and `color::make-mister-color-screen` are
+defined at the Listener and the screen made, the picture switches to the
+color board (Display Auto) and a `tv:lisp-listener` made with `:superior`
+the color screen draws there: white frame, yellow cursor, the label, exactly
+as the bench's frame capture predicted. The B&W console stays underneath
+(Display Console shows it).
 
 The XL1200 has no color output of its own; the color option Symbolics sold
 for the XL400 was a third-party VMEbus board, the Univision UDC-3400, and

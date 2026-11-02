@@ -185,6 +185,9 @@ private:
   int err_detail = -1;       // data type or memory cycle refining the next error trap
 public:
   bool log_errors = false;   // report error traps on stderr
+  int iv_phase = 0;          // an instance-variable instruction's memory reference under way (error log)
+  W iv_map = 0, iv_self = 0, iv_off = 0;
+  int iv_operand = 0;
   uint64_t opstats[258] = {};   // instructions by opcode (256: full-word, 257: entry) since opstats_clear()
   void opstats_clear() { for (auto& n : opstats) n = 0; }
 private:

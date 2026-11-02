@@ -1241,9 +1241,11 @@ void Ivory::exec_op(int op, int operand) {
     // say (the VLM's "truncated 8 bit" operand, one entry for all modes)
     uint32_t n = operand & 0xFF;
     W map = sread(fp + 2);
+    iv_map = map; iv_self = 0; iv_off = 0; iv_operand = operand; iv_phase = 1;
     if (wtype(map) != DTP_ARRAY) { sp = restart_sp; error_trap(E_SELF_MAPPING_TABLE_TYPE, 0); }
     uint32_t maddr;
     W mh = mem_read(mkw(DTP_LOCATIVE, wdata(map)), CYC_HEADER, &maddr);
+    iv_phase = 2;
     if (n >= (wdata(mh) & 0x7FFF)) { sp = restart_sp; error_trap(E_MAPPING_TABLE_INDEX_BOUNDS, 0); }
     W off = mem_read(mkw(DTP_LOCATIVE, maddr + 1 + n), CYC_DATA_READ);
     if (wtype(off) != DTP_FIXNUM) {
@@ -1254,6 +1256,7 @@ void Ivory::exec_op(int op, int operand) {
       instruction_exception(1, args);
     }
     W self = sread(fp + 3);
+    iv_self = self; iv_off = off; iv_phase = 3;
     int st = wtype(self);
     if (st < DTP_INSTANCE || st > DTP_STRING_INSTANCE) { sp = restart_sp; error_trap(E_SELF_TYPE, 0); }
     uint32_t base = wdata(self);
@@ -1264,13 +1267,15 @@ void Ivory::exec_op(int op, int operand) {
       base = ha;
     }
     uint32_t ea = base + wdata(off);
-    if (op == 0110) push(mem_read(mkw(DTP_LOCATIVE, ea), CYC_DATA_READ));
-    else if (op == 0111) push(mkw(DTP_LOCATIVE, ea));
+    iv_phase = 4;
+    if (op == 0110) { W r = mem_read(mkw(DTP_LOCATIVE, ea), CYC_DATA_READ); iv_phase = 0; push(r); }
+    else if (op == 0111) { iv_phase = 0; push(mkw(DTP_LOCATIVE, ea)); }
     else {
       W v = sread(sp);
       mem_write(mkw(DTP_LOCATIVE, ea), CYC_DATA_WRITE, v, true);
       if (op == 0320) sp--;
     }
+    iv_phase = 0;
     return;
   }
   case 0112: case 0322: case 0323: case 0113: {  // ordered (unmapped) access to self
