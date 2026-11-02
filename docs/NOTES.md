@@ -722,7 +722,7 @@ versions) and updates the boot file. On the MiSTer (build 41) it boots
 with that herald, Color Demo's bars draw on the color board and
 `(clim-demo::start-demo)` opens the demo launcher. The image is
 `~/Downloads/XL1200-Genera-8-3-fat.vhd` on the user's Mac (3.07 GB,
-832,382 blocks free with the second version below; licensed media, not in
+832,384 blocks free with the second version below; licensed media, not in
 the repository).
 
 Order matters: CLIM-Demo's browser needs PostScript-CLIM's package, and
@@ -1641,6 +1641,16 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   "CLIM" :query nil))` 367.3 s with 1.4 s waiting for pages (seed 19 of
   the previous commit: 364.5 s), floating point through the FPA correct,
   the color board draws, `(fib 30)` 2.80 s as before.
+- Build 42 (Nov 2 2026, `releases/XL1200_20261102.rbf`, replacing build 41):
+  the logic-variable instructions (Joshua and Jericho) and the start from
+  MiSTer's menu (no DDR3 command while RESET is up). Seed 9 of 70fd834:
+  34,613 ALMs (83%), block memory 56%, setup slack +0.850 ns core, +0.762
+  video, +1.816 HPS, +0.253 HDMI, hold +0.251; seeds 2 and 7 could not meet
+  timing or fit, 1, 8 and 10 were stopped once 9 passed. On the MiSTer:
+  three starts from the menu with `boot0.vhd` and one through an MGL reach
+  the FEP prompt, as does a start from the running core; the fat world's
+  second version boots with Joshua and Jericho, and the grandparent example
+  and Tweety answer.
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's
