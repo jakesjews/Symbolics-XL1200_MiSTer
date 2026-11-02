@@ -19,8 +19,9 @@ In the order they'll be done. Bugs come first whenever they turn up.
    full GC, Save World and booting the saved world, the MacIvory animation
    world's programs, ephemeral GC flips, the number types through the FPA).
    Left: an overnight run; the collection's applications that need a file
-   or tape route in (Macsyma, Illustrate, TeX). Anything that breaks is
-   reproduced in the free-running simulation or the model.
+   route in (Macsyma; Illustrate and TeX restore from a disk file, item 9).
+   Anything that breaks is reproduced in the free-running simulation or the
+   model.
    Found and fixed in the tree (Nov 2 2026, docs/NOTES.md): `Load System
    CLIM` trapped in the processor's instance-variable instructions, which
    decoded the operand field's mode bits as an addressing mode (CLOS puts
@@ -101,7 +102,19 @@ In the order they'll be done. Bugs come first whenever they turn up.
    OSD slot for an `.iso`, read-only. Test media: the user's
    `bolix_cd.iso` (the 8.3 distribution CD); `Copy File` of a world from
    it, then a Breath of Life restore.
-9. A color screen without the FrameThrower, optional: emulate the Univision
+9. A SCSI tape drive: the XL's optional tape unit, in the top drive slot,
+   is a 3M MCD-40 SCSI cartridge drive taking DC 2000 cartridges (XL
+   User's Guide: "MCD-405/SCSI"), which Genera drives as
+   `3M-MCD-40-SCSI-tape-drive` with QIC-100 8192-byte blocks
+   (`SYS:LMTAPE;SCSI-TAPE`, which also takes generic SCSI sequential
+   drives); backups, Restore Distribution, Breath of Life. A target in
+   `xl_scsi` answering as that drive over a tape image file (a format to
+   choose: blocks and filemarks), an OSD slot for it. Not needed for
+   Illustrate and TeX: their distributions restore from a disk file (their
+   RESTORING notes: concatenate the `*.dist.*` pieces, then `Restore
+   Distribution :Use Disk Yes` naming the file), which only needs the file
+   on the machine.
+10. A color screen without the FrameThrower, optional: emulate the Univision
    UDC-3400, the third-party VME color board Symbolics sold for the XL400,
    whose driver is in source on the 8.3 CD (`sys.sct/color/univision*.lisp`,
    `vme-color.lisp`) and loaded into every Ivory world's Color system,
@@ -128,7 +141,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    buffers and NuVista cards), the fit (about a thousand ALMs more on a
    design that fits by seed; a separate color RBF is the fallback). The 8.3
    world needs the Color system loaded from the CD.
-10. 16 MW of main memory, the XL1200's maximum (4 MW standard, three 4 MW
+11. 16 MW of main memory, the XL1200's maximum (4 MW standard, three 4 MW
    expansion boards), in the tree and building (Nov 2 2026): the memory
    boards answer at their slots (0x10000000, 0x20000000, 0x30000000) and
    the ECO register's nibbles say they are there, which is what the FEP's
@@ -136,17 +149,18 @@ In the order they'll be done. Bugs come first whenever they turn up.
    `Show Configuration` lists them, and build 41's herald on the MiSTer reads
    "16.0M words Physical memory, 29.3M words Swapping space". Left: Peek's
    storage meters against the 4 MW session (which fetched 8 MW from disk).
-11. The master disk: the fat world is built and boots on the MiSTer
+12. The master disk: the fat world is built and boots on the MiSTer
    (Nov 2 2026, [NOTES.md](NOTES.md#the-fat-world-nov-2-2026)): Color,
    CLIM with its port, PostScript, demos and documentation, Statice,
    Concordia, Metering and Hacks, on the full image grown to 2,000,000
    blocks with `fepfs.py grow`; Joshua and Jericho since the
    logic-variable instructions work (`Genera-8-3-fat.ilod.2`, the first
-   version deleted). Left: Illustrate and TeX from their tapes; a lock
-   server for Concordia's saves; a boot-and-use check per application
-   (Concordia, Statice, Metering, Hacks so far only load).
-12. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
-13. Speed, only if the machine is really behind: measured after each step
+   version deleted). Left: Illustrate and TeX from their distribution
+   files (item 9); a lock server for Concordia's saves; a boot-and-use
+   check per application (Concordia, Statice, Metering, Hacks so far only
+   load).
+13. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
+14. Speed, only if the machine is really behind: measured after each step
     (`PROFILE=1` on `sim/system` counts cycles by state) and against the
     published times. Standing (Oct 2026, build 30 at 50 MHz): `(fib 30)`
     2.80 s against the XL1201's 4.1 s; Gabriel 6.56x the 3600 overall, the
