@@ -634,6 +634,42 @@ not the fault); `XLEMU_PHTVMA=vma` prints that page's PHT and map entries
 at every flip and at the end. The lockstep bench's model logs the same
 with `XLEMU_ERRLOG=1` (`sim/system/tb_system.cpp`).
 
+### The fat world (Nov 2 2026)
+
+`FEP7:>Genera-8-3-fat.ilod.1` (81,381 blocks, a complete save) holds the
+full world plus Color 426 with Color Demo and the FrameThrower systems,
+CLIM 66.3 with Genera-CLIM, PostScript-CLIM, CLIM Demo and CLIM
+Documentation, Statice Runtime, Statice and Statice Browser 460, Concordia
+439.1, Metering 439 and Hacks 435, and `color:make-mister-color-screen`
+(the forms of `tools/genera/mister-color.lisp`). `boot.boot` loads it, so
+`Hello` then `Boot` brings it up. Built in the emulator in about forty
+minutes from the full image (`XLEMU_EPOCH` fixed, a snapshot after each
+stage): `fepfs.py grow` to 2,000,000 blocks first (a running Genera keeps
+the FEP free map in memory, so never under one), `Hello`, `Boot`, login,
+`(load "xl1200:>sys>site>sys.translations")`, `Load System Color`, the
+color-screen forms, then the systems in that order through
+`(sct:load-system s :query nil)` with `si:inhibit-fdefine-warnings` set,
+then `(si:disk-save "FEP7:>Genera-8-3-fat.ilod" nil :query nil :boot-file
+"FEP7:>boot.boot")`, which asks nothing (the herald from the systems'
+versions) and updates the boot file. On the MiSTer (build 41) it boots
+with that herald, Color Demo's bars draw on the color board and
+`(clim-demo::start-demo)` opens the demo launcher. The image is
+`~/Downloads/XL1200-Genera-8-3-fat.vhd` on the user's Mac (3.07 GB,
+836,499 blocks free; licensed media, not in the repository).
+
+Order matters: CLIM-Demo's browser needs PostScript-CLIM's package, and
+Statice needs Statice-Runtime loaded first. Joshua needs a `JOSHUA`
+logical host: `XL1200:>sys>site>joshua.translations` (now on the disk)
+maps `JOSHUA:**;` to `XL1200:>sys>**>` as `SYS:` is, its files being in
+`>sys>code>`, `>sys>examples>`, `>sys>data>`; it then loads, but Jericho
+stops on "Unexpected trap through 4013" (the logic-variable instructions,
+TODO item 1), so neither is in the world yet. Left out too: Illustrate and
+TeX (tape restores), and Concordia's saving needs a lock server; Statice
+needs a database set up before it does anything. Genera's
+`ignore-errors` in a CL-USER Listener returns NIL and T on an error, not
+the condition (`conditions:handler-case` gives the message): the first
+batch read four failures as successes that way.
+
 ### Paging with 4 MW
 
 Peek's storage meters (Select P, Meters, "Storage meters") on the MiSTer

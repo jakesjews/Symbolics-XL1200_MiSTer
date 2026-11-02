@@ -120,14 +120,14 @@ In the order they'll be done. Bugs come first whenever they turn up.
    `Show Configuration` lists them, and build 41's herald on the MiSTer reads
    "16.0M words Physical memory, 29.3M words Swapping space". Left: Peek's
    storage meters against the 4 MW session (which fetched 8 MW from disk).
-10. The master disk: one Genera 8.3 world with the applications preloaded
-   (Color, CLIM with Genera-CLIM and the demos, Concordia, Statice, Joshua
-   and Jericho, Metering, Illustrate and TeX if they load, the documentation)
-   saved on the core and made the default; the bare world kept; the 8.1.1
-   animation world separate (different base system). The handoff with the
-   archive names, versions and traps: research/XL1200_Application_Installation_Handoff.md.
-   The FEP partition grows to fit (the disk tool); each application gets a
-   boot-and-use check on the MiSTer before it ships.
+10. The master disk: the fat world is built and boots on the MiSTer
+   (Nov 2 2026, [NOTES.md](NOTES.md#the-fat-world-nov-2-2026)): Color,
+   CLIM with its port, PostScript, demos and documentation, Statice,
+   Concordia, Metering and Hacks, on the full image grown to 2,000,000
+   blocks with `fepfs.py grow`. Left: Joshua and Jericho once the
+   logic-variable instructions work (item 1); Illustrate and TeX from their
+   tapes; a lock server for Concordia's saves; a boot-and-use check per
+   application (Concordia, Statice, Metering, Hacks so far only load).
 11. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
 12. Speed, only if the machine is really behind: measured after each step
     (`PROFILE=1` on `sim/system` counts cycles by state) and against the
