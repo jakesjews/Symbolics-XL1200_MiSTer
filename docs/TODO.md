@@ -74,7 +74,15 @@ In the order they'll be done. Bugs come first whenever they turn up.
    program upstream (a pull request); WiFi through a tap interface with
    proxy ARP on the MiSTer; namespace entries for the hosts Genera should
    talk to (its FTP and file servers refuse strangers), from `mkworld`; an
-   Ethernet address per core.
+   Ethernet address per core. The machine's address: the fat image has
+   192.168.50.92 fixed (the user's LAN) in two FEP files, the Hello.boot's
+   `Set Network Address` and the standalone namespace's host entry, and
+   Genera 8.3 has no DHCP, BOOTP or RARP client. First `fepfs.py
+   set-address IMAGE A.B.C.D` rewriting both (check that the saved world
+   takes a changed namespace file at boot), then DHCP: a small client in
+   Lisp in the fat world asking the router at boot and putting the lease
+   in the running namespace (any LAN, the bridge as it is; NAT in the main
+   program instead would need port forwards and kernel support).
 6. Disk throughput: the SCSI model now moves ten blocks a request with a
    read window (before: one 1280-byte block a round trip, Save World at
    about 125 blocks a second, 160 KB/s). Measure Load World, Save World and
@@ -85,12 +93,17 @@ In the order they'll be done. Bugs come first whenever they turn up.
    read as ISO 9660 through `host|CDROMn:` pathnames, n its SCSI address
    (8.3 installation guides; `SYS:IO;ISO9660-ACCESS-PATH`), and the FEP's
    Breath of Life can restore from it (8.1 Release Notes). A third target
-   in `xl_scsi` answering as a CD-ROM (2048-byte sectors, INQUIRY,
-   READ CAPACITY, READ(10) and whatever else Genera's driver asks), an
-   OSD slot for an `.iso`, read-only. Test media: the user's
+   in `xl_scsi` answering as a CD-ROM (2048-byte sectors, four card
+   sectors each; INQUIRY as a removable CD-ROM; Genera's
+   `SYS:IO;ISO9660-ACCESS-PATH` issues only TEST UNIT READY, READ CAPACITY
+   and READ(6), and handles UNIT ATTENTION after a change), read-only, an
+   OSD slot for an `.iso` (the stock block interface; disc formats like
+   `.cue`/`.bin` or `.chd` would be the main program's side, as other
+   cores' CD support is). Test media: the user's
    `bolix_cd.iso` (the 8.3 distribution CD); `Copy File` of a world from
    it, then a Breath of Life restore.
-8. A SCSI tape drive: the XL's optional tape unit, in the top drive slot,
+8. A SCSI tape drive (on hold, Nov 2 2026: after the fat image and the
+   CD-ROM): the XL's optional tape unit, in the top drive slot,
    is a 3M MCD-40 SCSI cartridge drive taking DC 2000 cartridges (XL
    User's Guide: "MCD-405/SCSI"), which Genera drives as
    `3M-MCD-40-SCSI-tape-drive` with QIC-100 8192-byte blocks
