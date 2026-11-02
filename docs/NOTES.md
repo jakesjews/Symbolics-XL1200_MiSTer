@@ -552,6 +552,20 @@ for one more), with the sync format and `color::make-mister-color-screen`
 from `tools/genera/mister-color.lisp` defined; the boot file still loads
 the full world.
 
+### Paging with 4 MW
+
+Peek's storage meters (Select P, Meters, "Storage meters") on the MiSTer
+after a session of the full world: boot, Load System Color, Save World, two
+idle hours. 16,384 usable pages of 256 words (4 MW); 33,602 pages fetched
+from disk, 28,493 of them from the world file; 39,154 pages created; 64,366
+pages flushed to make room, 7,573 of them modified and written to the
+paging file; 142 s in page faults; 34,000 of the 120,000 paging-file pages
+in use. The machine brought in twice its memory and spent minutes waiting
+for it, mostly in the Color load and the save; an idle Listener needs
+little. The XL1200 shipped with 4 MW (20 MB) and took up to 16 MW (80 MB)
+on three 4 MW expansion boards, which is what the FEP's probes of
+0x10000000, 0x20000000 and 0x30000000 look for.
+
 ## FPA (Weitek WTL3164)
 
 The XL1200's floating-point accelerator is a Weitek WTL3164 behind the

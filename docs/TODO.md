@@ -36,14 +36,12 @@ In the order they'll be done. Bugs come first whenever they turn up.
    and the busy tag (dtp-null) on an early read. The status queue (registers
    4, 5, 7, 8, 9, 10: destinations and previous status).
 4. Calendar clock as GMT: Genera reads it as GMT, MiSTer's RTC is local time.
-5. The master disk beyond the full disk: the applications that need a file
-   or tape route in (Illustrate and TeX distribution tapes, Macsyma).
-6. Network, what's left after the wired port: the bridge into MiSTer's main
+5. Network, what's left after the wired port: the bridge into MiSTer's main
    program upstream (a pull request); WiFi through a tap interface with
    proxy ARP on the MiSTer; namespace entries for the hosts Genera should
    talk to (its FTP and file servers refuse strangers), from `mkworld`; an
    Ethernet address per core.
-7. Disk throughput: the SCSI model moves one 1280-byte block a request
+6. Disk throughput: the SCSI model moves one 1280-byte block a request
    through MiSTer's image path (three 512-byte sectors into a 2 KB staging
    buffer, one round trip to the main program each), so Save World wrote at
    about 125 blocks a second, 160 KB/s, and Load World and paging are
@@ -51,7 +49,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    Load World, Save World and paging on the MiSTer, then move many blocks a
    request (`sd_blk_cnt` allows 64 sectors) through a bigger staging buffer
    or straight into DDR3, with read-ahead on sequential reads.
-8. A color screen without the FrameThrower, optional: emulate the Univision
+7. A color screen without the FrameThrower, optional: emulate the Univision
    UDC-3400, the third-party VME color board Symbolics sold for the XL400,
    whose driver is in source on the 8.3 CD (`sys.sct/color/univision*.lisp`,
    `vme-color.lisp`) and loaded into every Ivory world's Color system,
@@ -78,8 +76,22 @@ In the order they'll be done. Bugs come first whenever they turn up.
    buffers and NuVista cards), the fit (about a thousand ALMs more on a
    design that fits by seed; a separate color RBF is the fallback). The 8.3
    world needs the Color system loaded from the CD.
-9. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
-10. Speed, only if the machine is really behind: measured after each step
+8. 16 MW of main memory, the XL1200's maximum (4 MW standard, three 4 MW
+   expansion boards; the FEP probes the slots at 0x10000000, 0x20000000 and
+   0x30000000): the memory module and decode a few address bits wider, the
+   DDR3 clear longer, the FEP's sizing answered so the herald reads 16.0M
+   words. A 4 MW session fetched 8 MW from disk (Peek's storage meters,
+   docs/NOTES.md), so this is what makes a fat world comfortable.
+9. The master disk: one Genera 8.3 world with the applications preloaded
+   (Color, CLIM with Genera-CLIM and the demos, Concordia, Statice, Joshua
+   and Jericho, Metering, Illustrate and TeX if they load, the documentation)
+   saved on the core and made the default; the bare world kept; the 8.1.1
+   animation world separate (different base system). The handoff with the
+   archive names, versions and traps: research/XL1200_Application_Installation_Handoff.md.
+   The FEP partition grows to fit (the disk tool); each application gets a
+   boot-and-use check on the MiSTer before it ships.
+10. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
+11. Speed, only if the machine is really behind: measured after each step
     (`PROFILE=1` on `sim/system` counts cycles by state) and against the
     published times. Standing (Oct 2026, build 30 at 50 MHz): `(fib 30)`
     2.80 s against the XL1201's 4.1 s; Gabriel 6.56x the 3600 overall, the
