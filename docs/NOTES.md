@@ -592,6 +592,48 @@ it hit, a data read at a mapping table's header in a pop-instance-variable,
 was the same decode with mode bits 1 or 2), which is how the fix was tried
 before any build.
 
+The third trap (Nov 2 2026, the same load with the fixes in, run with a
+fixed calendar clock so it repeats instruction for instruction): a
+pop-instance-variable's header read of its mapping table found
+DTP-GC-FORWARD. An ephemeral flip 2.5 million instructions earlier had
+condemned the table's half of level 0, a transport trap elsewhere had then
+copied it, and the pointer the instruction used was a full-word constant in
+the method's compiled code, pushed as it was. The page (0x8804f4) was marked
+right: its PHT entry said it referenced ephemeral group 0 and had the
+transport-trap bit, and the scavenger would have rewritten the constant when
+it reached the page; the spec's appendix on the Revision 0 implementation
+says what the chip does meanwhile: it "always traps when executing an
+instruction from a page with transport-trap=1. Later implementations may be
+able to do an actual oldspace check in this case." Neither the model nor
+the RTL checked anything on an instruction fetch. Both now take the
+transport trap, naming the word, when a fetched word is a pointer into
+oldspace and its page has the bit (the later-revision form; the RTL reads a
+word it got from the instruction cache once more through the memory stage
+for the page's bit, only in that rare case). Genera's handler transports
+every oldspace reference in the page: in the replay the constant 26 words
+before trapped first and the handler's rewrite of the mapping-table
+constant followed 2,000 instructions later; the load went on.
+
+### The emulator as a debugger
+
+What found the third trap in an afternoon, all in `emu/main.cpp`:
+`XLEMU_EPOCH=seconds` fixes the calendar clock to the machine's cycles, so a
+run repeats exactly and an instruction count names a moment; `-W FILE`
+writes the whole machine (processor, 128 MB of memory, devices, NVRAM) when
+the run stops and copies the disk image next to it as `FILE.disk`, and `-R
+FILE` resumes from it (on a fresh copy of the disk; `-n` stays absolute and
+`-Kat` counts from the resume), so the twelve minutes to a trap at
+instruction 2.93 billion became a snapshot at 2.92 billion and one-second
+replays; `XLEMU_WATCH=vma` logs every read and write of a word with the PC,
+opcode and instruction count (the frame word, then the mapping table's old
+address, then the code word, each a replay); `XLEMU_ERRLOG=1` also logs the
+ephemeral-oldspace register's writes (the flips) and the transport traps
+on instruction fetch; `XLEMU_MAPCHECK=1` compares the map cache's PHT bits
+with the PHT on every write (they agreed throughout; the bookkeeping was
+not the fault); `XLEMU_PHTVMA=vma` prints that page's PHT and map entries
+at every flip and at the end. The lockstep bench's model logs the same
+with `XLEMU_ERRLOG=1` (`sim/system/tb_system.cpp`).
+
 ### Paging with 4 MW
 
 Peek's storage meters (Select P, Meters, "Storage meters") on the MiSTer
@@ -1165,8 +1207,12 @@ Each follows its C++ counterpart in `emu/`:
 - `xl_i82586`: the Ethernet chip without a network (as `emu/i82586.cpp`),
   16-bit cycles on the buffer memory.
 - `xl_scsi`: WD33C93 and disk targets on MiSTer `S` mounts: a 1280-byte
-  block is three 512-byte sectors of a SCSI2SD-layout image, through a
-  staging buffer.
+  block is three 512-byte sectors of a SCSI2SD-layout image. A read asks
+  the main program for ten blocks (30 sectors) at a time into a 16 KB
+  staging buffer and keeps that window, so the following reads of a
+  sequential transfer (Load World, paging in a run of pages) are served
+  from it; writes are grouped the same way, ten blocks a request. (Before
+  Nov 2 2026 every block was its own round trip to the main program.)
 - `xl_console`: the console end of the serial line bus (key, mouse and
   status messages); `xl_keyboard` maps PS/2 to Symbolics keys.
 - `xl_video`: video memory (block RAM, second port on the 80 MHz dot clock)
@@ -1228,6 +1274,18 @@ color board (Display Auto) and a `tv:lisp-listener` made with `:superior`
 the color screen draws there: white frame, yellow cursor, the label, exactly
 as the bench's frame capture predicted. The B&W console stays underneath
 (Display Console shows it).
+
+Real color, without writing code: `Load System Color-Demo` (sys:color;demo;,
+about four minutes on the core), then a window on the color screen and the
+demo's patterns into it: `(setq w (tv:make-window 'tv:window :superior cs
+:expose-p t :left 0 :top 0 :width 1152 :height 880))`,
+`(color::full-field-color-bars w)`, `(color::test-colors w)` (the chip chart
+with the six primaries, the ramps and the gray scale), `(color::smpte-color-bars w)`;
+`(color:demo)` is the menu-driven version. A screen object is not a drawing
+stream: `graphics:draw-rectangle` with `:stream cs` errors in
+GRAPHICS::WITH-NEW-STREAM-TRANSFORM; draw into a window. `(send cs
+:set-video-on nil)` turns the board's video off (Display Auto shows the
+console again), `(send cs :set-video-on t)` back.
 
 The XL1200 has no color output of its own; the color option Symbolics sold
 for the XL400 was a third-party VMEbus board, the Univision UDC-3400, and

@@ -70,6 +70,7 @@ struct MapEntry {
 };
 
 class Ivory {
+  friend struct Snapshot;   // emu/snapshot.cpp: saves and restores the state
 public:
   explicit Ivory(Bus* bus);
 
@@ -126,6 +127,7 @@ public:
   // Memory access for tools/devices (raw, physical or VMA=PMA).
   W debug_read(uint32_t vma);
   bool debug_translate(uint32_t vma, uint32_t& pa);
+  bool pht_walk(uint32_t vma, uint32_t& pa);   // the PHT alone, no map cache (error log)
 
   static const int MAP_SIZE = 4096;
   MapEntry map[MAP_SIZE];
@@ -185,6 +187,12 @@ private:
   int err_detail = -1;       // data type or memory cycle refining the next error trap
 public:
   bool log_errors = false;   // report error traps on stderr
+  uint32_t pht_vma = 0;     // XLEMU_PHTVMA: report this page's PHT entry and map entry at flips, traps and the end
+  bool pht_vma_on = false;
+  void pht_report(const char* when);
+  bool map_check = false;   // XLEMU_MAPCHECK: compare the map cache's PHT bits with the PHT on writes
+  uint32_t watch_vma = 0;    // XLEMU_WATCH: log every read and write of this virtual address
+  bool watch_on = false;
   int iv_phase = 0;          // an instance-variable instruction's memory reference under way (error log)
   W iv_map = 0, iv_self = 0, iv_off = 0;
   int iv_operand = 0;

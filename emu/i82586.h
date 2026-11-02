@@ -17,6 +17,7 @@
 
 class I82586 {
   friend struct ModelState;   // sim/system: copies state into the RTL
+  friend struct Snapshot;     // emu/snapshot.cpp: saves and restores the state
 public:
   explicit I82586(std::vector<uint32_t>& buffer) : mem(buffer) {}
   void control(uint32_t v);     // write to the pins register (bits 7:5)

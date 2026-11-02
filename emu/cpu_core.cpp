@@ -116,8 +116,19 @@ void Ivory::note_write(MapEntry* e, W data) {
     need |= 1u << ((wdata(data) >> 24) & 3);   // ephemeral group
   if ((e->access & need) != need) {
     e->access |= need;
+    if (map_check && e->pht_addr == 0)
+      fprintf(stderr, "[cpu] write-through for page %06x (entry from load-map, no PHT address): bits %02x, write of %02o:%08x at pc=%08x.%d op=%03o insn=%llu\n",
+              e->vpn, need & ~e->access & 0xFF, wtype(data), wdata(data), (uint32_t)(pc >> 1), (int)(pc & 1), cur_opcode,
+              (unsigned long long)icount);
     W e1 = bus->phys_read(e->pht_addr + 1);
     bus->phys_write(e->pht_addr + 1, e1 | need);
+  } else if (map_check) {
+    // XLEMU_MAPCHECK: the map cache thinks the PHT already has these bits
+    W e1 = bus->phys_read(e->pht_addr + 1);
+    if ((wdata(e1) & need) != need)
+      fprintf(stderr, "[cpu] map cache for page %06x has bits %02x but PHT1 %02o:%08x at %08x lacks %02x: write of %02o:%08x at pc=%08x.%d op=%03o insn=%llu\n",
+              e->vpn, e->access, wtag(e1), wdata(e1), e->pht_addr + 1, need & ~wdata(e1) & 0xFF, wtype(data), wdata(data),
+              (uint32_t)(pc >> 1), (int)(pc & 1), cur_opcode, (unsigned long long)icount);
   }
 }
 
@@ -138,6 +149,11 @@ bool Ivory::debug_translate(uint32_t vma, uint32_t& pa) {
   if (vma >= VMA_PMA_BASE) { pa = vma - VMA_PMA_BASE; return true; }
   MapEntry* e = map_lookup(vma >> 8);
   if (e) { pa = (e->ppn << 8) | (vma & 0xFF); return true; }
+  return pht_walk(vma, pa);
+}
+
+bool Ivory::pht_walk(uint32_t vma, uint32_t& pa) {
+  if (vma >= VMA_PMA_BASE) { pa = vma - VMA_PMA_BASE; return true; }
   if (!pht_mask) return false;
   // walk the PHT without side effects
   uint32_t vpn = vma >> 8;
@@ -154,6 +170,33 @@ bool Ivory::debug_translate(uint32_t vma, uint32_t& pa) {
   uint32_t state = vpn;
   for (int g = 0; r == 0 && g < 100000; g++) { state = (state << 4) + state + 1; r = search(((state & 0x1FFFFFF) << 3) & pht_mask); }
   return r == 1;
+}
+
+// XLEMU_PHTVMA: the page's PHT entry (walked without side effects) and map entry.
+void Ivory::pht_report(const char* when) {
+  uint32_t vma = pht_vma, vpn = vma >> 8;
+  MapEntry* e = map_lookup(vpn);
+  uint32_t addr = 0; W e0 = 0, e1 = 0; bool found = false;
+  if (pht_mask) {
+    auto search = [&](uint32_t off) -> int {
+      uint32_t a = pht_base + off;
+      W w0 = 0;
+      for (int i = 0; i < 4; i++, a += 2) {
+        w0 = bus->phys_read(a);
+        if ((wdata(w0) >> 8) == vpn) { addr = a; e0 = w0; e1 = bus->phys_read(a + 1); found = true; return 1; }
+      }
+      return ((w0 >> 38) & 1) ? -1 : 0;
+    };
+    int r = search(pht_hash(vpn) & pht_mask);
+    uint32_t state = vpn;
+    for (int g = 0; r == 0 && g < 100000; g++) { state = (state << 4) + state + 1; r = search(((state & 0x1FFFFFF) << 3) & pht_mask); }
+  }
+  fprintf(stderr, "[pht] %s insn=%llu vma %08x: map entry %s", when, (unsigned long long)icount, vma,
+          e ? "" : "none");
+  if (e) fprintf(stderr, "ppn %06x access %02x (pht_addr %08x)", e->ppn, e->access, e->pht_addr);
+  if (found) fprintf(stderr, "; PHT at %08x: PHT0 %02o:%08x PHT1 %02o:%08x (ppn %06x access %02x)\n", addr, wtag(e0), wdata(e0),
+                     wtag(e1), wdata(e1), wdata(e1) >> 8, wdata(e1) & 0xFF);
+  else fprintf(stderr, "; no PHT entry\n");
 }
 
 W Ivory::debug_read(uint32_t vma) {
@@ -178,9 +221,18 @@ bool Ivory::page_transport_enabled(uint32_t vma) {
   return (e->access & 0x10) != 0;
 }
 
-W Ivory::read_raw(uint32_t vma) { return bus->phys_read(translate(vma, false)); }
+W Ivory::read_raw(uint32_t vma) {
+  W w = bus->phys_read(translate(vma, false));
+  if (watch_on && vma == watch_vma)
+    fprintf(stderr, "[watch] read  %08x -> %02o:%08x pc=%08x.%d op=%03o insn=%llu\n", vma, wtype(w), wdata(w),
+            (uint32_t)(pc >> 1), (int)(pc & 1), cur_opcode, (unsigned long long)icount);
+  return w;
+}
 void Ivory::write_raw(uint32_t vma, W w) {
   cpu_write(vma);
+  if (watch_on && vma == watch_vma)
+    fprintf(stderr, "[watch] write %08x <- %02o:%08x pc=%08x.%d op=%03o insn=%llu\n", vma, wtype(w), wdata(w),
+            (uint32_t)(pc >> 1), (int)(pc & 1), cur_opcode, (unsigned long long)icount);
   bus->phys_write(translate(vma, true, &w), w);
 }
 
@@ -452,9 +504,19 @@ void Ivory::error_trap(int cond, uint32_t vma) {
             cond, vma, (uint32_t)(pc >> 1), (int)(pc & 1), cur_opcode, (unsigned long long)icount,
             wtype(sread(restart_sp)), wdata(sread(restart_sp)), wtype(sread(restart_sp - 1)),
             wdata(sread(restart_sp - 1)));
-  if (log_errors && iv_phase)
+  if (log_errors && iv_phase) {
     fprintf(stderr, "[cpu]   instance variable: phase %d operand %03o fp=%08x map=%02o:%08x self=%02o:%08x off=%02o:%08x\n",
             iv_phase, iv_operand, fp, wtype(iv_map), wdata(iv_map), wtype(iv_self), wdata(iv_self), wtype(iv_off), wdata(iv_off));
+    if (cond == E_MEMORY_DATA_ERROR) {
+      // the word at the faulting address through the map cache and through a fresh PHT walk
+      MapEntry* e = map_lookup(vma >> 8);
+      uint32_t pa_c = e ? ((e->ppn << 8) | (vma & 0xFF)) : 0xFFFFFFFFu, pa_w = 0xFFFFFFFFu;
+      bool walked = pht_walk(vma, pa_w);
+      W wc = pa_c != 0xFFFFFFFFu ? bus->phys_read(pa_c) : 0, ww = walked ? bus->phys_read(pa_w) : 0;
+      fprintf(stderr, "[cpu]   vma %08x: map cache pa %08x word %02o:%08x; PHT walk %s pa %08x word %02o:%08x\n", vma,
+              pa_c, wtype(wc), wdata(wc), walked ? "ok" : "none", pa_w, wtype(ww), wdata(ww));
+    }
+  }
   iv_phase = 0;
   take_pre_trap(TV_ERROR, 2, args);
   throw InstructionAbort{};

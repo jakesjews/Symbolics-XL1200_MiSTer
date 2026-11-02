@@ -4,8 +4,12 @@
 // the status register, data moved through the board's DMA byte port.
 //
 // Images are raw SCSI2SD card dumps: each 1280-byte block in three 512-byte
-// sectors (block n at byte n*1536).  A block passes through a staging buffer
-// between the image and the DMA port.
+// sectors (block n at byte n*1536).  Blocks pass through a 16 KB staging
+// buffer between the image and the DMA port, a window of up to WIN blocks
+// (30 sectors) a request to MiSTer's main program instead of one block a
+// round trip; a window read stays valid and serves later reads that fall in
+// it (Genera's paging and Load World read sequentially), so ten single-block
+// reads in a row cost one round trip.
 //
 // A register access takes effect in the cycle it is accepted and is
 // acknowledged in the next.  With SYNC_IO a write of the command register is
@@ -73,12 +77,14 @@ module xl_scsi #(
   logic [7:0]    asc [8];
 
   // ---------------------------------------------------------------- staging buffer
-  logic [7:0]  stg [2048];
-  logic [10:0] stg_a;
+  localparam int WIN = 10;         // blocks a window: 30 sectors, 15 KB of the 16 KB
+  localparam int SECT = 1536;      // a block's three sectors
+  logic [7:0]  stg [16384];
+  logic [13:0] stg_a;
   logic        stg_we;
   logic [7:0]  stg_wd, stg_q;
   logic        sd_xfer;       // the image transfer owns the buffer
-  wire  [10:0] stg_addr = sd_xfer ? sd_buff_addr[10:0] : stg_a;
+  wire  [13:0] stg_addr = sd_xfer ? sd_buff_addr : stg_a;
   always_ff @(posedge clk) begin
     if (sd_xfer ? sd_buff_wr : stg_we) stg[stg_addr] <= sd_xfer ? sd_buff_dout : stg_wd;
     stg_q <= stg[stg_addr];
@@ -102,6 +108,13 @@ module xl_scsi #(
   logic [2:0]  tid;
   logic [7:0]  op;
   logic [31:0] lba, nblk, bi;    // first block, block count, block index
+  logic [3:0]  bk;               // the block's place in the window
+  logic [31:0] win_lba;          // the window's first block
+  logic [3:0]  win_n;            // blocks in it
+  logic [3:0]  req_n;            // blocks asked for
+  logic        win_valid;        // a read window the next read may be served from
+  logic [2:0]  win_tid;
+  wire  [13:0] bk_base = {bk, 10'd0} + {1'b0, bk, 9'd0};   // bk * SECT
   logic [23:0] cnt;              // the transfer count register while running
   logic [31:0] wr_left;          // data-out bytes still to take
   logic [10:0] bp;               // byte position in the response or block
@@ -161,8 +174,8 @@ module xl_scsi #(
   // ---------------------------------------------------------------- image requests
   always_comb begin
     for (int i = 0; i < NT; i++) begin
-      sd_lba[i] = (lba + bi) * 32'd3;
-      sd_blk_cnt[i] = 6'd2;          // three sectors
+      sd_lba[i] = win_lba * 32'd3;
+      sd_blk_cnt[i] = 6'({2'd0, req_n} * 6'd3 - 6'd1);   // three sectors a block
       sd_rd[i] = cs == C_RD_SD && tid == 3'(i);
       sd_wr[i] = cs == C_WR_SD && tid == 3'(i);
     end
@@ -173,7 +186,7 @@ module xl_scsi #(
   // ---------------------------------------------------------------- DMA
   always_comb begin
     dma_req = 1'b0; dma_we = 1'b0; dma_wdata = stg_q;
-    stg_a = bp; stg_we = 1'b0; stg_wd = dma_rdata;
+    stg_a = bk_base + 14'(bp); stg_we = 1'b0; stg_wd = dma_rdata;
     case (cs)
       C_RESP: begin
         dma_req = bp != resp_len && cnt != 24'd0;
@@ -213,11 +226,14 @@ module xl_scsi #(
       reg_done <= 1'b0;
       mr_pending <= 1'b0;
       bp_ok <= 1'b0;
+      win_valid <= 1'b0;
       for (int i = 0; i < 8; i++) begin sense_key[i] <= 4'd0; asc[i] <= 8'h00; end
     end else begin
       // Statuses and register reads are applied in order within the cycle.
       a = asr; n = npend; q = pend; st17 = regs[R_SCSI_STATUS];
       push = 1'b0; push_v = 8'h00; push2 = 1'b0; push2_v = 8'h00; start = 1'b0;
+
+      if (|img_mounted) win_valid <= 1'b0;   // a new image: the window is stale
 
       // ---- register access
       if (reg_ack) reg_done <= 1'b0;
@@ -273,6 +289,7 @@ module xl_scsi #(
           nblk <= nb;
           bp <= '0;
           bi <= '0;
+          bk <= '0;
           status <= 8'd0;
           if (tid == own_id || !present[tid]) begin
             regs[R_COMMAND_PHASE] <= 8'h00;
@@ -290,11 +307,22 @@ module xl_scsi #(
                 sense_key[tid] <= 4'd5; asc[tid] <= 8'h21; status <= 8'd2;
                 cs <= C_DONE;
               end else if (op == 8'h08 || op == 8'h28) begin
-                cs <= (cnt == 24'd0) ? C_DONE : C_RD_SD;
+                if (cnt == 24'd0) cs <= C_DONE;
+                else if (win_valid && win_tid == tid && l >= win_lba && l < win_lba + 32'(win_n)) begin
+                  bk <= 4'(l - win_lba);        // in the window already read
+                  cs <= C_RD_DMA;
+                end else begin
+                  win_valid <= 1'b0;
+                  win_lba <= l;
+                  req_n <= (blocks[tid] - l < 32'(WIN)) ? 4'(blocks[tid] - l) : 4'(WIN);
+                  cs <= C_RD_SD;
+                end
               end else begin
                 // The image is written only if the count covers every block.
                 wr_left <= ({8'd0, cnt} < nb * BLOCK) ? {8'd0, cnt} : nb * BLOCK;
                 wr_disk <= !readonly[tid] && {8'd0, cnt} >= nb * BLOCK;
+                win_valid <= 1'b0;              // the window may hold what is rewritten
+                win_lba <= l;                   // the write group's first block
                 cs <= (cnt == 24'd0) ? C_DONE : C_WR_DMA;
               end
             default: begin sense_key[tid] <= 4'd5; asc[tid] <= 8'h20; status <= 8'd2; cs <= C_DONE; end
@@ -311,7 +339,14 @@ module xl_scsi #(
           end
 
         C_RD_SD: if (ack8[tid]) cs <= C_RD_SD_W;
-        C_RD_SD_W: if (!ack8[tid]) begin bp <= '0; cs <= C_RD_DMA; end
+        C_RD_SD_W: if (!ack8[tid]) begin
+          win_valid <= 1'b1;
+          win_n <= req_n;
+          win_tid <= tid;
+          bk <= 4'(lba + bi - win_lba);
+          bp <= '0;
+          cs <= C_RD_DMA;
+        end
         // The block's byte bp reaches stg_q a cycle after bp is set.
         C_RD_DMA:
           if (dma_ack) begin
@@ -320,7 +355,14 @@ module xl_scsi #(
             if (cnt == 24'd1) cs <= C_DONE;
             else if (bp == 11'(BLOCK - 1)) begin
               bi <= bi + 32'd1;
-              cs <= (bi + 32'd1 == nblk) ? C_DONE : C_RD_SD;
+              bp <= '0;
+              if (bi + 32'd1 == nblk) cs <= C_DONE;
+              else if (bk + 4'd1 == win_n) begin    // the next window
+                win_valid <= 1'b0;
+                win_lba <= lba + bi + 32'd1;
+                req_n <= (blocks[tid] - (lba + bi + 32'd1) < 32'(WIN)) ? 4'(blocks[tid] - (lba + bi + 32'd1)) : 4'(WIN);
+                cs <= C_RD_SD;
+              end else bk <= bk + 4'd1;
             end
           end else bp_ok <= 1'b1;
 
@@ -334,14 +376,25 @@ module xl_scsi #(
             else bp <= '0;
           end
         end
-        C_WR_PAD:   // zero the rest of the third sector
-          if (bp == 11'd1535) cs <= C_WR_SD;
-          else bp <= bp + 11'd1;
+        C_WR_PAD:   // zero the rest of the third sector; the group goes to the
+                    // image when it fills the window or ends the command
+          if (bp == 11'd1535) begin
+            bi <= bi + 32'd1;
+            if (bi + 32'd1 == nblk || bk == 4'(WIN - 1)) begin
+              req_n <= bk + 4'd1;
+              cs <= C_WR_SD;
+            end else begin
+              bk <= bk + 4'd1;
+              bp <= '0;
+              cs <= C_WR_DMA;
+            end
+          end else bp <= bp + 11'd1;
         C_WR_SD: if (ack8[tid]) cs <= C_WR_SD_W;
         C_WR_SD_W: if (!ack8[tid]) begin
           bp <= '0;
-          bi <= bi + 32'd1;
-          cs <= (bi + 32'd1 == nblk) ? C_DONE : C_WR_DMA;
+          bk <= '0;
+          win_lba <= lba + bi;
+          cs <= (bi == nblk) ? C_DONE : C_WR_DMA;
         end
 
         C_DONE: begin

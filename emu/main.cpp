@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include "machine.h"
+#include "snapshot.h"
 #include "keyboard.h"
 
 // Print the control stack: each frame's PC and its first few arguments.
@@ -67,7 +68,9 @@ static uint64_t console_script(Console& console, const std::string& cmd) {
 }
 
 static void usage() {
-  fprintf(stderr, "usage: xlemu [-t tracefile] [-n insns] [-P prom.mem | -k kernel.fep] [-d disk.dd]\n");
+  fprintf(stderr, "usage: xlemu [-t tracefile] [-n insns] [-P prom.mem | -k kernel.fep] [-d disk.dd]\n"
+                  "             [-W snapshot] (write the machine's state when the run stops, and disk.dd to snapshot.disk)\n"
+                  "             [-R snapshot] (resume from it; -d must be a copy of its .disk; -Kat counts from the resume)\n");
   exit(1);
 }
 
@@ -82,6 +85,8 @@ int main(int argc, char** argv) {
   const char* dumpfile = nullptr;
   const char* progfile = nullptr;
   const char* videofile = nullptr;   // write video memory as a PGM image at exit
+  const char* snap_write = nullptr;  // -W: the snapshot to write when the run stops
+  const char* snap_read = nullptr;   // -R: the snapshot to resume from
   // The FEP disk: a working copy, made from the original the first time, so
   // nothing the emulated machine writes reaches the original image.
   std::string disk0 = "../research/media/disks/fepfs-lmfs-kernel.dd";
@@ -103,6 +108,8 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[i], "-p") && i + 1 < argc) progfile = argv[++i];
     else if (!strcmp(argv[i], "-d") && i + 1 < argc) disk0 = argv[++i];
     else if (!strcmp(argv[i], "-V") && i + 1 < argc) videofile = argv[++i];
+    else if (!strcmp(argv[i], "-W") && i + 1 < argc) snap_write = argv[++i];
+    else if (!strcmp(argv[i], "-R") && i + 1 < argc) snap_read = argv[++i];
     else if (!strcmp(argv[i], "-x") && i + 1 < argc) stop_hpc = strtoull(argv[++i], nullptr, 0);
     else if (!strcmp(argv[i], "-Ts") && i + 1 < argc) trace_from = strtoull(argv[++i], nullptr, 0);
     else if (!strcmp(argv[i], "-S") && i + 1 < argc) disk_stride = strtoul(argv[++i], nullptr, 0);
@@ -116,7 +123,13 @@ int main(int argc, char** argv) {
   Machine m(16u << 20);  // 16 MW, the XL1200's most
   // The calendar clock runs 28 years behind (same weekdays), as the core does
   // by default: Genera 8.3 doesn't accept a two-digit year past 1999.
-  if (!getenv("XLEMU_CLOCK_TODAY"))
+  // XLEMU_EPOCH=N: the calendar clock starts at Unix time N and runs on the
+  // machine's own cycles, so two runs execute the same instructions (a
+  // reproducible instruction count for traces).
+  if (const char* ep = getenv("XLEMU_EPOCH")) {
+    time_t epoch = (time_t)strtoull(ep, nullptr, 0);
+    m.nvram.set_time_source([epoch, &m] { return epoch + (time_t)(m.microsecond_clock() / 1000000u); });
+  } else if (!getenv("XLEMU_CLOCK_TODAY"))
     m.nvram.set_time_source([] {
       time_t t = time(nullptr);
       struct tm tm;
@@ -164,6 +177,7 @@ int main(int argc, char** argv) {
   }
   m.attach_disk(0, disk0, 1280, disk_stride);
   cpu.log_errors = getenv("XLEMU_ERRLOG") != nullptr;
+  if (const char* wv = getenv("XLEMU_WATCH")) { cpu.watch_vma = (uint32_t)strtoul(wv, nullptr, 16); cpu.watch_on = true; }
   m.fpa_fitted = getenv("XLEMU_NO_FPA") == nullptr;
   m.iob.scsi.trace = getenv("SCSI_TRACE") ? atoi(getenv("SCSI_TRACE")) : 0;
   m.iob.ether.trace = getenv("ETHER_TRACE") != nullptr;
@@ -174,6 +188,13 @@ int main(int argc, char** argv) {
   } else {
     m.load_prom(prom);
     cpu.init();
+  }
+  if (getenv("XLEMU_MAPCHECK")) cpu.map_check = true;
+  if (const char* v = getenv("XLEMU_PHTVMA")) { cpu.pht_vma = strtoul(v, nullptr, 16); cpu.pht_vma_on = true; }
+  if (snap_read) {
+    if (!Snapshot::load(snap_read, cpu, m)) return 1;
+    fprintf(stderr, "resumed from %s at instruction %llu\n", snap_read, (unsigned long long)cpu.icount);
+    type_at += cpu.icount;   // -Kat counts from here
   }
 
   if (tracefile) {
@@ -263,6 +284,15 @@ int main(int argc, char** argv) {
     fprintf(f, "# video control %08x, sync address %u\n", m.iob.video_control, m.iob.sync_address);
     for (size_t i = 0; i < m.iob.sync_program.size(); i++) fprintf(f, "%04zx %08x\n", i, m.iob.sync_program[i]);
     fclose(f);
+  }
+  if (cpu.pht_vma_on) cpu.pht_report("end");
+  if (snap_write) {
+    if (Snapshot::save(snap_write, cpu, m)) {
+      std::error_code ec;
+      std::filesystem::copy_file(disk0, std::string(snap_write) + ".disk", std::filesystem::copy_options::overwrite_existing, ec);
+      fprintf(stderr, "snapshot %s at instruction %llu%s\n", snap_write, (unsigned long long)cpu.icount,
+              ec ? " (disk copy failed)" : " with its disk");
+    }
   }
   if (dumpfile) {
     // Dump physical memory as 64-bit words.

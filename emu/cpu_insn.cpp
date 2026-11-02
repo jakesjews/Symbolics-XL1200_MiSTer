@@ -58,11 +58,25 @@ void Ivory::step() {
     bool odd = pc & 1;
     // The last instruction word is kept: the second halfword instruction of a
     // word doesn't fetch (or translate) it again (as the RTL).
-    W w = ib_valid && ib_addr == waddr ? ib_word : fetch_word(waddr);
+    bool fetched = !(ib_valid && ib_addr == waddr);
+    W w = fetched ? fetch_word(waddr) : ib_word;
     ib_valid = true;
     ib_addr = waddr;
     ib_word = w;
     int t = wtype(w), cdr = wcdr(w);
+    // Executing an instruction from a page with the transport-trap bit set
+    // takes a transport trap (spec, Revision 0 implementation notes: that
+    // implementation always traps; later ones check for oldspace, as here): a
+    // pointer constant in compiled code may point into oldspace after a flip,
+    // before the scavenger reaches the page.  The trap names the word, the
+    // handler transports it, and the instruction restarts.
+    if (fetched && is_pointer_type(t) && t != DTP_NULL && oldspace_address(wdata(w)) && page_transport_enabled(waddr)) {
+      ib_valid = false;
+      if (log_errors)
+        fprintf(stderr, "[cpu] transport trap on instruction fetch: %02o:%08x at %08x insn %llu\n", t, wdata(w), waddr,
+                (unsigned long long)icount);
+      memory_trap(TV_TRANSPORT, mkw(DTP_LOCATIVE, waddr));
+    }
     // sequential successor per the cdr-code sequencing rules
     switch (cdr) {
     case 0: next_pc = pc + 1; break;
@@ -1873,7 +1887,12 @@ void Ivory::write_internal_register(int r, W w) {
   case IR_CONTINUATION: cont = stripcdr(w); return;
   case IR_ALU_AND_ROTATE_CONTROL: alu_control = wdata(w); return;
   case IR_CONTROL_REGISTER: cr = wdata(w); return;
-  case IR_EPHEMERAL_OLDSPACE: ephemeral_oldspace = wdata(w); return;
+  case IR_EPHEMERAL_OLDSPACE:
+    if (log_errors || map_check)
+      fprintf(stderr, "[cpu] ephemeral-oldspace <- %08x (was %08x) at pc=%08x.%d insn=%llu\n", wdata(w), ephemeral_oldspace,
+              (uint32_t)(pc >> 1), (int)(pc & 1), (unsigned long long)icount);
+    if (pht_vma_on) pht_report("flip");
+    ephemeral_oldspace = wdata(w); return;
   case IR_ZONE_OLDSPACE: zone_oldspace = wdata(w); return;
   case IR_FP_COPROCESSOR_PRESENT:
     if (log_errors && wdata(w) != fp_coprocessor_present)

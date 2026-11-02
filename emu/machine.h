@@ -11,6 +11,7 @@
 #include "pit.h"
 
 class Machine : public Bus {
+  friend struct Snapshot;
 public:
   // nvram_path: where the NVRAM persists ("" for nowhere)
   explicit Machine(uint32_t ram_words, const std::string& nvram_path = "xl1200.nvram");

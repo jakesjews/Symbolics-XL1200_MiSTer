@@ -324,7 +324,7 @@
     rsp <= 3'd1;
     st <= target;
   endtask
-  task automatic decode(input word_t w, input logic [32:0] ipc);
+  task automatic decode(input word_t w, input logic [32:0] ipc, input logic from_mem);
     logic [17:0] h;
     logic [31:0] oa;
     opv_pre <= 1'b0;
@@ -365,6 +365,25 @@
       end
     end else if (ipc[0]) begin
       err(E_I_STAGE, ipc[32:1]);
+    end else if (is_pointer_type(wtype(w)) && wtype(w) != DTP_NULL && oldspace_address(w[31:0]) &&
+                 (!from_mem || m_trans)) begin
+      // Executing an instruction from a page with the transport-trap bit set
+      // takes a transport trap (spec, Revision 0 implementation notes; later
+      // revisions check for oldspace, as the model does): a pointer constant
+      // in compiled code may point into oldspace after a flip, before the
+      // scavenger reaches the page.  A word from the cache is read again
+      // through the memory stage for the page's transport bit (m_trans); the
+      // handler transports the word and the instruction restarts.
+      if (from_mem) begin
+        tr_args[0] <= mkw(DTP_LOCATIVE, ipc[32:1]);
+        pre_trap(TV_TRANSPORT, 3'd1);
+      end else begin
+        mem_rd(ipc[32:1], 1'b0);
+        fetch_mem <= 1'b0;
+        rstack[0] <= S_FETCH_W;
+        rsp <= 3'd1;
+        st <= S_MEM_W;
+      end
     end else begin
       // execute_fullword
       case (wtype(w))
@@ -434,7 +453,7 @@
       if (ic_hit) begin
         iw <= ic_word;
         fetch_mem <= 1'b0;
-        decode(ic_word, fpc);
+        decode(ic_word, fpc, 1'b0);
       end else begin
         mem_rd(fpc[32:1], 1'b0);
         fetch_mem <= 1'b1;
@@ -563,7 +582,7 @@
           if (fetch_mem && m_pa_valid) begin
             ic_fill <= 1'b1; ic_fill_va <= inst_pc[32:1]; ic_fill_pa <= m_pa; ic_fill_word <= m_rd;
           end
-          decode(m_rd, inst_pc);
+          decode(m_rd, inst_pc, 1'b1);
         end
 
         S_FW_IND: begin

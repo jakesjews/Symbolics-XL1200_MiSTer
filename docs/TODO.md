@@ -18,7 +18,12 @@ In the order they'll be done. Bugs come first whenever they turn up.
    readers and writers live in the table as compiled functions). The
    emulator replays the whole Color and CLIM load from the master disk in
    minutes; the fix is checked there first, then in lockstep and on the
-   MiSTer. Still open: the freeze four minutes into the first CLIM load on
+   MiSTer. The same load then hit a stale pointer constant in compiled
+   code after an ephemeral flip: the chip takes a transport trap when it
+   executes an instruction from a page whose transport-trap bit is set
+   (spec appendix), which neither implementation did; both do now, the
+   emulator finished the CLIM load with it (NOTES.md, "The third trap"),
+   the MiSTer check is next. Still open: the freeze four minutes into the first CLIM load on
    build 40 (the who-line clock stopped, no response; the second attempt
    got further and trapped instead), which the OSD halt and stall notices
    in the next build would name if it comes back.
@@ -62,14 +67,11 @@ In the order they'll be done. Bugs come first whenever they turn up.
    proxy ARP on the MiSTer; namespace entries for the hosts Genera should
    talk to (its FTP and file servers refuse strangers), from `mkworld`; an
    Ethernet address per core.
-6. Disk throughput: the SCSI model moves one 1280-byte block a request
-   through MiSTer's image path (three 512-byte sectors into a 2 KB staging
-   buffer, one round trip to the main program each), so Save World wrote at
-   about 125 blocks a second, 160 KB/s, and Load World and paging are
-   bounded the same way; a 1990 SCSI disk did several times that. Measure
-   Load World, Save World and paging on the MiSTer, then move many blocks a
-   request (`sd_blk_cnt` allows 64 sectors) through a bigger staging buffer
-   or straight into DDR3, with read-ahead on sequential reads.
+6. Disk throughput: the SCSI model now moves ten blocks a request with a
+   read window (before: one 1280-byte block a round trip, Save World at
+   about 125 blocks a second, 160 KB/s). Measure Load World, Save World and
+   paging on the MiSTer against that; a 1990 SCSI disk did several times
+   the old figure. If still short, read straight into DDR3.
 7. A color screen without the FrameThrower, optional: emulate the Univision
    UDC-3400, the third-party VME color board Symbolics sold for the XL400,
    whose driver is in source on the 8.3 CD (`sys.sct/color/univision*.lisp`,

@@ -165,6 +165,7 @@ int main(int argc, char** argv) {
       }
     }
   };
+  if (getenv("XLEMU_ERRLOG")) ref.log_errors = true;   // the model's trap log, as xlemu's
   uint64_t from = getenv("LOCKSTEP_FROM") ? strtoull(getenv("LOCKSTEP_FROM"), nullptr, 0) : 0;
   if (from) {
     auto f0 = std::chrono::steady_clock::now();

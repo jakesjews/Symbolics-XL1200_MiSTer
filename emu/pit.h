@@ -10,6 +10,7 @@
 
 class Pit82C54 {
   friend struct ModelState;   // sim/system: copies state into the RTL
+  friend struct Snapshot;     // emu/snapshot.cpp: saves and restores the state
 public:
   void write(int reg, uint8_t v);
   void tick(uint64_t clocks);     // advance by n 1 MHz clocks

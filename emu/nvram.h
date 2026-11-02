@@ -10,6 +10,7 @@
 
 class Nvram {
   friend struct ModelState;   // sim/system: copies state into the RTL
+  friend struct Snapshot;     // emu/snapshot.cpp: saves and restores the state
 public:
   static const uint32_t SIZE = 2048;
   explicit Nvram(const std::string& path = "");
