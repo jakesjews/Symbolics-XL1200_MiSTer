@@ -958,10 +958,14 @@ void Ivory::exec_op(int op, int operand) {
     uint32_t boff = (wdata(ctl) >> 22) & 31;
     uint32_t i2 = idx + boff;
     uint32_t wa0 = wdata(base) + (i2 >> bp);
+    // The base is a locative, or a physical address for an array indirected
+    // to a device (spec 3.4): then the element references are physical too.
+    bool phys = wtype(base) == DTP_PHYSICAL_ADDRESS;
+    W ea = mkw(phys ? DTP_PHYSICAL_ADDRESS : DTP_LOCATIVE, wa0);
     if (op == 0350) {
-      if (bp == 0 && etype == 3) { push(mem_read(mkw(DTP_LOCATIVE, wa0), CYC_DATA_READ)); return; }
+      if (bp == 0 && etype == 3) { push(mem_read(ea, CYC_DATA_READ)); return; }
       uint32_t wa;
-      W word = mem_read(mkw(DTP_LOCATIVE, wa0), CYC_DATA_READ, &wa);
+      W word = mem_read(ea, CYC_DATA_READ, &wa);
       if (bp && wtype(word) != DTP_FIXNUM) error_trap(E_BYTE_ARRAY_WORD_TYPE, wa);
       uint32_t x = wdata(word);
       if (bp) { int bits = 32 >> bp; int sub = i2 & ((1 << bp) - 1); x = (x >> (sub * bits)) & (uint32_t)((1ull << bits) - 1); }
@@ -988,9 +992,9 @@ void Ivory::exec_op(int op, int operand) {
     case 2: v = wtype(val) != DTP_NIL ? 1 : 0; break;
     default: v = 0; break;
     }
-    if (bp == 0 && etype == 3) { mem_write(mkw(DTP_LOCATIVE, wa0), CYC_DATA_WRITE, val, true); return; }
+    if (bp == 0 && etype == 3) { mem_write(ea, CYC_DATA_WRITE, val, true); return; }
     uint32_t wa;
-    W word = mem_read(mkw(DTP_LOCATIVE, wa0), CYC_DATA_READ, &wa);
+    W word = mem_read(ea, CYC_DATA_READ, &wa);
     if (wtype(word) != DTP_FIXNUM) { sp = restart_sp; error_trap(E_BYTE_ARRAY_WORD_TYPE, wa); }
     uint32_t x = wdata(word);
     if (bp) {
@@ -998,7 +1002,7 @@ void Ivory::exec_op(int op, int operand) {
       uint32_t m = (uint32_t)((1ull << bits) - 1) << (sub * bits);
       x = (x & ~m) | ((v << (sub * bits)) & m);
     } else x = v;
-    write_raw(wa, setdata(word, x));
+    write_addr(mkw(phys ? DTP_PHYSICAL_ADDRESS : DTP_LOCATIVE, wa), setdata(word, x));
     return;
   }
   case 0316: case 0317: case 0314: {  // array-leader, aloc-leader, store-array-leader

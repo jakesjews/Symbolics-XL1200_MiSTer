@@ -455,3 +455,17 @@ compatibility pass, and the clock is chosen after that.
    on the Merlin-II divided by two, as inferred for the MacIvory III; fib's
    instruction count against the XL1201's time gives 4.2 cycles an
    instruction at that rate, which fits the chip's pipeline.
+
+## Arrays on physical addresses
+
+An array register's base is a locative, or a physical address when the
+array is indirected to a device (spec 3.4, "Representation of Physical
+Addresses": "it is here that a fast-aref-1/aset-1 instruction will
+encounter a dtp-physical-address"). `fast-aref-1` and `fast-aset-1` make
+their element references with the base's type, so a bus array (Genera's
+`sys:make-bus-array`, every VMEbus raster of the Color system) is read and
+written on the bus; before Nov 2 2026 the core made them locatives and the
+access took a page fault on the physical address as a virtual one. Nothing
+in a plain Genera 8.3 boot, the console, the disk or the network uses such
+arrays (those go through `%memory-read`, `%p-ldb` and block address
+registers, which always handled physical addresses).

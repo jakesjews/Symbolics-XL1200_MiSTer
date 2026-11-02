@@ -577,9 +577,12 @@
           else begin rot_x <= aset_value(val, etype); st <= S_AREF_8; end   // the value, not the word read
         end
         S_AREF_8: begin
+          // the word read back with the element in it, where it was read
+          // (a physical address when the array register's base is one)
           logic [31:0] mask;
           mask = msk_q & ~msk2_q;
-          swrite(mr_final, setdata(mr_d, (mr_d[31:0] & ~mask) | (rot_q & mask)), S_RETIRE);
+          mem_wr(mr_final, setdata(mr_d, (mr_d[31:0] & ~mask) | (rot_q & mask)), mr_phys, mr_phys);
+          call(S_MEM_W, S_RETIRE);
         end
 
         // setup-1d-array, setup-force-1d-array
@@ -651,22 +654,27 @@
         S_FAST_ACCESS: begin
           logic [2:0] fbp;
           logic [1:0] fet;
+          logic [5:0] ft;
           logic [31:0] i2, wa0;
           logic [6:0] ec;
           fbp = t0[29:27];
           fet = t0[31:30];
+          // The base is a locative, or a physical address for an array
+          // indirected to a device (spec 3.4, "Representation of Physical
+          // Addresses"): then the element references are physical too.
+          ft = wtype(t1) == DTP_PHYSICAL_ADDRESS ? DTP_PHYSICAL_ADDRESS : DTP_LOCATIVE;
           i2 = a2[31:0] + {27'd0, t0[26:22]};
           wa0 = t1[31:0] + (i2 >> fbp);
           bp <= fbp; etype <= fet; idx <= i2;
           ec = aset_check(val, fet, fbp);
           elem_units(fbp, i2[4:0], op != 8'o350);
           if (op == 8'o350) begin
-            if (fbp == 3'd0 && fet == 2'd3) mrd(mkw(DTP_LOCATIVE, wa0), CYC_DATA_READ, S_PUSH_MRD);
-            else mrd(mkw(DTP_LOCATIVE, wa0), CYC_DATA_READ, S_AREF_6);
+            if (fbp == 3'd0 && fet == 2'd3) mrd(mkw(ft, wa0), CYC_DATA_READ, S_PUSH_MRD);
+            else mrd(mkw(ft, wa0), CYC_DATA_READ, S_AREF_6);
           end else begin
             if (ec != E_NONE) err(ec, 32'd0);
-            else if (fbp == 3'd0 && fet == 2'd3) mwr(mkw(DTP_LOCATIVE, wa0), CYC_DATA_WRITE, val, 1'b1, S_RETIRE);
-            else mrd(mkw(DTP_LOCATIVE, wa0), CYC_DATA_READ, S_AREF_7);
+            else if (fbp == 3'd0 && fet == 2'd3) mwr(mkw(ft, wa0), CYC_DATA_WRITE, val, 1'b1, S_RETIRE);
+            else mrd(mkw(ft, wa0), CYC_DATA_READ, S_AREF_7);
           end
         end
 
