@@ -169,6 +169,29 @@ module xl_fpa_unit (
     st <= next;
   endtask
 
+  // The operands unpacked (S_UNPACK) and an add's alignment, outside the
+  // state machine so that one 64-bit right shifter and one mask serve the
+  // alignment and the integer conversions (S_TOINT): never the same cycle.
+  unp_t        a_c, b_c;
+  logic        unary_c, swap_c;
+  logic [13:0] span_c, toint_sh;
+  logic [63:0] shr_in, shr_out, shr_low;
+  logic [5:0]  shr_n;
+  always_comb begin
+    unary_c = op_r == F_SQRT || op_r == F_ZEROP || op_r == F_MINUSP || op_r == F_PLUSP ||
+              op_r == F_NEG || op_r == F_ABS || op_r >= F_I2D;
+    a_c = unpack(src_d, unary_c ? y_r : x_r);
+    b_c = op_r == F_ZEROP || op_r == F_MINUSP || op_r == F_PLUSP ? '0
+        : unpack(src_d, op_r == F_SUB ? y_r ^ (src_d ? 64'h8000_0000_0000_0000 : 64'h8000_0000) : y_r);
+    swap_c = $signed(a_c.e) < $signed(b_c.e) || (a_c.e == b_c.e && a_c.m < b_c.m);
+    span_c = (swap_c ? b_c.e : a_c.e) - (swap_c ? a_c.e : b_c.e);
+    toint_sh = 14'sd62 - ua_r.e;
+    shr_in = st == S_TOINT ? ua_r.m : swap_c ? a_c.m : b_c.m;
+    shr_n = st == S_TOINT ? toint_sh[5:0] : span_c[5:0];
+    shr_out = shr_in >> shr_n;
+    shr_low = ~({64{1'b1}} << shr_n);   // the bits shifted out
+  end
+
   always_ff @(posedge clk) begin
     done <= 1'b0;
     if (reset) st <= S_IDLE;
@@ -187,11 +210,9 @@ module xl_fpa_unit (
         logic [7:0] f;
         logic [1:0] c;
         logic [63:0] sign;
-        unary = op_r == F_SQRT || op_r == F_ZEROP || op_r == F_MINUSP || op_r == F_PLUSP ||
-                op_r == F_NEG || op_r == F_ABS || op_r >= F_I2D;
-        a = unpack(src_d, unary ? y_r : x_r);
-        b = op_r == F_ZEROP || op_r == F_MINUSP || op_r == F_PLUSP ? '0
-          : unpack(src_d, op_r == F_SUB ? y_r ^ (src_d ? 64'h8000_0000_0000_0000 : 64'h8000_0000) : y_r);
+        unary = unary_c;
+        a = a_c;
+        b = b_c;
         sign = d_r ? 64'h8000_0000_0000_0000 : 64'h8000_0000;
         f = '0;
         if (op_r != F_I2D && op_r != F_I2S && op_r != F_IMUL) begin   // float operands
@@ -211,19 +232,15 @@ module xl_fpa_unit (
             else if (b.c == C_ZERO) to_round(a.s, a.e, a.m, 1'b0, S_ROUND);
             else if (a.c == C_ZERO) to_round(b.s, b.e, b.m, 1'b0, S_ROUND);
             else begin
-              logic swap;
               unp_t ub, us;
-              logic [13:0] span;
               logic [63:0] sm;
               logic stk;
-              swap = $signed(a.e) < $signed(b.e) || (a.e == b.e && a.m < b.m);
-              ub = swap ? b : a;
-              us = swap ? a : b;
-              span = ub.e - us.e;
-              if (span >= 14'd64) begin sm = '0; stk = us.m != 64'd0; end
+              ub = swap_c ? b : a;
+              us = swap_c ? a : b;
+              if (span_c >= 14'd64) begin sm = '0; stk = us.m != 64'd0; end
               else begin
-                sm = us.m >> span[5:0];
-                stk = (us.m & ~({64{1'b1}} << span[5:0])) != 64'd0;
+                sm = shr_out;                        // us.m >> span
+                stk = (us.m & shr_low) != 64'd0;     // the bits shifted out
               end
               am <= ub.m; bm <= sm; diff <= ub.s != us.s;
               to_round(ub.s, ub.e, '0, stk, S_ADD);
@@ -385,13 +402,13 @@ module xl_fpa_unit (
         logic [13:0] sh;
         logic [63:0] ip, mag;
         logic below, g, lower, inexact, up;
-        sh = 14'sd62 - ua_r.e;
+        sh = toint_sh;
         if (sh >= 14'd64) begin ip = '0; below = 1'b1; g = 1'b0; lower = 1'b1; end
         else begin
-          ip = ua_r.m >> sh[5:0];
+          ip = shr_out;                                   // ua_r.m >> sh
           below = 1'b0;
           g = sh != 14'd0 && ua_r.m[sh[5:0] - 6'd1];
-          lower = sh > 14'd1 && (ua_r.m & ~({64{1'b1}} << (sh[5:0] - 6'd1))) != 64'd0;
+          lower = (ua_r.m & (shr_low >> 1)) != 64'd0;     // the bits below sh-1
         end
         inexact = g | lower;
         case (md_r)

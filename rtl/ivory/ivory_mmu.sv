@@ -97,21 +97,21 @@ module ivory_mmu
   assign cpu_rdata = bus_rdata;
   assign cpu_pa = bus_addr;
 
-  // lookup of the request's page, and of the control registers' page
+  // lookup of the request's page, or of the control registers' page while a
+  // load or invalidate is pending (a request waits for those): one set of
+  // comparators and one encoder serve both
+  logic [23:0] look_vpn;
   logic [15:0] req_match, ctl_match;
   logic        req_hit;
   logic [3:0]  req_ix, ctl_ix;
   always_comb begin
-    for (int i = 0; i < 16; i++) begin
-      req_match[i] = tlb_valid[i] && tlb[i].vpn == cpu_addr[31:8];
-      ctl_match[i] = tlb_valid[i] && tlb[i].vpn == ctl_vpn;
-    end
+    look_vpn = load_pend || inval_pend ? ctl_vpn : cpu_addr[31:8];
+    for (int i = 0; i < 16; i++) req_match[i] = tlb_valid[i] && tlb[i].vpn == look_vpn;
+    ctl_match = req_match;
     req_hit = |req_match;
-    req_ix = 4'd0; ctl_ix = 4'd0;
-    for (int i = 15; i >= 0; i--) begin
-      if (req_match[i]) req_ix = 4'(i);
-      if (ctl_match[i]) ctl_ix = 4'(i);
-    end
+    req_ix = 4'd0;
+    for (int i = 15; i >= 0; i--) if (req_match[i]) req_ix = 4'(i);
+    ctl_ix = req_ix;
   end
 
   task automatic bus_rd(input logic [31:0] pa);

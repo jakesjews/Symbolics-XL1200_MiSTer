@@ -64,7 +64,6 @@ wire [127:0] status;
 wire  [10:0] ps2_key;
 wire  [24:0] ps2_mouse;
 wire  [64:0] rtc;
-wire         forced_scandoubler;
 
 wire  [NT-1:0] img_mounted;
 wire           img_readonly;
@@ -80,14 +79,15 @@ wire           sd_buff_wr;
 reg        info_req = 0;      // an OSD message, below
 reg  [7:0] info = 0;
 
+wire [21:0]  gamma_bus;     // the OSD's gamma tables, to gamma_fast
 hps_io #(.CONF_STR(CONF_STR), .VDNUM(NT), .BLKSZ(2)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
 	.EXT_BUS(),
-	.gamma_bus(),
+	.gamma_bus(gamma_bus),
 
-	.forced_scandoubler(forced_scandoubler),
+	.forced_scandoubler(),
 
 	.buttons(buttons),
 	.status(status),
@@ -330,26 +330,45 @@ wire        vga_de;
 assign CLK_VIDEO = clk_vid;
 assign VGA_SL = 0;
 
-// No gamma: gamma_corr samples on the rising edge of ce_pix, which needs a
-// video clock four times the pixel rate, and the dot clock is the pixel rate.
+// Gamma from the OSD through the framework's gamma_fast (three tables, one
+// lookup a pixel), since the video clock is the pixel clock; the mixer's own
+// gamma_corr reads its one table four times a pixel and would need a video
+// clock four times the dot clock. Two pixels of latency, the syncs and
+// blanking delayed with the pixels.
+wire [23:0] pix_g;
+wire        hs_g, vs_g, hblank_g, vblank_g;
+gamma_fast gamma
+(
+	.clk_vid(CLK_VIDEO),
+	.ce_pix(1'b1),
+	.gamma_bus(gamma_bus),
+	.HSync(hs), .VSync(vs), .HBlank(hblank), .VBlank(vblank), .DE(1'b0),
+	.RGB_in(pix),
+	.HSync_out(hs_g), .VSync_out(vs_g), .HBlank_out(hblank_g), .VBlank_out(vblank_g), .DE_out(),
+	.RGB_out(pix_g)
+);
+
 video_mixer #(.LINE_LENGTH(1152), .HALF_DEPTH(0), .GAMMA(0)) video_mixer
 (
 	.CLK_VIDEO(CLK_VIDEO),
 	.CE_PIXEL(CE_PIXEL),
 	.ce_pix(1'b1),
 
-	.scandoubler(forced_scandoubler),
+	// No scandoubler: the console's raster is 1152x880 progressive at 54.35 kHz
+	// lines, and doubling it (MiSTer.ini's forced_scandoubler) would make 109 kHz
+	// that no display takes. The constant removes the doubler and its Hq2x filter.
+	.scandoubler(1'b0),
 	.hq2x(1'b0),
 	.gamma_bus(),
 
-	.R(pix[23:16]),
-	.G(pix[15:8]),
-	.B(pix[7:0]),
+	.R(pix_g[23:16]),
+	.G(pix_g[15:8]),
+	.B(pix_g[7:0]),
 
-	.HSync(hs),
-	.VSync(vs),
-	.HBlank(hblank),
-	.VBlank(vblank),
+	.HSync(hs_g),
+	.VSync(vs_g),
+	.HBlank(hblank_g),
+	.VBlank(vblank_g),
 
 	.HDMI_FREEZE(1'b0),
 	.freeze_sync(),

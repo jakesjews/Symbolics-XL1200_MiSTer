@@ -1392,6 +1392,48 @@ memory is shown even while the FEP has the display off.
 
 ## Quartus and MiSTer lessons
 
+### Where the logic goes, and what was trimmed (Nov 2 2026)
+
+The fitter's entity table for seed 9 (34,690 ALMs): the Ivory processor
+16,844; the framework about 6,400 (scaler 2,046, audio 876, the two OSDs,
+one per output path, 1,089, HPS I/O 525); the I/O board 2,734 (SCSI 916,
+82586 819, video 323, console 285); FPA 2,495; MMU 1,704 (the chip's
+16-entry map cache, in registers); instruction cache 682; color board 608;
+Ethernet bridge 708. Nothing is there for the model or the benches: the
+lockstep paths hang off the `LOCKSTEP` parameter, 0 in the build, and the
+instruction counter and halt code only feed the debug words of `XL_DEBUG`.
+
+Measured by synthesis alone (`quartus_map`, five minutes, "Implemented N
+logic cells", against 68,536 for commit bf411b0), three changes with no
+effect on behavior went in:
+
+- FPA: one 64-bit right shifter and sticky mask serve both the add
+  alignment and the integer conversions (different states); with the MMU's
+  one set of 16 comparators and one encoder for the request and the
+  load/invalidate lookups (a request waits while those are pending):
+  223 logic cells.
+- The scandoubler tied off in `XL1200.sv` (and Hq2x with it): 818 logic
+  cells and 144 RAM segments (58 M10K, a tenth of the device's). The
+  console's raster is 1152x880 progressive at 54.35 kHz lines; doubling it
+  on `forced_scandoubler=1` gave 109 kHz that no display takes, so the
+  doubler had no working mode. HDMI is unaffected (the scaler always took
+  the native raster when the doubler was off, the default).
+
+Added at the same time, for the color board's sake: the OSD's gamma through
+the framework's `gamma_fast` (three tables, one lookup a pixel, instantiated
+in `XL1200.sv` between the pixels and the mixer). The mixer's own
+`gamma_corr` reads one table four times a pixel on a video clock four times
+the pixel rate, which an 80 MHz dot clock cannot give, which is why the core
+had no gamma before. Three M10K and a few dozen ALMs. All of it together,
+by synthesis: 67,537 logic cells and 1,867 RAM segments, down 999 and 120.
+
+Measured and kept out, the user's choice: `MISTER_DOWNSCALE_NN` with
+`MISTER_DISABLE_ADAPTIVE` would save 470 logic cells and 40 RAM segments
+but drop the HDMI scaler's adaptive filter and polyphase downscaling.
+Left for later, each needing an extra cycle or a mux in a critical path:
+the processor's four other barrel shifters (two in `ash`, the bignum shift,
+the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
+
 - Screenshots with direct video on: MiSTer's own `screenshot` command grabs
   the scaler's frame buffer, which with direct video is a low-resolution
   shadow of the picture, so the tests used to turn direct video off in the
