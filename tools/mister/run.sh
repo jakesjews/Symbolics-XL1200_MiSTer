@@ -4,6 +4,8 @@
 #   tools/mister/run.sh shot OUT.png  take a screenshot and fetch it
 #   tools/mister/run.sh type TEXT     type on the core (tools/mister/kbd.py)
 #   tools/mister/run.sh mgl NAME      start the core from _Computer/NAME.mgl (mounts its disk)
+# With direct video on, MiSTer's screenshots are tiny; tools/mister/rt4k.py captures
+# the picture at the RetroTink instead (rt4k.py capture OUT.png).
 set -euo pipefail
 # file arguments are relative to where this is run from
 if [ $# -ge 2 ] && [ "$1" != type ] && [ "$1" != mgl ] && [ "${2#/}" = "$2" ]; then set -- "$1" "$PWD/$2"; fi
