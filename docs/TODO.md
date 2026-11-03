@@ -157,9 +157,10 @@ In the order they'll be done. Bugs come first whenever they turn up.
    [NOTES.md](NOTES.md#the-fat-world-version-3-nov-2-2026)), has every
    application of the checklist that runs on an Ivory in one world
    (`Genera-8-3-fat.ilod.4`), Flavors Statice in its own small world.
-   Left: a boot-and-use check of each on the MiSTer; a lock server for
-   Concordia's saves; a Statice database; Macsyma and NS stop at their
-   license passwords.
+   The XL1200 serves Concordia's locks and has a Statice file system with
+   a sample database. Left: a boot-and-use check of the rest on the MiSTer
+   (docs/applications.md); a save from Concordia itself; Illustrate's frame
+   never appears; Macsyma and NS stop at their license passwords.
 12. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
 13. Speed, only if the machine is really behind: measured after each step
     (`PROFILE=1` on `sim/system` counts cycles by state) and against the

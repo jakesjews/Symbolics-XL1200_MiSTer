@@ -866,11 +866,43 @@ images (`images:mandelbrot;`, `images:8bit;`) and S-Colorize opens. A
 Fractals' images draw without a color map. `docs/applications.md` has the
 whole list.
 
+Then on the MiSTer, into the image itself (no new world: the changes are
+the namespace and files on the disk):
+
+- The XL1200 is its own Concordia lock server. Concordia locks a record
+  before saving it through Lock Simple, a network service (protocol
+  `:lock-simple`, TCP port 666) it looks for on the host holding the file or
+  on a `:lock-simple-server` named by the host or the site. The host object
+  got the service triple `LOCK-SIMPLE TCP LOCK-SIMPLE` (its property list's
+  `:service`, then `net:update-object-permanently`, as Statice's Add DBFS
+  PAGE Service does). The server takes only trusted hosts
+  (`:reject-unless-trusted`), and the standalone site trusted none, so even
+  the XL1200 connecting to itself was refused: the site's SECURE-SUBNETS is
+  now `INTERNET All` (the user's call: security doesn't matter here), then
+  `(tcp::parse-secure-subnets)`. After a reboot,
+  `(lock-simple:write-lock "x" :pathname #p"XL1200:>lispm>test.sab")` and
+  its unlock succeed, as Concordia's own call would, and the status line
+  shows "LOCK-SIMPLE serving XL1200". A record saved from Concordia itself
+  is still to try.
+- A Statice file system, XLDB: `Create Statice File System XLDB` with a
+  5,000-block partition (`FEP7:>Statice>XLDB-part0.file`, the directory in
+  `XLDB.UFD`; the first try looped on "FEP Directory not found" for the
+  `>Statice>` it had just created, and worked once it existed), which adds
+  the namespace object and the DBFS-PAGE service, then `Add ASYNCH DBFS
+  PAGE Service` and `Create Directory XLDB:>finance>`. The tutorial's bank
+  database is `XLDB:>finance>bank`, and `XL1200:>lispm>bank.lisp` defines
+  its schema and `bank-accounts`, `make-new-account` and
+  `transfer-between-accounts` (accounts found with `for-each`: the
+  tutorial's `account-named`, typed at the Listener, took its argument for
+  a database); it holds Alice, Bob and Carol and kept them across a reboot.
+
 Batches ran in the emulator from snapshots, each a typed form loading its
 systems through `conditions:handler-case` and writing the results to a FEP
-file ending in a stop marker (see "The emulator as a debugger"). The image is
-`~/Downloads/XL1200-Genera-8-3-fat.vhd` (3,072,000,000 bytes; licensed
-media, not in the repository).
+file ending in a stop marker (see "The emulator as a debugger"). The image,
+after the lock server and Statice work on the MiSTer, a clean `Halt
+Machine` and a copy back, is `~/Downloads/XL1200-Genera-8-3-fat.vhd`
+(3,072,000,000 bytes, md5 e98819eb6a90eb60c7d92be7ee3506cc, the same on the
+MiSTer's card; licensed media, not in the repository).
 
 ### Paging with 4 MW
 

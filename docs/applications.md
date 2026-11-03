@@ -16,6 +16,10 @@ How it was built: [NOTES.md](NOTES.md#the-fat-world-version-3-nov-2-2026).
 - Color, on the Univision screen (`(color:make-mister-color-screen)`): the
   Images system shows Symbolics' 8-bit sample images (`images:mandelbrot;`,
   `images:8bit;`), Color Demo's patterns; S-Colorize opens
+- Statice: a Statice file system, XLDB, with the tutorial's bank database;
+  `(load "xl1200:>lispm>bank.lisp")`, then `(bank-accounts)`
+- Concordia's lock server: the XL1200 serves the locks Concordia takes before
+  saving (a save from Concordia itself not yet tried)
 - Joshua 237.3 and Jericho 237.0 with their examples
 - CLIM 66.3 demos (the launcher)
 - Ethernet: ping, FTP, HTTP on the LAN
@@ -28,14 +32,13 @@ How it was built: [NOTES.md](NOTES.md#the-fat-world-version-3-nov-2-2026).
 
 ## Loads, not yet used
 
-Symbolics C, Fortran and Pascal; Conversion Tools; Joshua Metering; Statice
-(needs a database) and DBFS Utilities; Concordia (saving needs a lock server)
-with Graphic Editor, Bitmap Editor and PostScript; Metering; Hacks; NFS
-Server, X Server, Mailer, Domain Name Server, Print Spooler, DNA; Color
-Editor, FFT, Fourier Fractals, Graphics Library and Toolkit, S-Convert,
-S-Compositor; LaTeX, SliTeX, YTeX, BibTeX, INITeX, VIRTeX, TANGLE, WEAVE,
-DVItype, POOLtype, TFtoPL, PLtoTF; HTTP Base Client, W3P, W4, W4 Examples,
-CL-HTTP-CLIM, HTML Parser.
+Symbolics C, Fortran and Pascal; Conversion Tools; Joshua Metering; DBFS
+Utilities; Concordia with Graphic Editor, Bitmap Editor and PostScript;
+Metering; Hacks; NFS Server, X Server, Mailer, Domain Name Server, Print
+Spooler, DNA; Color Editor, FFT, Fourier Fractals, Graphics Library and
+Toolkit, S-Convert, S-Compositor; LaTeX, SliTeX, YTeX, BibTeX, INITeX,
+VIRTeX, TANGLE, WEAVE, DVItype, POOLtype, TFtoPL, PLtoTF; HTTP Base Client,
+W3P, W4, W4 Examples, CL-HTTP-CLIM, HTML Parser.
 
 ## Blocked or limited
 
