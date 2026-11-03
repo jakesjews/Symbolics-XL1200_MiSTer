@@ -53,8 +53,10 @@ Display option.
 - Fourier Fractals: known problem (images show without a color map)
 - CLIM demos: `(clim-demo::start-demo)` opens the launcher (CAD, navigation,
   puzzle, address book, Thinkadot, plotting, editors, polyhedron, browser).
-  MiSTer (launcher); known problem: its menu neither highlighted nor took a
-  click from kbd.py's virtual mouse (Nov 3), where Genera's own menus do
+  MiSTer (launcher). For scripted tests, place the pointer with
+  `(tv:mouse-warp x y)` and nudge it before clicking: the menu ignored
+  kbd.py's relative moves alone (a test-tool limit; a real mouse works).
+  CAD Demo: known problem (its drawing pane collapses under the menu bar)
 - CLIM Lisp Listener, Browser: by name. untried
 
 ## Reasoning and search
