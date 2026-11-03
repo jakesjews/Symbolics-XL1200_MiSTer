@@ -1847,6 +1847,13 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   the FEP prompt, as does a start from the running core; the fat world's
   second version boots with Joshua and Jericho, and the grandparent example
   and Tweety answer.
+- Build 43 (Nov 3 2026, `releases/XL1200_20261103.rbf`, replacing build 42):
+  the Display option without Auto and Pause switching the picture (caf4c46),
+  nothing else. Seed 10 of 0a3151f (Mac, 33 minutes): 34,488 ALMs (82%),
+  block memory 56%, setup slack +0.966 ns core, +2.155 video, +0.531 HPS,
+  +0.405 HDMI, hold +0.249. Seeds 2 and 3 routed but missed the core clock
+  (-3.7 and -0.5 ns, after 3.5 and 1.7 hours), 1 and 4 could not fit, and
+  5, 6, 8 and 9 were stopped once 10 passed. Not yet run on the MiSTer.
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's
