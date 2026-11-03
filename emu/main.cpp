@@ -1,4 +1,5 @@
 // xlemu: Symbolics XL1200 reference emulator.
+#include <csignal>
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -106,6 +107,28 @@ static void usage() {
 
 const char* ivory_opcode_name(int op);   // emu/cpu_insn.cpp
 
+// SIGUSR1 stops the run as its limit would (the screen and the -W snapshot
+// are written), so a run that waits at a prompt can be resumed with input.
+static volatile sig_atomic_t stop_requested = 0;
+static void on_sigusr1(int) { stop_requested = 1; }
+
+// The screen as a PGM: video memory is 2048 x 1024 x 1 bit, bit 0 of each word
+// the leftmost pixel.  Written to a temporary name and renamed, so a reader
+// never sees half a picture.
+static void write_screen(Machine& m, const char* path) {
+  std::string tmp = std::string(path) + ".tmp";
+  FILE* f = fopen(tmp.c_str(), "wb");
+  if (!f) return;
+  fprintf(f, "P5\n%u %u\n255\n", IoBoard::VIDEO_WIDTH, IoBoard::VIDEO_HEIGHT);
+  for (uint32_t y = 0; y < IoBoard::VIDEO_HEIGHT; y++)
+    for (uint32_t x = 0; x < IoBoard::VIDEO_WIDTH; x++) {
+      uint32_t wd = m.iob.video[(y * IoBoard::VIDEO_WIDTH + x) / 32];
+      fputc(((wd >> (x & 31)) & 1) ? 255 : 0, f);
+    }
+  fclose(f);
+  rename(tmp.c_str(), path);
+}
+
 int main(int argc, char** argv) {
   // Boot from reset through the boot PROM stand-in (tools/bootprom.py), which
   // loads the FEP kernel from the disk; -k loads a kernel file directly instead.
@@ -206,6 +229,15 @@ int main(int argc, char** argv) {
     std::filesystem::copy_file(disk0_original, disk0);
   }
   m.attach_disk(0, disk0, 1280, disk_stride);
+  // XLEMU_STOP_ON=TEXT: stop 50M instructions after the disk is written with
+  // TEXT (build it at run time in the typed form, so the typed text itself
+  // can't be paged out and trip it)
+  if (const char* so = getenv("XLEMU_STOP_ON")) m.iob.scsi.targets[0].watch = so;
+  uint64_t stop_at = 0;
+  signal(SIGUSR1, on_sigusr1);
+  // XLEMU_SHOT_EVERY=N: rewrite the -V screen every N million instructions,
+  // to watch a long run from outside
+  uint64_t shot_every = getenv("XLEMU_SHOT_EVERY") ? strtoull(getenv("XLEMU_SHOT_EVERY"), nullptr, 0) * 1000000 : 0;
   cpu.log_errors = getenv("XLEMU_ERRLOG") != nullptr;
   if (const char* wv = getenv("XLEMU_WATCH")) { cpu.watch_vma = (uint32_t)strtoul(wv, nullptr, 16); cpu.watch_on = true; }
   m.fpa_fitted = getenv("XLEMU_NO_FPA") == nullptr;
@@ -264,6 +296,13 @@ int main(int argc, char** argv) {
         }
         type_at = cpu.icount + wait;
       }
+      if (m.iob.scsi.targets[0].watch_seen && !stop_at) {
+        stop_at = cpu.icount + 50000000;
+        fprintf(stderr, "stop marker written at instruction %llu\n", (unsigned long long)cpu.icount);
+      }
+      if (stop_at && cpu.icount >= stop_at) break;
+      if (stop_requested) { fprintf(stderr, "stopped on request\n"); break; }
+      if (shot_every && videofile && cpu.icount % shot_every == 0) write_screen(m, videofile);
       for (uint64_t b : bt_pcs)
         if ((cpu.pc >> 1) == b) {
           fprintf(stderr, "backtrace at %08x (insn %llu):\n", (uint32_t)b, (unsigned long long)cpu.icount);
@@ -297,17 +336,7 @@ int main(int argc, char** argv) {
               v[i].second == 256 ? "full-word" : v[i].second == 257 ? "entry" : ivory_opcode_name(v[i].second));
   }
   if (cpu.tracef) fclose(cpu.tracef);
-  if (videofile) {
-    // Video memory is 2048 x 1024 x 1 bit; bit 0 of each word is the leftmost pixel.
-    FILE* f = fopen(videofile, "wb");
-    fprintf(f, "P5\n%u %u\n255\n", IoBoard::VIDEO_WIDTH, IoBoard::VIDEO_HEIGHT);
-    for (uint32_t y = 0; y < IoBoard::VIDEO_HEIGHT; y++)
-      for (uint32_t x = 0; x < IoBoard::VIDEO_WIDTH; x++) {
-        uint32_t wd = m.iob.video[(y * IoBoard::VIDEO_WIDTH + x) / 32];
-        fputc(((wd >> (x & 31)) & 1) ? 255 : 0, f);
-      }
-    fclose(f);
-  }
+  if (videofile) write_screen(m, videofile);
   if (const char* syncfile = getenv("XLEMU_SYNC")) {
     // The video sync program the FEP loaded (I/O board 0x0402D000), one word per line
     FILE* f = fopen(syncfile, "w");

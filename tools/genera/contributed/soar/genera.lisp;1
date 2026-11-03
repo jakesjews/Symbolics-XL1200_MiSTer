@@ -1,0 +1,19 @@
+;;; -*- Mode: LISP; Syntax: Common-lisp; Package: SOAR; Base: 10 -*-
+;;; Genera 8.3: LOAD reads a file with the readtable of the file's own Syntax
+;;; attribute, so SOARSYNTAX in the Listener never reaches a .soar file.
+;;; SOAR-LOAD reads one with Soar's syntax into CL-USER, as LOAD does elsewhere,
+;;; and puts the standard syntax back.
+
+(defun soar-load (file)
+  (soarsyntax)
+  (unwind-protect
+      (with-open-file (s file)
+        (let ((*readtable* *soar-readtable*)
+              (*package* (find-package "COMMON-LISP-USER")))
+          (loop for form = (read s nil s)
+                until (eq form s)
+                do (eval form))))
+    (soarresetsyntax))
+  (truename file))
+
+(export 'soar-load)

@@ -701,6 +701,18 @@ end, with each frame's function named from its compiled-function header
 (what found the smashed symbol above, from `%UNIFY-VARIABLE` up through
 Joshua's `UNIFY-LIST` to `FIND-OWN-GRANDPARENT`).
 
+For long scripted sessions (building a world): `XLEMU_STOP_ON=TEXT` stops
+the run 50 million instructions after the disk is written with TEXT, so a
+batch that ends by writing a results file with a marker (built at run time,
+`(format o "XLEMU-~A" "FINISHED")`, so the typed text itself can't be paged
+out and trip it) stops when it is done instead of at a guessed limit (but
+not across a Save World, which writes memory and any marker string still in
+it: run the save with `XLEMU_STOP_ON` unset);
+`XLEMU_SHOT_EVERY=N` rewrites the `-V` screen every N million instructions
+(written to a temporary name and renamed), to watch a run from outside;
+SIGUSR1 stops a run as its limit would, screen and `-W` snapshot written, so
+a session waiting at a prompt is resumed with the answer instead of rerun.
+
 ### The fat world (Nov 2 2026)
 
 `FEP7:>Genera-8-3-fat.ilod.1` (81,381 blocks, a complete save) holds the
@@ -745,6 +757,97 @@ a lock server; Statice needs a database set up before it does anything. Genera's
 `ignore-errors` in a CL-USER Listener returns NIL and T on an error, not
 the condition (`conditions:handler-case` gives the message): the first
 batch read four failures as successes that way.
+
+### The fat world, version 3 (Nov 2 2026)
+
+`FEP7:>Genera-8-3-fat.ilod.4` (161,211 blocks, a complete save; `boot.boot`
+loads it) adds to version 2 everything else the application checklist
+(`research/XL1200_Application_Installation_Handoff.md`) names that runs on
+an Ivory: Symbolics C 437, Fortran 431, Pascal 430, Conversion Tools 430,
+Joshua Metering 206, DBFS Utilities 439, NFS Server 435, X Server 424,
+Mailer 434, Domain Name Server 432, Print Spooler 435, DNA 434; Images 430,
+Image Data, Color Editor 420, Fast Fourier Transforms 11, Fourier Fractals
+21, Graphics Library and Toolkit, Colorize Tables 23 (S-Colorize), S-Convert
+12, S-Compositor 15; Illustrate 425; TeX, LaTeX, SliTeX, YTeX, BibTeX,
+INITeX, VIRTeX, TANGLE, WEAVE, DVItype, POOLtype, TFtoPL and PLtoTF 425 with
+the DVI previewer; CL-HTTP 60.57 with HTTP Base Client, W3P, W4, W4
+Examples, CL-HTTP-CLIM and the HTML Parser; Macsyma 421.45; Basic-,
+Schematic-, VLSI-, PCB- and Gate-Array-NS 36; Screamer 3.12; Soar 5.2.2.
+Flavors Statice can't share a world with Statice (both define the STATICE
+and DBFS packages), so it is `FEP7:>Genera-8-3-flavors-statice.ilod`, 7,644
+blocks saved incrementally over `Genera-8-3-full.ilod` (`Hello`, `Load World
+FEP7:>Genera-8-3-flavors-statice.ilod`, `Start`). The animation world stays
+as it was. The herald now has more systems than its ten-per-column table
+fits across the screen; Genera draws it that way, and `Show Herald` lists
+them all.
+
+Getting the files there: `tools/distfile.py` reads and writes Genera's
+distribution files, the "dummy tape" files `Restore Distribution :Use Disk
+Yes` takes: an embedded-length stream (`sys.sct/distribution/`), a
+directory form, then each file as an attributes record and its contents,
+compressed ones as Unix `compress` LZW behind a Symbolics preamble. Seven
+went onto the FEP disk with `fepfs.py add` and were restored: the 8.3 CD's
+`8_3_COLOR_DIST.TAPE` (the GRAPHICS: and IMAGES: trees, Fourier Fractals,
+the sample images), Illustrate's and TeX's distributions (the
+collection's `*.dist.*` pieces concatenated), CL-HTTP's
+`lispm-60-57.reel-1` (written on an Ivory under 8.3, `.ibin` files), and
+three made by `distfile.py make`: Macsyma and NS from the pinned sys.sct's
+`contributed/` and the site files. A second round after a save and a cold
+boot (a running Genera keeps the FEP free map in memory) added Screamer
+3.12 (`ftp.ai.mit.edu/pub/screamer`, which lists Genera 8.3), Soar 5.2.2
+(the CMU AI Repository's `soar5.tar`), TeX's `initex.pool` and
+`virtex.pool` (`SYS:TEX;`), and CL-HTTP 60.57's `www` and `examples` trees
+from its source archive. The logical hosts are ours,
+`tools/genera/site/`: GRAPHICS: is SYS: (where the MacIvory disk already
+had FFT, Convert and the rest), IMAGES: SYS:IMAGES;, ILL: SYS:ILLUSTRATE;,
+HTTP: and its HTML-PARSER:, SPT: and BTREE: under SYS:CONTRIBUTED;CL-HTTP;.
+
+What each needed:
+
+- TeX's component directories ask for the Pascal runtime 411 (Genera 8.0,
+  on its tape); 8.3 has 431. Loaded at `:version :newest` with SCT's
+  "component systems at other versions" menu answered with the loaded
+  versions (rebinding `sct::collect-component-versions-from-menu` for the
+  batch: `:query nil` doesn't cover that menu). Loading TeX preloads its
+  format by running VIRTeX, which writes `texput.log` in
+  `fs:default-pathname`, `XL1200:>foo>` in our worlds, a directory that
+  doesn't exist: the world's default is now `XL1200:>lispm>`, created on the
+  disk (the Lisp-Machine user's home directory).
+- W4 Examples loads `HTTP:EXAMPLES;DOCUMENTATION`, which the reel lacks; the
+  60.57 source archive has it.
+- Macsyma and NS were compiled on Open Genera (`.vbin`, Macsyma's component
+  directory written on a VLM). Renamed `.ibin` (and `m-macros` back to
+  `m_macros`), they load at `:version :newest` and run: Macsyma 421.45's
+  frame and NS's editor draw. Both then stop at their license checks,
+  Macsyma Inc's password and the NS password the namespace should hold,
+  each keyed to the machine ID (62686). Nothing here works around them.
+- Screamer's source reads as ANSI Common Lisp, where its CLtL1
+  `SPECIAL-FORM-P` is an undefined `SCREAMER::SPECIAL-FORM-P` (MIT's ibin
+  has the same reference); `tools/genera/contributed/screamer/genera.lisp`
+  defines it as `LISP:SPECIAL-FORM-P`, and it is compiled here.
+  `(screamer:all-values (screamer:an-integer-between 1 5))` gives
+  `(1 2 3 4 5)`.
+- Soar 5.2.2 has package workarounds for Lucid, CCL, Allegro and TI, none
+  for Genera. Two lines of `soar5.lisp` on the disk are changed (the new
+  version beside the original): `(pushnew :sx *features*)` is commented
+  out (SoarX needs Garnet, and Genera has an SX package), and the init file
+  is `soar-init.lisp`, not `.soar-init.lisp` (a name an LMFS reads as a
+  version "lisp"). Before compiling, CL-USER keeps `SCL:ACCEPT` and
+  `SCL:INSTANCE` (shadowing imports) where Soar's own symbols would clash.
+  Soar installs its syntax in the global readtable when it loads, which
+  breaks backquote everywhere, so the load ends with `(soarresetsyntax)`;
+  and Genera's `load` reads a file with its own Syntax attribute's
+  readtable, so `.soar` files go through `soar-load`
+  (`tools/genera/contributed/soar/genera.lisp`): `(soar-load
+  "sys:contributed;soar;lib;default;default.soar")`, the task the same
+  way, `(run)` with no typeahead (Soar breaks on a pending key). The
+  waterjug task searches and finds its solution.
+
+Batches ran in the emulator from snapshots, each a typed form loading its
+systems through `conditions:handler-case` and writing the results to a FEP
+file ending in a stop marker (see "The emulator as a debugger"). The image is
+`~/Downloads/XL1200-Genera-8-3-fat.vhd` (3,072,000,000 bytes; licensed
+media, not in the repository).
 
 ### Paging with 4 MW
 

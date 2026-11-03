@@ -25,6 +25,10 @@ public:
   uint32_t block_size = 1280, stride = 1536;
   uint64_t blocks = 0;
   std::string vendor = "SYMBOLIC", product = "XL1200 DISK     ", rev = "0001";
+  // XLEMU_STOP_ON: set once a write carries this text (a scripted batch's
+  // results file), so the run can stop when the batch is done.
+  std::string watch;
+  bool watch_seen = false;
 
 private:
   FILE* f = nullptr;

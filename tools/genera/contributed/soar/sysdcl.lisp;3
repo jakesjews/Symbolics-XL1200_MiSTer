@@ -1,0 +1,13 @@
+;;; -*- Mode: LISP; Syntax: Common-lisp; Package: USER; Base: 10 -*-
+;;; Soar 5.2.2: the architecture is one file, and genera.lisp has SOAR-LOAD for
+;;; .soar files; the task library (lib;) and TAQL are loaded by hand, e.g.
+;;; (soar-load "sys:contributed;soar;lib;default;default.soar"), the task's
+;;; file the same way, then (run).  Soar5.lisp on the disk has two lines
+;;; changed (docs/NOTES.md).
+
+(sct:defsystem soar
+    (:pretty-name "Soar"
+     :default-pathname "sys:contributed;soar;lib;"
+     :patchable nil
+     :maintain-journals nil)
+  (:serial "soar5" "genera"))

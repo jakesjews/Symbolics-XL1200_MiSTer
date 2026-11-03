@@ -1,0 +1,6 @@
+;;; -*- Mode: LISP; Syntax: Common-lisp; Package: USER; Base: 10 -*-
+;;; CL-HTTP, restored from its distribution reel.
+
+(fs:set-logical-pathname-host "HTTP"
+  :translations
+  `(("**;*.*" ,(send (fs:parse-pathname "sys:contributed;cl-http;**;*.*") :translated-pathname))))

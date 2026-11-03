@@ -1,0 +1,6 @@
+;;; -*- Mode: LISP; Syntax: Common-lisp; Package: USER; Base: 10 -*-
+;;; Illustrate, restored from its distribution (ill.dist).
+
+(fs:set-logical-pathname-host "ILL"
+  :translations
+  `(("**;*.*" ,(send (fs:parse-pathname "sys:illustrate;**;*.*") :translated-pathname))))

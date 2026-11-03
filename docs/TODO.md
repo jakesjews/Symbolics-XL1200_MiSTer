@@ -6,8 +6,8 @@ In the order they'll be done. Bugs come first whenever they turn up.
    has what passed: Zmacs, Document Examiner, Inspector, Debugger, Peek, a
    full GC, Save World and booting the saved world, the MacIvory animation
    world's programs, ephemeral GC flips, the number types through the FPA).
-   Left: an overnight run; the collection's applications that need a file
-   route in (Macsyma; Illustrate and TeX restore from a disk file, item 8).
+   Left: an overnight run; a use check of each application in the fat
+   world on the MiSTer (item 11).
    Anything that breaks is reproduced in the free-running simulation or the
    model.
    Found and fixed in the tree (Nov 2 2026, docs/NOTES.md): `Load System
@@ -116,10 +116,8 @@ In the order they'll be done. Bugs come first whenever they turn up.
    drives); backups, Restore Distribution, Breath of Life. A target in
    `xl_scsi` answering as that drive over a tape image file (a format to
    choose: blocks and filemarks), an OSD slot for it. Not needed for
-   Illustrate and TeX: their distributions restore from a disk file (their
-   RESTORING notes: concatenate the `*.dist.*` pieces, then `Restore
-   Distribution :Use Disk Yes` naming the file), which only needs the file
-   on the machine.
+   distributions: `Restore Distribution :Use Disk Yes` reads them from a
+   FEP file (`tools/distfile.py`, docs/NOTES.md).
 9. A color screen without the FrameThrower, optional: emulate the Univision
    UDC-3400, the third-party VME color board Symbolics sold for the XL400,
    whose driver is in source on the 8.3 CD (`sys.sct/color/univision*.lisp`,
@@ -155,16 +153,13 @@ In the order they'll be done. Bugs come first whenever they turn up.
    `Show Configuration` lists them, and build 41's herald on the MiSTer reads
    "16.0M words Physical memory, 29.3M words Swapping space". Left: Peek's
    storage meters against the 4 MW session (which fetched 8 MW from disk).
-11. The master disk: the fat world is built and boots on the MiSTer
-   (Nov 2 2026, [NOTES.md](NOTES.md#the-fat-world-nov-2-2026)): Color,
-   CLIM with its port, PostScript, demos and documentation, Statice,
-   Concordia, Metering and Hacks, on the full image grown to 2,000,000
-   blocks with `fepfs.py grow`; Joshua and Jericho since the
-   logic-variable instructions work (`Genera-8-3-fat.ilod.2`, the first
-   version deleted). Left: Illustrate and TeX from their distribution
-   files (item 8); a lock server for Concordia's saves; a boot-and-use
-   check per application (Concordia, Statice, Metering, Hacks so far only
-   load).
+11. The master disk: the fat world, version 3 (Nov 2 2026,
+   [NOTES.md](NOTES.md#the-fat-world-version-3-nov-2-2026)), has every
+   application of the checklist that runs on an Ivory in one world
+   (`Genera-8-3-fat.ilod.4`), Flavors Statice in its own small world.
+   Left: a boot-and-use check of each on the MiSTer; a lock server for
+   Concordia's saves; a Statice database; Macsyma and NS stop at their
+   license passwords.
 12. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
 13. Speed, only if the machine is really behind: measured after each step
     (`PROFILE=1` on `sim/system` counts cycles by state) and against the

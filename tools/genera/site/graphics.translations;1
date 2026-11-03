@@ -1,0 +1,6 @@
+;;; -*- Mode: LISP; Syntax: Common-lisp; Package: USER; Base: 10 -*-
+;;; The color and S-Graphics tree (FFT, Fourier Fractals, S-Convert...) lives under SYS:, as on the MacIvory disk.
+
+(fs:set-logical-pathname-host "GRAPHICS"
+  :translations
+  `(("**;*.*" ,(send (fs:parse-pathname "sys:**;*.*") :translated-pathname))))

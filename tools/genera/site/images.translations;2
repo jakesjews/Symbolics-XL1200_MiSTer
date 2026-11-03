@@ -1,0 +1,6 @@
+;;; -*- Mode: LISP; Syntax: Common-lisp; Package: USER; Base: 10 -*-
+;;; Sample images and their data.
+
+(fs:set-logical-pathname-host "IMAGES"
+  :translations
+  `(("**;*.*" ,(send (fs:parse-pathname "sys:images;**;*.*") :translated-pathname))))

@@ -1,0 +1,11 @@
+;;; -*- Mode: LISP; Syntax: Common-lisp; Package: USER; Base: 10 -*-
+;;; Screamer 3.12 and Iterate, as its README says to load them, with genera.lisp
+;;; for what Genera 8.3 lacks; the examples
+;;; (screams, equations, primordial) are loaded by hand.
+
+(sct:defsystem screamer
+    (:pretty-name "Screamer"
+     :default-pathname "sys:contributed;screamer;"
+     :patchable nil
+     :maintain-journals nil)
+  (:serial "screamer" "genera" "iterate"))

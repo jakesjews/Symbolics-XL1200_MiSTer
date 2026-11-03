@@ -1,0 +1,5 @@
+;;; -*- Mode: LISP; Syntax: Common-lisp; Package: SCREAMER; Base: 10 -*-
+;;; Genera 8.3: Screamer's source reads as ANSI Common Lisp, where its CLtL1
+;;; SPECIAL-FORM-P is not inherited; Genera has it as LISP:SPECIAL-FORM-P.
+
+(defun special-form-p (symbol) (lisp:special-form-p symbol))

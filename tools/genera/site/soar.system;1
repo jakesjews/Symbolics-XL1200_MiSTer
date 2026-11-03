@@ -1,0 +1,4 @@
+;;; -*- Mode: LISP; Syntax: Common-lisp; Package: USER; Base: 10 -*-
+;;; Soar 5.2.2 (CMU, public domain; CMU AI Repository areas/planning/systems/soar/soar5)
+
+(si:set-system-source-file "Soar" "sys:contributed;soar;sysdcl")

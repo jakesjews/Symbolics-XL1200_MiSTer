@@ -1,4 +1,5 @@
 #include "scsi.h"
+#include <algorithm>
 #include <cstring>
 
 // ---------------------------------------------------------------------------
@@ -98,6 +99,8 @@ uint8_t ScsiDisk::execute(const uint8_t* cdb, std::vector<uint8_t>& in, const st
           fwrite(out.data() + (size_t)i * block_size, 1, block_size, f);
         }
         fflush(f);
+        if (!watch.empty() && std::search(out.begin(), out.begin() + out_len, watch.begin(), watch.end()) != out.begin() + out_len)
+          watch_seen = true;
       }
     }
     return 0;

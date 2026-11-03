@@ -1,0 +1,6 @@
+;;; -*- Mode: LISP; Syntax: Common-lisp; Package: USER; Base: 10 -*-
+;;; CL-HTTP's B-trees.
+
+(fs:set-logical-pathname-host "BTREE"
+  :translations
+  `(("**;*.*" ,(send (fs:parse-pathname "sys:contributed;cl-http;btree;**;*.*") :translated-pathname))))

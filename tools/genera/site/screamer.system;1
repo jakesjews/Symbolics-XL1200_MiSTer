@@ -1,0 +1,4 @@
+;;; -*- Mode: LISP; Syntax: Common-lisp; Package: USER; Base: 10 -*-
+;;; Screamer 3.12 (Siskind and McAllester, ftp.ai.mit.edu/pub/screamer)
+
+(si:set-system-source-file "Screamer" "sys:contributed;screamer;sysdcl")
