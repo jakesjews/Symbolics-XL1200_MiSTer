@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The Ethernet mailbox in the MiSTer's DDR3, read live.
 
-Run it on the MiSTer:  ssh root@mister python3 - < tools/mister/mailbox.py
+Run it on the MiSTer:  ssh root@MISTER python3 - < tools/mister/mailbox.py
 
 Prints the header words (the magic, the generation counter, the ring
 pointers, the published MAC) and the Ethernet header of every frame left

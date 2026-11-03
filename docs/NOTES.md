@@ -171,12 +171,12 @@ IMG_1040) while control bit 0 is clear; the FEP leaves it clear (control = 2).
 ## Media
 
 - `fepfs-lmfs-kernel.dd` etc.: raw SD-card dumps of a SCSI2SD v7 used as a
-  1280-byte-block SCSI disk on an XL1201 (Douglas Fields, 2016). SCSI2SD stores
+  1280-byte-block SCSI disk on an XL1201. SCSI2SD stores
   each 1280-byte block in three 512-byte SD sectors, so block n is at byte
-  n*1536 (the 256 pad bytes are 'D', the fill pattern he used). The files are
+  n*1536 (the 256 pad bytes are 'D', that card's fill pattern). The files are
   truncated at 102,400,000 bytes (66,666 whole blocks). They contain the I333
   kernel, FLODs and boot scripts but no Genera world (`tools/fepfs.py mkworld`
-  adds one, see "FEP file system layout"). On his machine this disk
+  adds one, see "FEP file system layout"). On that machine this disk
   was SCSI address 3 = `FEP10:`; as SCSI address 0 it is `FEP7:`.
 - FLOD overlays: a text header (command table), then records
   `address(4) count(4) count*(data LE(4) + cdr/tag(1)) checksum(4)`, ending
@@ -184,9 +184,8 @@ IMG_1040) while control bit 0 is clear; the FEP leaves it clear (control = 2).
 
 ## Reference machine
 
-Douglas Fields' XL1201 (symbolics.lisp.engineer, 2016), which made our disk
-images (`fepfs-lmfs.tar`: photos and a Genera 8.3 transcript, kept in
-`research/media/reference/`):
+Douglas Fields' XL1201 (symbolics.lisp.engineer, 2016): its photos and a
+Genera 8.3 transcript, kept in `research/media/reference/`:
 
 - `Show Machine Configuration` (Genera 8.3): Merlin-II Main Board s/n 582
   manufactured 1991-02-20, ECO level 1, 4.0MW, Ivory rev4A, FPA. Merlin IO
@@ -217,7 +216,7 @@ default `FEPn:` device.
 
 ## How the FEP kernel is found on disk
 
-From diffing Douglas Fields' dumps before and after `Copy Flod Files` installed
+From diffing the dumps before and after `Copy Flod Files` installed
 a kernel (`fepfs-lmfs-files.dd` vs `fepfs-lmfs-kernel.dd`):
 
 - The disk label is in blocks 0, 1 and 2 (three identical copies). Installing
@@ -238,14 +237,14 @@ a kernel (`fepfs-lmfs-files.dd` vs `fepfs-lmfs-kernel.dd`):
 ## FEP disk numbering (XL-SETUP-DISK-CONTROLLERS)
 
 FEP units 0-6 are ESDI drives on I/O board 0, units 7-14 SCSI targets 0-7, then
-the same for board 1. SCSI target 0 is `FEP7:`. (Matches Douglas Fields'
+the same for board 1. SCSI target 0 is `FEP7:`. (Matches the reference machine's
 `Show Machine Configuration`: SCSI address 3 was `FEP10:`.)
 
 ## FEP file system layout
 
 From Genera 8.3's `sys.sct/l-sys/fep-stream.lisp` and `fep-access-paths.lisp`
 (both `Base: 8`: undotted numbers there are octal), checked against all four
-of Douglas Fields' dumps. `tools/fepfs.py` reads and writes it (`ls`, `get`,
+of the dumps. `tools/fepfs.py` reads and writes it (`ls`, `get`,
 `mkworld`).
 
 - Blocks are 1280 bytes, numbered by DPN from 0. The file system's own blocks
@@ -276,8 +275,8 @@ of Douglas Fields' dumps. `tools/fepfs.py` reads and writes it (`ls`, `get`,
   13 number of entries, from 14 entries of 11 words: name (8), type, version,
   header DPN; 27 a page. A directory is a file with the directory flag whose
   blocks are FEPD pages; the root directory lists itself as
-  `ROOT-DIRECTORY.DIR`, its subdirectories as `name.DIR` (`douglas.DIR` on the
-  dumps).
+  `ROOT-DIRECTORY.DIR`, its subdirectories as `name.DIR` (a user's directory on
+  the dumps).
 - Free map: the file `FREE-PAGES.FEP` (blocks 133-140): bit k of word i of its
   block b is DPN b*10240 + i*32 + k, 1 = in use; bits past the label's size
   don't count (`fep-access-paths.lisp:318`, `:378`). Genera allocates first
@@ -318,7 +317,7 @@ World files:
 
 ### The MacIvory disk and the full image
 
-The collection's `MacIvory_Virginal_9GB.img.7z` (the loper-os factory disk,
+The collection's `MacIvory_Virginal_9GB.img.7z` (a MacIvory factory disk,
 9,105,018,880 bytes) is an Apple partition map with four HFS Standard
 volumes: "Mac-OS-8" (the Mac system, the MacIvory software) and "FEP0",
 "FEP1", "FEP2", each holding one 2,145,117,440-byte Mac file "MacIvory
@@ -733,7 +732,7 @@ then `(si:disk-save "FEP7:>Genera-8-3-fat.ilod" nil :query nil :boot-file
 versions) and updates the boot file. On the MiSTer (build 41) it boots
 with that herald, Color Demo's bars draw on the color board and
 `(clim-demo::start-demo)` opens the demo launcher. The image is
-`~/Downloads/XL1200-Genera-8-3-fat.vhd` on the user's Mac (3.07 GB,
+`XL1200-Genera-8-3-fat.vhd` (3.07 GB,
 832,384 blocks free with the second version below; licensed media, not in
 the repository).
 
@@ -900,7 +899,7 @@ Batches ran in the emulator from snapshots, each a typed form loading its
 systems through `conditions:handler-case` and writing the results to a FEP
 file ending in a stop marker (see "The emulator as a debugger"). The image,
 after the lock server and Statice work on the MiSTer, a clean `Halt
-Machine` and a copy back, is `~/Downloads/XL1200-Genera-8-3-fat.vhd`
+Machine` and a copy back, is `XL1200-Genera-8-3-fat.vhd`
 (3,072,000,000 bytes, md5 e98819eb6a90eb60c7d92be7ee3506cc, the same on the
 MiSTer's card; licensed media, not in the repository).
 
@@ -1376,9 +1375,10 @@ would put Genera on the LAN at its own address, a follow-up.
 - Main's side: `tools/mister/Main_MiSTer-xl1200-enet.patch`,
   `support/xl1200/xl1200_enet.cpp` (the Sun bridge keyed on XLETH001, the
   OSD option at status bits 10:8, macvlan child "xl0") and the three
-  user_io hooks, for a pull request to MiSTer-devel/Main_MiSTer.  Built
-  with the Arm GNU 10.2 toolchain on the Ubuntu server
-  (`~/dev/mister/toolchain`, `~/dev/mister/Main_MiSTer`).
+  user_io hooks, for a pull request to MiSTer-devel/Main_MiSTer; also the
+  `xl1200` branch of github.com/jakesjews/Main_MiSTer.  Built with the Arm
+  GNU 10.2 toolchain (gcc-arm-10.2-2020.11, arm-none-linux-gnueabihf), the
+  one MiSTer's own builds use (docs/building.md).
 - The namespace: `fepfs.py mkworld --standalone --internet A.B.C.D` adds
   the INTERNET network, the host's address and its TCP services (TELNET,
   TCP-FTP, TIME) and a `Set Network Address CHAOS|1200,INTERNET|A.B.C.D`
@@ -1763,21 +1763,8 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
 
 - Screenshots with direct video on: MiSTer's own `screenshot` command grabs
   the scaler's frame buffer, which with direct video is a low-resolution
-  shadow of the picture, so the tests used to turn direct video off in the
-  `[XL1200]` section of MiSTer.ini. The RetroTink 4K (firmware 1.99.9 and
-  later) captures its input to a PNG on its SD card: AUX 5 on the remote
-  asks "Capture now? [Cancel] [OK]" in its OSD. `tools/mister/rt4k.py
-  capture OUT.png` does the whole round through the DonutShop bridge's
-  WebSocket (ws://donutshop.local:81, the RetroTink's serial bytes as binary
-  messages: `remote aux5`, `remote right`, `remote ok`, `ls screenshots`
-  until the file stops growing, `get -- screenshots/NAME` as RTL1 frames
-  with the device's SHA-256, `rm`); 84 s for the 6 MB of a 1920 x 1080
-  capture at 2 Mbaud. The replies arrive prefixed with the port they came
-  in on (`[COM] `). The web client in the DonutShop page is the protocol
-  reference (its sections 3.2 and 3.3). At 84 s a capture it is for checking
-  the direct-video output itself; ordinary tests keep using MiSTer's
-  screenshots with `direct_video=0` in the `[XL1200]` section for the test
-  and removed after.
+  shadow of the picture, so tests put `direct_video=0` in the `[XL1200]`
+  section of MiSTer.ini for the test and remove it after.
 
 - `make lint` (Nov 2 2026): Verilator with its full warning set over XL1200.sv
   and rtl/, the framework parsed for the interfaces the top level instantiates
@@ -1915,7 +1902,7 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   take a MiSTer screenshot, type or move the mouse through a uinput device
   made by `tools/mister/kbd.py`). Screenshots need direct video off.
 - JTAG: the MiSTer's USB-Blaster (the DE10-Nano's USB port) is plugged into
-  the Ubuntu server; `tools/mister/jtag.sh chain|load SOF` runs `jtagconfig`
+  a Linux machine; `tools/mister/jtag.sh chain|load SOF` runs `jtagconfig`
   or `quartus_pgm` in the Quartus container (`--privileged -v
   /dev/bus/usb`). The chain is the HPS (4BA00477) then the 5CSEBA6, so the
   FPGA is device 2. A load takes ~5 s against ~1 min to copy and load an

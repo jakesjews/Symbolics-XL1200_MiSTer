@@ -620,7 +620,7 @@ def main():
     s.set_defaults(fn=cmd_ls)
     s = sub.add_parser('get', help="copy a file's contents out of the image")
     s.add_argument('image')
-    s.add_argument('path', help="e.g. >Hello.boot or >douglas>test2.text.1")
+    s.add_argument('path', help="e.g. >Hello.boot or >dir>test.text.1")
     s.add_argument('out')
     s.set_defaults(fn=cmd_get)
     s = sub.add_parser('grow', help="make the disk BLOCKS blocks: the image, the label's "

@@ -141,10 +141,9 @@ int main(int argc, char** argv) {
   const char* videofile = nullptr;   // write video memory as a PGM image at exit
   const char* snap_write = nullptr;  // -W: the snapshot to write when the run stops
   const char* snap_read = nullptr;   // -R: the snapshot to resume from
-  // The FEP disk: a working copy, made from the original the first time, so
-  // nothing the emulated machine writes reaches the original image.
+  // The FEP disk (-d): an XL1200 FEP disk image, licensed media that isn't in
+  // the repository (docs/building.md). The machine writes to it, so give it a copy.
   std::string disk0 = "../research/media/disks/fepfs-lmfs-kernel.dd";
-  const std::string disk0_original = "/Users/jacob/Downloads/Symbolics-XL1200-ROMs-and-Disks/disks/fepfs-lmfs-kernel.dd";
   uint64_t stop_hpc = (uint64_t)0xFFFE0040u << 1;   // halfword PC
   uint64_t limit = 10000000;
   uint32_t disk_stride = 1536;   // SCSI2SD card layout; 1280 for packed block images
@@ -225,9 +224,9 @@ int main(int argc, char** argv) {
     }
     return 0;
   }
-  if (disk0 == "../research/media/disks/fepfs-lmfs-kernel.dd" && !std::filesystem::exists(disk0)) {
-    std::filesystem::create_directories(std::filesystem::path(disk0).parent_path());
-    std::filesystem::copy_file(disk0_original, disk0);
+  if (!std::filesystem::exists(disk0)) {
+    fprintf(stderr, "xlemu: no FEP disk at %s; give one with -d (docs/building.md)\n", disk0.c_str());
+    return 1;
   }
   m.attach_disk(0, disk0, 1280, disk_stride);
   // XLEMU_STOP_ON=TEXT: stop 50M instructions after the disk is written with

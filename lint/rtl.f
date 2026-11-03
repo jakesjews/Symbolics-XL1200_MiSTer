@@ -1,0 +1,41 @@
+// Verilator file list for `make lint` (run from the repository root after
+// `make lint-prepare`): the core, its top level, and the framework modules
+// the top level instantiates (parsed for their ports only; lint/exclusions.vlt).
+lint/exclusions.vlt
++incdir+sys
++incdir+lint/gen
++incdir+rtl/ivory
+rtl/ivory/ivory_pkg.sv
+rtl/ivory/ivory_cpu.sv
+rtl/ivory/ivory_mmu.sv
+rtl/ivory/ivory_icache.sv
+rtl/ivory/ivory_core.sv
+rtl/xl/xl_mem.sv
+rtl/xl/xl_scsi.sv
+rtl/xl/ddram_arb.sv
+rtl/xl/xl_eth_hps.sv
+rtl/xl/xl_i82586.sv
+rtl/xl/xl_pit.sv
+rtl/xl/xl_fpa_unit.sv
+rtl/xl/xl_fpa.sv
+rtl/xl/xl_console.sv
+rtl/xl/xl_keyboard.sv
+rtl/xl/xl_video.sv
+rtl/xl/xl_iob.sv
+rtl/xl/xl_nvram.sv
+rtl/xl/xl_vme.sv
+rtl/xl/xl_udc3400.sv
+rtl/xl/xl_machine.sv
+rtl/xl/xl_debug_uart.sv
+lint/pll.sv
+sys/hps_io.sv
+sys/video_mixer.sv
+sys/video_freak.sv
+sys/math.sv
+sys/hq2x.sv
+sys/scandoubler.v
+sys/scanlines.v
+sys/gamma_corr.sv
+sys/video_cleaner.sv
+sys/f2sdram_safe_terminator.sv
+XL1200.sv

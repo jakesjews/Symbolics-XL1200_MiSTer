@@ -126,7 +126,8 @@ until it is upstream.
 - Genera doesn't answer ping: a cable in the MiSTer's port, `MiSTer_xl1200` and its `MiSTer.ini` entry, an address on your LAN (the prebuilt disk's is 192.168.50.92).
 - No FEP prompt: a debug build's Debug line shows where it stopped, [docs/NOTES.md](docs/NOTES.md#debug-line).
 
-How the core is built and what was found out about the machine:
+Building the core and running the tests: [docs/building.md](docs/building.md).
+How the core works and what was found out about the machine:
 [docs/NOTES.md](docs/NOTES.md).
 
 ## Credits

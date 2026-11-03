@@ -215,8 +215,9 @@ if __name__ == '__main__':
     import os
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from ivory import Image
-    path = sys.argv[1] if len(sys.argv) > 1 else \
-        '/Users/jacob/Downloads/Symbolics-XL1200-ROMs-and-Disks/fepfs-native/I333-kernel.fep.4'
+    if len(sys.argv) != 2:
+        sys.exit('usage: fepnames.py I333-kernel.fep   (a FEP kernel file, e.g. from fepfs.py get)')
+    path = sys.argv[1]
     img = Image().load_fep_kernel(path)
     for body, size, name in img.functions(0xF800C000, 0xF8018000):
         print(f"{body:08x}  {name}")

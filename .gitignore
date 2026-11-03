@@ -29,6 +29,7 @@ c5_pin_model_dump.txt
 *.sopcinfo
 *.csv
 *.f
+!lint/rtl.f
 *.cmp
 *.sip
 *.spd
