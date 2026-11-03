@@ -138,10 +138,8 @@ How the core is built and what was found out about the machine:
   the DDR arbiter and the Ethernet mailbox client, used under the GPL.
 - Douglas Fields, [symbolics.lisp.engineer](https://symbolics.lisp.engineer)
   and [genera-patches](https://github.com/LispEngineer/genera-patches):
-  the XL1201 patches with the Y2K fix, the FEP disk the template comes from,
-  and the XL1201 timings and photographs the notes rely on.
-- [loper-os](https://www.loper-os.org/?p=2943): the MacIvory factory disk
-  image behind the full disk.
+  the XL1201 patches with the Y2K fix, and the XL1201 timings and
+  photographs the notes rely on.
 - [Bitsavers](https://bitsavers.org): the Symbolics and chip documentation.
 - Richard Gabriel's *Performance and Evaluation of Lisp Systems*: the
   benchmarks and the 3600 times.
