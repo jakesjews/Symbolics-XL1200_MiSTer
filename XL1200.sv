@@ -46,7 +46,7 @@ localparam CONF_STR = {
 	"O[2],Aspect ratio,Original,Full Screen;",
 	"O[5:3],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer,HV-Integer;",
 	"O[6],Clock,28 years back,Today;",
-	"O[12:11],Display,Auto,Console,Color;",
+	"O[12],Display,Console,Color;",
 `ifdef XL_DEBUG
 	"O[7],Debug line,Off,On;",
 `endif
@@ -200,7 +200,7 @@ wire  [7:0] ddr_be;
 
 wire white, hs, vs, hblank, vblank;
 wire [23:0] rgb;
-wire        video_on;
+wire        video_on;          // the board's video enable; unused since Display lost Auto
 wire run_light, disk_light;
 
 xl_machine #(.NT(NT), .CLK_HZ(50_000_000), .PROM_FILE("rtl/xl/boot_prom.mem")) machine
@@ -301,14 +301,23 @@ assign ddr_busy = DDRAM_BUSY;
 
 // The console monitor: 1152 x 880, black on white, 80 MHz dot clock
 // (54.35 kHz, 60.45 Hz) as the FEP programs the SCN2674.  The color
-// board's screen runs on the same raster; Display picks which one shows,
-// Auto the color screen while Genera has its video enabled.
-reg  [2:0]  video_on_s;
-reg         show_color;
-always @(posedge clk_vid) begin
-	video_on_s <= {video_on_s[1:0], video_on};
-	show_color <= status[12:11] == 2'd2 || (status[12:11] == 2'd0 && video_on_s[2]);
+// board's screen runs on the same raster; Display picks which one shows and
+// Pause switches to the other until Display is next changed. (Bit 11 was an
+// Auto choice that followed Genera's video enable; a saved Auto reads as
+// Console, a saved Console or Color as before.)  Pause comes from hps_io as
+// one press event, E0 77, with no release.
+reg        display_flip = 0;
+reg        display_opt_q;
+reg        pause_toggle_q;
+always @(posedge clk_sys) begin
+	pause_toggle_q <= ps2_key[10];
+	display_opt_q  <= status[12];
+	if (status[12] != display_opt_q) display_flip <= 0;
+	else if (ps2_key[10] != pause_toggle_q && ps2_key[9:0] == 10'h377) display_flip <= ~display_flip;
 end
+reg  [1:0]  show_color_s;
+wire        show_color = show_color_s[1];
+always @(posedge clk_vid) show_color_s <= {show_color_s[0], status[12] ^ display_flip};
 wire [23:0] pix = show_color ? rgb : {24{white}};
 wire        vga_de;
 
