@@ -843,6 +843,29 @@ What each needed:
   way, `(run)` with no typeahead (Soar breaks on a pending key). The
   waterjug task searches and finds its solution.
 
+- Illustrate 425 (MIT's, from 1983-86, distributed for Genera 8.0 by
+  A. I. Architects) loads but doesn't come up, on the MiSTer and in the
+  emulator alike, in the fat world and alone in the full world: Select
+  Activity (or Illustrate's own `(ill t)`) leaves no window selected, the
+  frame's process "Ill Frame 1" in Output Hold and the selecting process
+  waiting on a Sheet Lock (Peek). Exposing the frame by hand draws its panes
+  and then traps on an unbound `ILL:*ILLUSTRATE-FRAME*` in
+  `ILL:DRAW-DASH-PATTERN` (the frame sets it only before `:select`); setting
+  it before `:expose` (a `:before :expose` method) doesn't change the
+  Select path. Left installed. Select `L` and Control-Meta-Abort get the
+  Listener back.
+
+Checked on the MiSTer (build 42) after the cold boot: CL-HTTP answers a
+browser on the LAN (`(http:enable-http-service)` after login; its
+documentation page and a GIF from the restored `www` tree, the GIF
+byte-identical to the source); TeX typesets a page and the DVI Previewer
+shows it; on the color screen the Images system draws the 8-bit sample
+images (`images:mandelbrot;`, `images:8bit;`) and S-Colorize opens. A
+24-bit image (`images:paint;mandrill`) stops on an undefined
+`COLOR:IMAGE-PROCESS-MACRO-INTERNAL` when reduced to 8 bits, and Fourier
+Fractals' images draw without a color map. `docs/applications.md` has the
+whole list.
+
 Batches ran in the emulator from snapshots, each a typed form loading its
 systems through `conditions:handler-case` and writing the results to a FEP
 file ending in a stop marker (see "The emulator as a debugger"). The image is
