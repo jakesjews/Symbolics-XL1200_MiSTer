@@ -904,6 +904,35 @@ Machine` and a copy back, is `~/Downloads/XL1200-Genera-8-3-fat.vhd`
 (3,072,000,000 bytes, md5 e98819eb6a90eb60c7d92be7ee3506cc, the same on the
 MiSTer's card; licensed media, not in the repository).
 
+### The color screen at login (Nov 3 2026)
+
+`FEP7:>Genera-8-3-fat-init.ilod.1` is version 3 plus a login step: every
+Login loads `XL1200:>lispm>lispm-init.lisp` (the Lisp-Machine user's home
+directory, LISPM-NAME LISPM), which makes the color screen once per boot
+(`tools/genera/lispm-init.lisp`, `*color-screen*` in CL-USER), so the
+System Menu's color programs have a screen without anything typed. Login
+loads no init file on its own here: the Login command's `:Init File`
+defaults to None in this world, though `si:*login-load-init-file-p*` is T
+(`sys2/login.lisp` loads `fs:init-file-pathname "LISPM"` only when asked).
+So CL-USER's `load-lispm-init-file` loads that pathname with
+`:if-does-not-exist nil` inside `conditions:handler-case`, and
+`(si::add-initialization "Load the LISPM-INIT file" '(load-lispm-init-file)
+'(:login))` runs it at every Login; the file guards itself, so an explicit
+`:Init File` as well loads it twice harmlessly.
+
+Built in the emulator from the archived image (`boot0.vhd.7z`, md5
+e98819eb6a90eb60c7d92be7ee3506cc): `fepfs.py add` of the init file, Login,
+`Copy File` to `XL1200:>lispm>`, the initialization, the FEP copy deleted
+and expunged, then `(si:disk-save "FEP7:>Genera-8-3-fat-init.ilod" t :query
+nil :boot-file "FEP7:>boot.boot")`. That made a complete world (161,454
+blocks, not an incremental one), and `boot.boot.6` loads it. A cold boot
+with Hello and Boot brings it up, and a plain `Login Lisp-Machine` loads the
+file (the emulator has no color board, so the file reports "No suitable
+UNIVISION controller found" and carries on); `Halt Machine` before the
+image was taken. `Genera-8-3-fat.ilod.4` stays on the FEP. The image is
+`research/media/disks/fat-init/boot0.vhd` (licensed media, not in the
+repository); the screen made at login is yet to be seen on the MiSTer.
+
 ### Paging with 4 MW
 
 Peek's storage meters (Select P, Meters, "Storage meters") on the MiSTer

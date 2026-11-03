@@ -3,6 +3,9 @@
 What `Genera-8-3-fat.ilod.4` (the fat image's default world, version 3)
 holds, against the application checklist, as of Nov 2 2026 (core build 42).
 How it was built: [NOTES.md](NOTES.md#the-fat-world-version-3-nov-2-2026).
+The image of Nov 3 boots `Genera-8-3-fat-init.ilod.1`, the same world with
+the color screen made at login
+([NOTES.md](NOTES.md#the-color-screen-at-login-nov-3-2026)).
 
 ## Works on the MiSTer
 
