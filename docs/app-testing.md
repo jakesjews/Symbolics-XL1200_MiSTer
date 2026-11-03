@@ -40,7 +40,10 @@ Display option.
   `(color::smpte-color-bars w)`. MiSTer
 - A Listener on the color screen: `(tv:make-window 'tv:lisp-listener
   :superior cs :expose-p t)`. MiSTer
-- Color Demo menu: `(color::demo)`. untried
+- Color Demo: `(color:demo-spheres-demo w)`, `(color:demo-hexcone-cube w)`,
+  `(color:demo-bar-charts w 30 30 500 360)` and `(color:demo-cycle-map w)`
+  (one step a call) draw into a color window `w`; reset the palette with
+  `(color:demo-standardize-color-map w nil nil nil nil)`. MiSTer
 - Images: `Load Images` from `IMAGES:8BIT;` or `IMAGES:MANDELBROT;`, then
   View Image. The 8-bit samples MiSTer; 24-bit ones (`IMAGES:PAINT;MANDRILL`)
   known problem (undefined `COLOR:IMAGE-PROCESS-MACRO-INTERNAL`)
@@ -50,7 +53,8 @@ Display option.
 - Fourier Fractals: known problem (images show without a color map)
 - CLIM demos: `(clim-demo::start-demo)` opens the launcher (CAD, navigation,
   puzzle, address book, Thinkadot, plotting, editors, polyhedron, browser).
-  MiSTer (launcher); each demo untried
+  MiSTer (launcher); known problem: its menu neither highlighted nor took a
+  click from kbd.py's virtual mouse (Nov 3), where Genera's own menus do
 - CLIM Lisp Listener, Browser: by name. untried
 
 ## Reasoning and search
