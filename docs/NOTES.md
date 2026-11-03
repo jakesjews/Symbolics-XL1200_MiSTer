@@ -936,6 +936,40 @@ is an exposed `MANAGED-UNIVISION-SCREEN`, SMPTE bars drawn on it show after
 Pause, and a second Pause brings the console back with nothing typed in
 the Listener.
 
+### The animation world with color and Boids (Nov 3 2026)
+
+`FEP7:>animation-mac-6-2-color.ilod.1` (6,438 blocks, incremental on
+`animation-mac-6-2-y2k.ilod.1`, herald "MiSTer color screen at boot and
+Reynolds Boids") was made on the MiSTer (build 43). The FEP files
+`mister-color.lisp` (the sync format and `color::make-mister-color-screen`,
+which load as they are into Genera 8.1.1's Color 422.21) and
+`color-startup.lisp` (`tools/genera/`: makes the screen at load and adds a
+`:warm` initialization that makes it at every boot, errors caught) were
+loaded; the screen was killed before the save so the boot makes a fresh
+one. After Hello, Load World and Start, before any login, `*color-screen*`
+is an exposed Univision screen with its four overlay screens.
+
+Boids is Craig Reynolds' `boids.lisp` (version 2, 1988) with two changes
+(`tools/genera/boids.patch`): `cli::seed-random-state`, a Genera 7 name, is
+`fcli::seed-random-state` in 8.1.1, and its `with-3d-vector-on-stack`
+makes heap lists where it made stack lists. With the stack lists, the
+flight loop traps in its first pass: `PRIORITIZED-ACCELERATION-ALLOCATION`
+takes a `CAR` of a location holding the unbound marker (DTP-LOCATIVE
+36600370462, its rest list unprintable). Three small compiled tests on the
+core pass: seven stack lists through `&rest`; a stack list read after 2,000
+recursive calls and from 500 calls down; stack lists made between
+multiple-value returns. So the cause is not yet known (the core, or a
+lifetime Reynolds' code had on the 3600 and the Ivory doesn't keep): docs/TODO.md.
+`tools/genera/boids-demo.lisp` stands in for his bird model (a delta wing)
+and flies 20 boids inside his 19-unit sphere; `(boids:demo)` in
+S-Geometry's command pane, typed without Return (the Return is read as the
+key that stops the flock). Compiled as `FEP7:>boids-heap.ibin` and loaded
+before the save; the sources are on the FEP. The baseline image with it:
+`research/media/disks/fat-init/boot0.vhd`, md5
+479d2de906db31a331132a9b71a58631 (the world file copied from the MiSTer's
+card, read twice with the same md5; the version before is
+`fat-init.vhd.gz`).
+
 ### Paging with 4 MW
 
 Peek's storage meters (Select P, Meters, "Storage meters") on the MiSTer

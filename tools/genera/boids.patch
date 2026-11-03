@@ -1,0 +1,20 @@
+--- boids.lisp
++++ boids-heap.lisp
+@@ -94,7 +94,7 @@
+ 	(y-name (or (nth 1 list-of-xyz-component-names) (gensym)))
+ 	(z-name (or (nth 2 list-of-xyz-component-names) (gensym))))
+     `(multiple-value-bind (,x-name ,y-name ,z-name) ,form-which-returns-three-values
+-       (with-stack-list (,vector-name ,x-name ,y-name ,z-name)
++       (let ((,vector-name (list ,x-name ,y-name ,z-name)))
+ 	 ,@body))))
+ 
+ 
+@@ -153,7 +153,7 @@
+ 			  (setq *restartable-random-number-generator-state*
+ 				(make-random-state))))
+ 	(random-seed 281973564)) ;; "Bozo's Number"
+-  (cli::seed-random-state random-state random-seed)
++  (fcli::seed-random-state random-state random-seed)
+   random-state)
+ 
+ 

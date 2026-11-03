@@ -57,9 +57,11 @@ W3P, W4, W4 Examples, CL-HTTP-CLIM, HTML Parser.
 - Flavors Statice 441: its own world, `FEP7:>Genera-8-3-flavors-statice.ilod`
   (it can't share a world with Statice)
 - The S-Graphics programs (S-Paint, S-Dynamics, S-Geometry, S-Render,
-  S-Record): the Genera 8.1.1 animation world, `animation-mac-6-2-y2k.ilod`
+  S-Record): the Genera 8.1.1 animation world, `animation-mac-6-2-color.ilod`,
+  which makes the color screen at boot and holds Craig Reynolds' Boids
+  (`(boids:demo)` in S-Geometry's command pane)
 
 ## Not included
 
 HTTP Proxy and Lambda-IR (only in CL-HTTP's later 67.87 release),
-CParaOPS5 (C, not Lisp), Boids, the FrameThrower.
+CParaOPS5 (C, not Lisp), the FrameThrower.

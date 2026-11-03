@@ -107,8 +107,14 @@ Display option.
 
 At the FEP prompt after `Hello`, in place of `Boot`:
 
-- Animation world: `Load World FEP7:>animation-mac-6-2-y2k.ilod`, `Start`;
+- Animation world: `Load World FEP7:>animation-mac-6-2-color.ilod`, `Start`;
   S-Paint, S-Geometry, S-Dynamics and the other S-Graphics programs open from
-  their Select keys. MiSTer
+  their Select keys. MiSTer. The color screen exists at boot
+  (`cl-user::*color-screen*`). MiSTer
+- Boids: Select G, then `(boids:demo)` without Return (Return stops the
+  flock); any key stops it. MiSTer
+- S-Geometry's Shade and S-Paint ask to make their own color screen (a
+  1280 x 1024 Univision setup, or a 32-bit bitmap screen): untried past the
+  dialog
 - Flavors Statice: `Load World FEP7:>Genera-8-3-flavors-statice.ilod`,
   `Start`. untried

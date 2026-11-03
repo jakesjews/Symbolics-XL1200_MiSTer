@@ -50,8 +50,10 @@ The disk's other worlds load at the FEP prompt after `Hello`, in place of
 `Boot`:
 
 - The Genera 8.1.1 animation world (S-Paint, S-Geometry, S-Dynamics and the
-  other S-Graphics programs): `Load World FEP7:>animation-mac-6-2-y2k.ilod`,
-  then `Start`
+  other S-Graphics programs), with the color screen made at boot and Craig
+  Reynolds' Boids: `Load World FEP7:>animation-mac-6-2-color.ilod`, then
+  `Start`. For the flock, Select G (S-Geometry), then type `(boids:demo)`;
+  any key stops it
 - Flavors Statice: `Load World FEP7:>Genera-8-3-flavors-statice.ilod`, then
   `Start`
 
