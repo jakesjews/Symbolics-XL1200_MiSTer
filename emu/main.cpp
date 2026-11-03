@@ -112,7 +112,8 @@ const char* ivory_opcode_name(int op);   // emu/cpu_insn.cpp
 static volatile sig_atomic_t stop_requested = 0;
 static void on_sigusr1(int) { stop_requested = 1; }
 
-// The screen as a PGM: video memory is 2048 x 1024 x 1 bit, bit 0 of each word
+// The screen as a PGM, black on white as the monitor shows it: video memory is
+// 2048 x 1024 x 1 bit, bit 0 of each word
 // the leftmost pixel.  Written to a temporary name and renamed, so a reader
 // never sees half a picture.
 static void write_screen(Machine& m, const char* path) {
@@ -123,7 +124,7 @@ static void write_screen(Machine& m, const char* path) {
   for (uint32_t y = 0; y < IoBoard::VIDEO_HEIGHT; y++)
     for (uint32_t x = 0; x < IoBoard::VIDEO_WIDTH; x++) {
       uint32_t wd = m.iob.video[(y * IoBoard::VIDEO_WIDTH + x) / 32];
-      fputc(((wd >> (x & 31)) & 1) ? 255 : 0, f);
+      fputc(((wd >> (x & 31)) & 1) ? 0 : 255, f);   // a set bit is black, as on the monitor
     }
   fclose(f);
   rename(tmp.c_str(), path);
