@@ -12,8 +12,8 @@ Work in progress: [docs/TODO.md](docs/TODO.md).
 ## What you need
 
 - The core and the main program from [releases](releases/)
-- An XL1200 disk image: one you have, or one you build
-  ([Building a disk](#building-a-disk))
+- The prebuilt disk, `boot0.vhd` (Genera 8.3 with its applications), or a
+  disk you build ([Building a disk](#building-a-disk))
 - A keyboard and mouse
 - For direct video, a display that takes 1152 × 880 at 60 Hz (54 kHz)
 
@@ -31,15 +31,36 @@ Work in progress: [docs/TODO.md](docs/TODO.md).
    main=MiSTer_xl1200
    ```
 
-4. Copy your disk image to `games/XL1200/boot0.vhd`; the core mounts it when
-   it starts.
-5. Start XL1200 from the Computer menu. At the FEP prompt type `Hello`, then
-   `Boot`; Genera is up in seconds. (A disk with no boot file: `Hello`,
-   `Load World FEP7:>name.ilod`, `Start`.)
-6. In Genera, `Login Lisp-Machine`.
+4. Unpack `boot0.vhd` into `games/XL1200/`; the core mounts it when it
+   starts.
+5. Start XL1200 from the Computer menu.
+6. At the `FEP Command:` prompt type `Hello`, then `Boot`. `Boot` loads the
+   disk's default world, Genera 8.3 with its applications.
+7. In Genera, `Login Lisp-Machine`.
 
 The Symbolics keys (Select, Function, Abort, Help, ...) are on the PC's
 function keys: [docs/keyboard.md](docs/keyboard.md).
+
+## The prebuilt disk
+
+What the default world holds, and how to start each application:
+[docs/applications.md](docs/applications.md).
+
+The disk's other worlds load at the FEP prompt after `Hello`, in place of
+`Boot`:
+
+- The Genera 8.1.1 animation world (S-Paint, S-Geometry, S-Dynamics and the
+  other S-Graphics programs): `Load World FEP7:>animation-mac-6-2-y2k.ilod`,
+  then `Start`
+- Flavors Statice: `Load World FEP7:>Genera-8-3-flavors-statice.ilod`, then
+  `Start`
+
+Genera's network address on this disk is 192.168.50.92. On another network,
+type `Set Network Address CHAOS|1200,INTERNET|A.B.C.D` (a free address on
+your LAN; Insert types `|`) after `Hello` and before `Boot`, at every start.
+
+Type `Halt Machine` in Genera before you switch cores or copy the image off
+the card.
 
 ## Building a disk
 
@@ -74,9 +95,11 @@ Clock can be "Today":
 
 Genera's Ethernet goes out of the MiSTer's wired port; the main program from
 step 2 carries the frames, as for the Sun and NeXT cores, so nothing runs by
-hand. The disk has to be built with `--internet A.B.C.D` (a free address on
-your LAN); the OSD's Network option picks the port or turns it off. Genera
-answers ping and serves FTP (Genera 8.3 has no telnet server).
+hand. Genera needs an address on your LAN: the prebuilt disk has
+192.168.50.92 ([changing it](#the-prebuilt-disk)), and a disk you build gets
+one with `--internet A.B.C.D`. The OSD's Network option picks the port or
+turns it off. Genera answers ping and serves FTP (Genera 8.3 has no telnet
+server).
 
 WiFi can't carry it, and every XL1200 core has the same Ethernet address.
 The bridge is
@@ -85,7 +108,7 @@ until it is upstream.
 
 ## Gotchas
 
-- **The core writes to the disk image, so give it a copy.**
+- **The core writes to the disk image, so keep the `.7z` (or another copy) to start over from.**
 - Images must be SCSI2SD dumps: each 1280-byte block in 1536 bytes.
 - With no disk mounted the machine halts; mounting one starts it.
 - Genera 8.3 doesn't accept dates after 1999: leave Clock at "28 years back" unless the world has the Y2K patch.
@@ -100,7 +123,7 @@ until it is upstream.
 - "Unable to change site to Standalone. The directory >sys does not exist": step 3 of [Building a disk](#building-a-disk) hasn't been done on this disk.
 - A full GC freezes Genera: the paging file is smaller than physical memory; build the disk with `--blocks 240000`.
 - No picture on direct video: the display has to take an 80 MHz, 54 kHz signal.
-- Genera doesn't answer ping: a cable in the MiSTer's port, `MiSTer_xl1200` and its `MiSTer.ini` entry, the disk built with `--internet`.
+- Genera doesn't answer ping: a cable in the MiSTer's port, `MiSTer_xl1200` and its `MiSTer.ini` entry, an address on your LAN (the prebuilt disk's is 192.168.50.92).
 - No FEP prompt: a debug build's Debug line shows where it stopped, [docs/NOTES.md](docs/NOTES.md#debug-line).
 
 How the core is built and what was found out about the machine:
