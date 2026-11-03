@@ -6,6 +6,9 @@ video on (the MiSTer's own screenshots are useless then).
                                             fetch the PNG the RetroTink saved, delete it there
   tools/mister/rt4k.py cmd 'remote menu'   send one serial command, print its reply lines
   tools/mister/rt4k.py ls [DIR]            list a directory of the RetroTink's SD card
+  tools/mister/rt4k.py osd                 print the OSD as text ('>' marks highlighted rows)
+  tools/mister/rt4k.py keys K1 K2 ...      press remote keys (menu, up, down, left, right,
+                                            ok, back, ...), then print the OSD
 
 The DonutShop (https://github.com/svirant/DonutShop) serves a WebSocket at
 ws://donutshop.local:81 that carries the RetroTink's serial bytes as binary
@@ -226,6 +229,57 @@ class Link:
     def rm(self, path):
         self.cmd("rm " + path, r"^rm (ok|err)|^rm: busy", timeout=10)
 
+    def frames(self, nonce, timeout=5):
+        """Collect the RTL1 frames of one session: DATA payloads by sequence
+        number, and the RESP payload (a SHA-256) that ends it."""
+        data, end = {}, time.time() + timeout
+        while time.time() < end:
+            self.pump(0.3)
+            while True:
+                i = self.bytes.find(b"\xa5\x5a")
+                if i < 0 or len(self.bytes) < i + 8:
+                    self.bytes = self.bytes[max(i, 0):] if i >= 0 else b""
+                    break
+                n = self.bytes[i + 4] | (self.bytes[i + 5] << 8)
+                if n > 2048:
+                    self.bytes = self.bytes[i + 1:]
+                    continue
+                if len(self.bytes) < i + 10 + n:
+                    self.bytes = self.bytes[i:]
+                    break
+                f = self.bytes[i:i + 10 + n]
+                self.bytes = self.bytes[i + 10 + n:]
+                if crc16(f[2:8 + n]) != (f[8 + n] | (f[9 + n] << 8)) or (f[2] | (f[3] << 8)) != nonce:
+                    continue
+                if f[6] == T_DATA:
+                    data[f[7]] = f[8:8 + n]
+                elif f[6] == T_RESP:
+                    time.sleep(0.2)
+                    self.pump(0.2)
+                    self.bytes = b""
+                    return data, f[8:8 + n]
+        raise RuntimeError("frames: timed out")
+
+    def osd(self):
+        """The OSD's text, one string per row, '>' before the rows drawn
+        highlighted (a background color other than the plain one)."""
+        lines = self.cmd("osd", r"^osd ready|busy|nothing shown", timeout=5)
+        m = re.match(r"^osd ready rows=(\d+) stride=(\d+) width=(\d+) cells=(\d+) nonce=0x([0-9A-Fa-f]+)", lines[-1])
+        if not m:
+            return None if "nothing shown" in lines[-1] else lines[-1]
+        rows, stride, width, nonce = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(5), 16)
+        data, _sha = self.frames(nonce)
+        text, color = data.get(0, b""), data.get(1, b"")
+        out = []
+        for r in range(rows):
+            cells = text[r * stride:r * stride + width]
+            s = "".join(chr(c) if 0x20 <= c < 0x7F else " " for c in cells).rstrip()
+            hi = any((color[r * stride + c] >> 6) & 3 for c in range(width) if r * stride + c < len(color))
+            out.append(("> " if hi else "  ") + s)
+        while out and not out[-1].strip():
+            out.pop()
+        return out
+
 
 def capture(out_path, link):
     before = {e[3] for e in (link.ls("screenshots") or [])}
@@ -256,11 +310,15 @@ def capture(out_path, link):
 
 
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ("capture", "cmd", "ls"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("capture", "cmd", "ls", "osd", "keys"):
         print(__doc__)
         return 2
     link = Link()
-    if sys.argv[1] == "capture":
+    if sys.argv[1] in ("osd", "keys"):
+        for k in sys.argv[2:] if sys.argv[1] == "keys" else []:
+            link.remote(k)
+        print("\n".join(link.osd() or ["(no OSD shown)"]))
+    elif sys.argv[1] == "capture":
         name, n = capture(sys.argv[2], link)
         print(f"{sys.argv[2]}: {n} bytes ({name})")
     elif sys.argv[1] == "cmd":
