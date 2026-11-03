@@ -1649,6 +1649,15 @@ controllers is cleared before a cold boot, so a saved world probes again.
 Function-X moves the mouse between the screens (the Color System manual,
 "Additional Color System Features").
 
+Display is Console or Color since Nov 2 2026 (status bit 12, so a saved
+Console or Color keeps its meaning and a saved Auto reads as Console). Auto,
+which followed the board's video-enable bit, switched the picture to an
+empty color screen as soon as one was made; the user dropped it. Pause shows
+the other screen until Display is next changed: hps_io turns the Pause
+key's byte sequence into one press event, E0 77, with no release
+(`sys/hps_io.sv`), which the keyboard map doesn't use. The text above that
+says Auto describes the core before then.
+
 ## Debug line
 
 A debug build (`XL_DEBUG` in XL1200.qsf; the release build leaves it out,

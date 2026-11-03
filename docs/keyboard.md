@@ -14,5 +14,7 @@ you expect. The Symbolics-only keys are on these PC keys:
 - Left Alt Meta, Right Alt Symbol, Num Lock Symbol
 - Windows keys Super, Menu key Hyper
 - Caps Lock Caps Lock, Scroll Lock Mode Lock
+- Pause/Break switches the picture between the console and the color screen;
+  Genera never sees it. The core's Display option picks the one shown first.
 
 The mouse's three buttons are the Symbolics mouse's Left, Middle and Right.
