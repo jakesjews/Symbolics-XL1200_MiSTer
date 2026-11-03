@@ -6,7 +6,7 @@ usage: kbd.py TEXT        (run on the MiSTer)
 
 TEXT is typed as on a PC keyboard; {name} presses a key: {enter}, {f1}..{f12},
 {esc}, {backspace}, {tab}, {home}, {end}, {pageup}, {pagedown}, {insert},
-{delete}, {up}, {down}, {left}, {right}.  '(' and ')' are typed as '[' and ']',
+{delete}, {up}, {down}, {left}, {right}, {pause} (the core's screen switch).  '(' and ')' are typed as '[' and ']',
 which the core maps to the Symbolics ( and ) keys, and '|' as Insert, the
 Symbolics | key (docs/keyboard.md).
 {m DX DY} moves the mouse; {click L}, {click M}, {click R} click a button ({click R shift} with Shift);
@@ -31,7 +31,8 @@ SHIFTED = {"!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6", "&": "7",
            "_": "-", "+": "=", "{": "[", "}": "]", ":": ";", '"': "'", "~": "`",
            "<": ",", ">": ".", "?": "/"}
 NAMED = {"enter": 28, "esc": 1, "backspace": 14, "tab": 15, "home": 102, "end": 107, "pageup": 104,
-         "pagedown": 109, "insert": 110, "delete": 111, "up": 103, "down": 108, "left": 105, "right": 106}
+         "pagedown": 109, "insert": 110, "delete": 111, "up": 103, "down": 108, "left": 105, "right": 106,
+         "pause": 119}
 NAMED.update({f"f{i}": 58 + i for i in range(1, 11)})
 NAMED.update({"f11": 87, "f12": 88})
 MODS = {"ctrl": 29, "meta": 56, "super": 125}   # Left Control, Left Alt (Meta), Left Windows (Super)

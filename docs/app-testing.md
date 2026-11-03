@@ -30,8 +30,9 @@ emulator, **untried**, **known problem**.
 ## Color and graphics
 
 Make the color screen first, once per boot: `(setq cs
-(color:make-mister-color-screen))`. On the Nov 3 image, login does it. The
-core's Display option shows it (Pause on the next core build).
+(color:make-mister-color-screen))`. On the Nov 3 image, login does it: use
+`*color-screen*` where these say `cs`. Pause shows it, or the core's
+Display option.
 
 - Color Demo patterns: `(setq w (tv:make-window 'tv:window :superior cs
   :expose-p t :left 0 :top 0 :width 1152 :height 880))`, then

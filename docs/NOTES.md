@@ -931,7 +931,11 @@ file (the emulator has no color board, so the file reports "No suitable
 UNIVISION controller found" and carries on); `Halt Machine` before the
 image was taken. `Genera-8-3-fat.ilod.4` stays on the FEP. The image is
 `research/media/disks/fat-init/boot0.vhd` (licensed media, not in the
-repository); the screen made at login is yet to be seen on the MiSTer.
+repository; md5 4ca79cbbeca6fc7cf882119b494a6277). On the MiSTer (build
+43): Hello, Boot and `Login Lisp-Machine` load the file, `*color-screen*`
+is an exposed `MANAGED-UNIVISION-SCREEN`, SMPTE bars drawn on it show after
+Pause, and a second Pause brings the console back with nothing typed in
+the Listener.
 
 ### Paging with 4 MW
 
@@ -1853,7 +1857,8 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   block memory 56%, setup slack +0.966 ns core, +2.155 video, +0.531 HPS,
   +0.405 HDMI, hold +0.249. Seeds 2 and 3 routed but missed the core clock
   (-3.7 and -0.5 ns, after 3.5 and 1.7 hours), 1 and 4 could not fit, and
-  5, 6, 8 and 9 were stopped once 10 passed. Not yet run on the MiSTer.
+  5, 6, 8 and 9 were stopped once 10 passed. On the MiSTer: the fat-init
+  image boots, login makes the color screen, Pause switches to it and back.
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's
