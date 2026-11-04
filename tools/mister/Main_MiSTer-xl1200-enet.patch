@@ -1,4 +1,4 @@
-From c0972bc9e85f23e3b80080273d877a405c9ff4e3 Mon Sep 17 00:00:00 2001
+From 8561f0613b9d0f991659f2e58462d433f858fbba Mon Sep 17 00:00:00 2001
 From: Jacob Jewell <jakesjews@gmail.com>
 Date: Wed, 4 Nov 2026 00:06:31 -0500
 Subject: [PATCH] XL1200: Ethernet bridge (the 82586 in the FPGA, Main as the
@@ -8,10 +8,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01Sv9GAFmeScaeijPaFGtn9u
 ---
  support.h                 |   1 +
- support/xl1200/xl1200.cpp | 197 ++++++++++++++++++++++++++++++++++++++
+ support/xl1200/xl1200.cpp | 219 ++++++++++++++++++++++++++++++++++++++
  support/xl1200/xl1200.h   |   9 ++
  user_io.cpp               |   3 +
- 4 files changed, 210 insertions(+)
+ 4 files changed, 232 insertions(+)
  create mode 100644 support/xl1200/xl1200.cpp
  create mode 100644 support/xl1200/xl1200.h
 
@@ -29,10 +29,10 @@ index c8b3b47..4ff8d95 100644
  #include "support/archie/archie.h"
 diff --git a/support/xl1200/xl1200.cpp b/support/xl1200/xl1200.cpp
 new file mode 100644
-index 0000000..26b70bc
+index 0000000..541ed41
 --- /dev/null
 +++ b/support/xl1200/xl1200.cpp
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,219 @@
 +#include <stdio.h>
 +#include <string.h>
 +#include <strings.h>
@@ -40,7 +40,6 @@ index 0000000..26b70bc
 +
 +#include "../../user_io.h"
 +#include "../../shmem.h"
-+#include "../minimig/minimig_a2065.h"
 +#include "xl1200.h"
 +
 +extern int  ethernet_open(const char *iface, int promiscuous);
@@ -52,7 +51,7 @@ index 0000000..26b70bc
 +extern void ethernet_macvlan_delete(const char *name);
 +extern void ethernet_offload_off(const char *iface);
 +extern void ethernet_offload_on(const char *iface);
-+extern uint32_t crc32_compute(const uint8_t *data, int len);
++extern int  a2065_mode_available(int mode);
 +
 +#define SB_BASE    0x1FF00000UL
 +#define SB_SIZE    0x10000UL
@@ -71,19 +70,33 @@ index 0000000..26b70bc
 +#define MAX_FRAME  (SB_SLOT - 8)
 +#define XL_MAGIC   0x584C455448303031ULL
 +
++#define MODE_OFF     0
++#define MODE_ETH0    1
++#define MODE_ETH1    2
++#define MODE_MACVLAN 3
++#define MODE_TAP     4
++
 +static volatile uint8_t *mb = 0;
 +static int running = 0;
 +static int link_open = 0;
-+static int cur_mode = A2065_OFF;
++static int cur_mode = MODE_OFF;
 +static int made_macvlan = 0;
 +static const char *offload_iface = 0;
 +static uint64_t gen = ~0ULL;
 +static uint8_t guest_mac[6];
 +static int mac_known = 0;
 +static uint8_t frame[MAX_FRAME];
++static uint32_t crc_tab[256];
 +
 +static uint64_t rd64(uint32_t off) { return *(volatile uint64_t *)(mb + off); }
 +static void wr64(uint32_t off, uint64_t v) { *(volatile uint64_t *)(mb + off) = v; }
++
++static uint32_t crc32_le(const uint8_t *p, int n)
++{
++	uint32_t c = 0xFFFFFFFF;
++	while (n--) c = crc_tab[(c ^ *p++) & 0xFF] ^ (c >> 8);
++	return c;
++}
 +
 +char is_xl1200()
 +{
@@ -102,17 +115,17 @@ index 0000000..26b70bc
 +
 +static void open_link(int mode)
 +{
-+	int wired = (mode == A2065_ETH0 || mode == A2065_ETH1);
-+	const char *iface = (mode == A2065_ETH1) ? "eth1" : (mode == A2065_TAP) ? "tap0" : "eth0";
++	int wired = (mode == MODE_ETH0 || mode == MODE_ETH1);
++	const char *iface = (mode == MODE_ETH1) ? "eth1" : (mode == MODE_TAP) ? "tap0" : "eth0";
 +
 +	close_link();
-+	if (mode == A2065_MACVLAN)
++	if (mode == MODE_MACVLAN)
 +	{
 +		if (!mac_known || !ethernet_macvlan_create("eth0", "xl0", guest_mac)) return;
 +		made_macvlan = 1;
 +	}
 +
-+	if (mode != A2065_TAP)
++	if (mode != MODE_TAP)
 +	{
 +		offload_iface = iface;
 +		ethernet_offload_off(iface);
@@ -140,10 +153,17 @@ index 0000000..26b70bc
 +		wr64(SB_MAGIC, 0);
 +	}
 +
++	for (uint32_t i = 0; i < 256; i++)
++	{
++		uint32_t c = i;
++		for (int k = 0; k < 8; k++) c = (c >> 1) ^ (0xEDB88320 & -(c & 1));
++		crc_tab[i] = c;
++	}
++
 +	running = 1;
 +	gen = ~0ULL;
 +	mac_known = 0;
-+	cur_mode = A2065_OFF;
++	cur_mode = MODE_OFF;
 +}
 +
 +void xl1200_enet_stop()
@@ -173,19 +193,19 @@ index 0000000..26b70bc
 +		{
 +			memcpy(guest_mac, mac, 6);
 +			mac_known = 1;
-+			if (link_open && (cur_mode == A2065_ETH0 || cur_mode == A2065_ETH1)) ethernet_set_mac_filter(guest_mac);
-+			if (cur_mode == A2065_MACVLAN) cur_mode = -1;
++			if (link_open && (cur_mode == MODE_ETH0 || cur_mode == MODE_ETH1)) ethernet_set_mac_filter(guest_mac);
++			if (cur_mode == MODE_MACVLAN) cur_mode = -1;
 +		}
 +	}
 +
 +	int v = (int)user_io_status_get("[10:8]");
-+	int mode = (v == 0) ? A2065_ETH0 : (v == 1) ? A2065_OFF : v;
-+	if (mode >= A2065_MODES || !a2065_mode_available(mode)) mode = A2065_OFF;
++	int mode = (v == 0) ? MODE_ETH0 : (v == 1) ? MODE_OFF : v;
++	if (mode > MODE_TAP || !a2065_mode_available(mode)) mode = MODE_OFF;
 +
-+	if (mode != cur_mode || (mode != A2065_OFF && !link_open))
++	if (mode != cur_mode)
 +	{
 +		cur_mode = mode;
-+		if (mode == A2065_OFF) close_link();
++		if (mode == MODE_OFF) close_link();
 +		else open_link(mode);
 +	}
 +
@@ -207,9 +227,11 @@ index 0000000..26b70bc
 +
 +	if (!link_open) return;
 +
-+	int len;
-+	while ((len = ethernet_recv_nb(frame, MAX_FRAME)) > 0)
++	for (int n = 0; n < RX_RING; n++)
 +	{
++		int len = ethernet_recv_nb(frame, MAX_FRAME);
++		if (len <= 0) break;
++
 +		uint64_t rxw = rd64(SB_RXW);
 +		if (len < 14 || len > MAX_FRAME - 4 || rxw - rd64(SB_RXR) >= RX_RING) continue;
 +
@@ -218,9 +240,9 @@ index 0000000..26b70bc
 +			memset(frame + len, 0, 60 - len);
 +			len = 60;
 +		}
-+		uint32_t fcs = crc32_compute(frame, len);
++		uint32_t fcs = ~crc32_le(frame, len);
 +		for (int k = 0; k < 4; k++) frame[len++] = fcs >> (8 * k);
-+		uint32_t hash = ~crc32_compute(frame, 6) >> 26;
++		uint32_t hash = crc32_le(frame, 6) >> 26;
 +
 +		uint32_t slot = SB_RX + SB_SLOT * (uint32_t)(rxw % RX_RING);
 +		memcpy((void *)(mb + slot + 8), frame, len);

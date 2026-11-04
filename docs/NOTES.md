@@ -1408,8 +1408,10 @@ would put Genera on the LAN at its own address, a follow-up.
   driver's restart, AL-LOC 0 both ways, and the network off.  489k cycles.
 - Main's side: `tools/mister/Main_MiSTer-xl1200-enet.patch`,
   `support/xl1200/xl1200.cpp` (the Sun bridge's mailbox keyed on XLETH001,
-  with the A2065 module's modes and crc32_compute; the OSD option at status
-  bits 10:8, macvlan child "xl0") and the three
+  self-contained apart from the A2065 module's host network calls; the OSD
+  option at status bits 10:8, macvlan child "xl0"; a failed open waits for
+  the option or the MAC to change, and RX takes at most a ring's worth per
+  poll) and the three
   user_io hooks, for a pull request to MiSTer-devel/Main_MiSTer; also the
   `xl1200` branch of github.com/jakesjews/Main_MiSTer.  Built with the Arm
   GNU 10.2 toolchain (gcc-arm-10.2-2020.11, arm-none-linux-gnueabihf), the
