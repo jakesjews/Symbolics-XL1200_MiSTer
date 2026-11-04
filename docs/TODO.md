@@ -14,7 +14,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    full GC, Save World and booting the saved world, the MacIvory animation
    world's programs, ephemeral GC flips, the number types through the FPA).
    Left: an overnight run; a use check of each application in the fat
-   world on the MiSTer (item 12).
+   world on the MiSTer (item 11).
    Anything that breaks is reproduced in the free-running simulation or the
    model.
    Found and fixed in the tree (Nov 2 2026, docs/NOTES.md): `Load System
@@ -125,34 +125,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    choose: blocks and filemarks), an OSD slot for it. Not needed for
    distributions: `Restore Distribution :Use Disk Yes` reads them from a
    FEP file (`tools/distfile.py`, docs/NOTES.md).
-10. A color screen without the FrameThrower, optional: emulate the Univision
-   UDC-3400, the third-party VME color board Symbolics sold for the XL400,
-   whose driver is in source on the 8.3 CD (`sys.sct/color/univision*.lisp`,
-   `vme-color.lisp`) and loaded into every Ivory world's Color system,
-   the animation world's included. (The FrameThrower's driver is binary
-   only, with a 1.9 MB microcode load and a command queue: not an option.)
-   The board is an 8-bit frame buffer with a 2048-pixel pitch, two 1-bit
-   overlay planes, three Bt458 palettes and four control words; its Intel
-   82786 graphics coprocessor is skipped, since the driver's settable
-   `remote-drawing-enabled` makes the Ivory draw into the buffer itself,
-   and the interrupts only restart the coprocessor. To build: the Merlin-II
-   VME window (physical addresses with bits 31:30 set, the polled-access
-   registers at 0x88000040-0x88000100 and the VIC068 error bits, all in
-   `i-sys/vme-bus.lisp` and `vme-defs.lisp`) onto 16 MB of DDR3 for the
-   board's space at VME 0x90000000; a DDR readout client with a line
-   buffer, the palette and the overlays into the video mixer; an OSD
-   Display option (Console, Color, Auto from the board's video-enable bit,
-   which Genera sets when the mouse is on the color screen). Run the screen
-   at 1152 × 880 through a sync format we define, so the video timing never
-   changes; the driver hard-codes 1280 × 1024 only in pan wraparound. On
-   the Genera side an init file saved into the world: define the controller
-   at its address, the sync format, make the screen with remote drawing
-   off. Unverified until it draws: the driver's init against our registers,
-   the S-Graphics programs on a non-FrameThrower screen (they ran on CAD
-   buffers and NuVista cards), the fit (about a thousand ALMs more on a
-   design that fits by seed; a separate color RBF is the fallback). The 8.3
-   world needs the Color system loaded from the CD.
-11. 16 MW of main memory, the XL1200's maximum (4 MW standard, three 4 MW
+10. 16 MW of main memory, the XL1200's maximum (4 MW standard, three 4 MW
    expansion boards), in the tree and building (Nov 2 2026): the memory
    boards answer at their slots (0x10000000, 0x20000000, 0x30000000) and
    the ECO register's nibbles say they are there, which is what the FEP's
@@ -160,7 +133,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    `Show Configuration` lists them, and build 41's herald on the MiSTer reads
    "16.0M words Physical memory, 29.3M words Swapping space". Left: Peek's
    storage meters against the 4 MW session (which fetched 8 MW from disk).
-12. The master disk: the fat world, version 3 (Nov 2 2026,
+11. The master disk: the fat world, version 3 (Nov 2 2026,
    [NOTES.md](NOTES.md#the-fat-world-version-3-nov-2-2026)), has every
    application of the checklist that runs on an Ivory in one world
    (`Genera-8-3-fat.ilod.4`), Flavors Statice in its own small world.
@@ -168,8 +141,8 @@ In the order they'll be done. Bugs come first whenever they turn up.
    a sample database. Left: a boot-and-use check of the rest on the MiSTer
    (docs/applications.md); a save from Concordia itself; Illustrate's frame
    never appears; Macsyma and NS stop at their license passwords.
-13. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
-14. Speed, only if the machine is really behind: measured after each step
+12. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
+13. Speed, only if the machine is really behind: measured after each step
     (`PROFILE=1` on `sim/system` counts cycles by state) and against the
     published times. Standing (Oct 2026, build 30 at 50 MHz): `(fib 30)`
     2.80 s against the XL1201's 4.1 s; Gabriel 6.56x the 3600 overall, the
