@@ -14,7 +14,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    full GC, Save World and booting the saved world, the MacIvory animation
    world's programs, ephemeral GC flips, the number types through the FPA).
    Left: an overnight run; a use check of each application in the fat
-   world on the MiSTer (item 11).
+   world on the MiSTer (item 10).
    Anything that breaks is reproduced in the free-running simulation or the
    model.
    Found and fixed in the tree (Nov 2 2026, docs/NOTES.md): `Load System
@@ -125,15 +125,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    choose: blocks and filemarks), an OSD slot for it. Not needed for
    distributions: `Restore Distribution :Use Disk Yes` reads them from a
    FEP file (`tools/distfile.py`, docs/NOTES.md).
-10. 16 MW of main memory, the XL1200's maximum (4 MW standard, three 4 MW
-   expansion boards), in the tree and building (Nov 2 2026): the memory
-   boards answer at their slots (0x10000000, 0x20000000, 0x30000000) and
-   the ECO register's nibbles say they are there, which is what the FEP's
-   hardware tables go by (docs/NOTES.md, the address map); the emulator's
-   `Show Configuration` lists them, and build 41's herald on the MiSTer reads
-   "16.0M words Physical memory, 29.3M words Swapping space". Left: Peek's
-   storage meters against the 4 MW session (which fetched 8 MW from disk).
-11. The master disk: the fat world, version 3 (Nov 2 2026,
+10. The master disk: the fat world, version 3 (Nov 2 2026,
    [NOTES.md](NOTES.md#the-fat-world-version-3-nov-2-2026)), has every
    application of the checklist that runs on an Ivory in one world
    (`Genera-8-3-fat.ilod.4`), Flavors Statice in its own small world.
@@ -141,8 +133,8 @@ In the order they'll be done. Bugs come first whenever they turn up.
    a sample database. Left: a boot-and-use check of the rest on the MiSTer
    (docs/applications.md); a save from Concordia itself; Illustrate's frame
    never appears; Macsyma and NS stop at their license passwords.
-12. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
-13. Speed, only if the machine is really behind: measured after each step
+11. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
+12. Speed, only if the machine is really behind: measured after each step
     (`PROFILE=1` on `sim/system` counts cycles by state) and against the
     published times. Standing (Oct 2026, build 30 at 50 MHz): `(fib 30)`
     2.80 s against the XL1201's 4.1 s; Gabriel 6.56x the 3600 overall, the
