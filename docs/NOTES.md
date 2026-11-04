@@ -1918,6 +1918,16 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   (-3.7 and -0.5 ns, after 3.5 and 1.7 hours), 1 and 4 could not fit, and
   5, 6, 8 and 9 were stopped once 10 passed. On the MiSTer: the fat-init
   image boots, login makes the color screen, Pause switches to it and back.
+- Build 44 (Nov 4 2026, `releases/XL1200_20261104.rbf`, replacing build 43):
+  returns refill the stack cache after placing their values (250ff42,
+  "Returns refill the stack cache last"), nothing else. Seed 6 of 250ff42
+  (Mac, 28 minutes): 34,607 ALMs (83%), block memory 56%, setup slack
+  +1.005 ns core, +0.247 HDMI, +1.579 HPS, hold +0.256; seed 10 could not
+  route, 9, 5, 1 and 8 were stopped once 6 passed. On the MiSTer: the
+  animation world boots, Reynolds' original `boids.lisp` (stack lists,
+  `FEP7:>boids.lisp`) compiles and loads, and `(boids:demo)` in S-Geometry
+  flies the 20-boid flock for 195 passes until a key stops it (before: a
+  trap in the first pass).
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's
