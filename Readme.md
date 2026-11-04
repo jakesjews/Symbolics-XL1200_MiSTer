@@ -12,8 +12,10 @@ Work in progress: [docs/TODO.md](docs/TODO.md).
 ## What you need
 
 - The core and the main program from [releases](releases/)
-- The prebuilt disk, `boot0.vhd` (Genera 8.3 with its applications), or a
-  disk you build ([Building a disk](#building-a-disk))
+- The prebuilt disk, `boot0.vhd.7z` (Genera 8.3 with its applications):
+  search [archive.org](https://archive.org) for its SHA-1,
+  `53d11962da7163762fda8f6f0d9cd43a23c05a4c`. Or a disk you build
+  ([Building a disk](#building-a-disk))
 - A keyboard and mouse
 - For direct video, a display that takes 1152 × 880 at 60 Hz (54 kHz)
 
