@@ -1,9 +1,11 @@
-From 225a18d9ef23babd63b7725239955ce9f1edc3cb Mon Sep 17 00:00:00 2001
+From c0972bc9e85f23e3b80080273d877a405c9ff4e3 Mon Sep 17 00:00:00 2001
 From: Jacob Jewell <jakesjews@gmail.com>
-Date: Wed, 4 Nov 2026 00:01:29 -0500
+Date: Wed, 4 Nov 2026 00:06:31 -0500
 Subject: [PATCH] XL1200: Ethernet bridge (the 82586 in the FPGA, Main as the
  wire)
 
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Sv9GAFmeScaeijPaFGtn9u
 ---
  support.h                 |   1 +
  support/xl1200/xl1200.cpp | 197 ++++++++++++++++++++++++++++++++++++++
