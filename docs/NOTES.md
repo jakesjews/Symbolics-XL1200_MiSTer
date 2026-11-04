@@ -956,10 +956,10 @@ makes heap lists where it made stack lists. With the stack lists, the
 flight loop traps in its first pass: `PRIORITIZED-ACCELERATION-ALLOCATION`
 takes a `CAR` of a location holding the unbound marker (DTP-LOCATIVE
 36600370462, its rest list unprintable). Three small compiled tests on the
-core pass: seven stack lists through `&rest`; a stack list read after 2,000
-recursive calls and from 500 calls down; stack lists made between
-multiple-value returns. So the cause is not yet known (the core, or a
-lifetime Reynolds' code had on the 3600 and the Ivory doesn't keep): docs/TODO.md.
+core passed: seven stack lists through `&rest`; a stack list read after
+2,000 recursive calls and from 500 calls down; stack lists made between
+multiple-value returns. The cause was the core's stack cache: see "Returns
+refill the stack cache last" below.
 `tools/genera/boids-demo.lisp` stands in for his bird model (a delta wing)
 and flies 20 boids inside his 19-unit sphere; `(boids:demo)` in
 S-Geometry's command pane, typed without Return (the Return is read as the
@@ -969,6 +969,41 @@ before the save; the sources are on the FEP. The baseline image with it:
 479d2de906db31a331132a9b71a58631 (the world file copied from the MiSTer's
 card, read twice with the same md5; the version before is
 `fat-init.vhd.gz`).
+
+### Returns refill the stack cache last (Nov 4 2026)
+
+The original stack-list Boids flies in the emulator, whose model keeps the
+stack in memory and has no stack cache. From a snapshot of the animation
+world (`XLEMU_EPOCH` fixed) with `FEP7:>boids.lisp` (the stack lists, only
+the seed function renamed) compiled and loaded, a flock of 20 made without
+a view (`make-flock :menu nil :add-object-to-view nil`, the demo's
+`:initialize-members`, then `:pilot` on each member, no camera needed) ran
+five rounds. The RTL alone from the same snapshot (`sim/system`,
+`LOCKSTEP_SNAPSHOT` and `FREE=1`) trapped 7 million instructions into the
+first round, in `PRIORITIZED-ACCELERATION-ALLOCATION`: "The first argument
+to the MULTIPLY instruction, #S(SI:WIRED-SLB-CONSOLE ...), was not a
+number", a word from some other frame where a vector's component belonged.
+
+The RTL refilled the stack cache before it placed the values of a
+`return-multiple` or `return-kludge`: `S_RET_FRAME3` started the refill
+when the caller's FP was below the lower bound, and `S_RET_VALUES` read
+the values out of the callee's frame afterwards. The refill moves the
+window down to [FP, FP + 127] and writes the slots of the words above
+that, so values above the caller's FP + 127 were read from memory, which
+never had them (pushes don't write through). The spec (4.4) has it the
+other way round: the values first, and "The final thing the return
+instruction does is to make sure that the frame being returned to is
+contained in the stack cache." The RTL now does that: `S_RET_FRAME3` notes
+the refill (`ret_fill`) and `S_RET_FILL` starts it once the values are in
+place. Returns of a single value were never affected (the value is read
+before the frame goes). Boids hit it because its vector functions return
+three values from deep frames, and each `with-3d-vector-on-stack` adds a
+stack list's three words to its frame; with heap lists the frames stay
+small enough. The fixed RTL from the same snapshot finishes the round
+(`R0`, `BT-DONE`, the flock at the same address as in the emulator's run).
+
+The free bench writes the RTL's screen every N million instructions with
+`SHOT_EVERY=N`, and SIGUSR1 ends its run.
 
 ### Paging with 4 MW
 

@@ -105,6 +105,11 @@ with the free-running RTL simulation for a quick FEP boot).
 - Refill: when a return leaves FP below the lower bound, the words from the
   old lower bound - 1 down to FP are read from memory into the cache, the
   overflow limit falls by the same count, and the lower bound becomes FP.
+  It is the last thing the return does (spec 4.4), after the values are on
+  the caller's stack: the refill moves the window down to [FP, FP + 127]
+  and reuses the slots of the words above it, so values still in the
+  callee's frame above FP + 127 would be lost (and read back from memory,
+  which never had them) if the refill came first.
   A fault during the refill halts the processor for now (the spec allows a
   trap with the PC at the caller's instruction; add it if Genera ever needs
   it).

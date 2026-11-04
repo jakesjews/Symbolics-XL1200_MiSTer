@@ -15,8 +15,11 @@
 // FREE=1: after the model's steps alone, the RTL runs alone (no comparison):
 // what it does with the state, on its screen.  (In lockstep the RTL samples
 // a sequence break a step later than the model once Genera enables them.)
+// SHOT_EVERY=N with FREE=1: SCREEN.pgm is rewritten from the RTL's video
+// memory every N million steps; SIGUSR1 ends the run.
 #include <algorithm>
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -86,6 +89,24 @@ static void tick() {
   top->eval();
   cycles++;
 }
+
+// The RTL's screen from its video memory (2048 x 1024 x 1 bit, bit 0 of each
+// word the leftmost pixel), black on white as xlemu writes it; written to a
+// temporary name and renamed.
+static void write_vram(const char* path) {
+  auto& vram = top->rootp->xl_machine__DOT__iob__DOT__video__DOT__vram;
+  std::string tmp = std::string(path) + ".tmp";
+  FILE* f = fopen(tmp.c_str(), "wb");
+  if (!f) return;
+  fprintf(f, "P5\n2048 1024\n255\n");
+  for (uint32_t i = 0; i < 2048u * 1024u; i++) fputc(((vram[i / 32] >> (i & 31)) & 1) ? 0 : 255, f);
+  fclose(f);
+  rename(tmp.c_str(), path);
+}
+
+// SIGUSR1 ends a free run early (the screen is still written)
+static volatile sig_atomic_t stop_requested = 0;
+static void on_sigusr1(int) { stop_requested = 1; }
 
 static void set_rtc() {
   struct tm tm;
@@ -213,6 +234,10 @@ int main(int argc, char** argv) {
   uint64_t n;
   bool pit_checked = true;   // report the first step after which the 82C54s differ
   const bool free_run = getenv("FREE") != nullptr;
+  // SHOT_EVERY=N (free runs): write the RTL's video memory to SCREEN every N
+  // million steps, to watch a long run from outside; SIGUSR1 ends the run
+  const uint64_t shot_every = getenv("SHOT_EVERY") ? strtoull(getenv("SHOT_EVERY"), nullptr, 0) * 1000000 : 0;
+  signal(SIGUSR1, on_sigusr1);
   for (n = from; n < steps; n++) {
     uint64_t pc0 = ref.pc;
     rlog.clear();
@@ -233,6 +258,11 @@ int main(int argc, char** argv) {
       if ((n + 1) % 1000000 == 0) {
         printf("%llu steps\n", (unsigned long long)(n + 1));
         fflush(stdout);
+        if (screen && shot_every && (n + 1) % shot_every == 0) write_vram(screen);
+      }
+      if (stop_requested) {
+        printf("stopped on request at step %llu\n", (unsigned long long)n);
+        break;
       }
       continue;
     }

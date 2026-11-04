@@ -3,12 +3,10 @@
 In the order they'll be done. Bugs come first whenever they turn up.
 
 1. Boids with stack lists: Reynolds' original `with-3d-vector-on-stack`
-   (`with-stack-list`) traps in the first pass of the flight loop on the
-   core, a `CAR` of an unbound-marker location in
-   `PRIORITIZED-ACCELERATION-ALLOCATION` (NOTES.md, "The animation world
-   with color and Boids"). Run the same in the emulator: if it fails there
-   too, find what clobbers the stack list (or whether the code relies on a
-   3600 lifetime); if not, it's the core's.
+   trapped on the core; the cause was a return refilling the stack cache
+   before placing its values, fixed in the tree (Nov 4 2026, NOTES.md,
+   "Returns refill the stack cache last") and checked on the RTL in
+   simulation. Left: the original stack-list Boids flying on the MiSTer.
 2. A compatibility pass, in progress ([NOTES.md](NOTES.md#compatibility)
    has what passed: Zmacs, Document Examiner, Inspector, Debugger, Peek, a
    full GC, Save World and booting the saved world, the MacIvory animation

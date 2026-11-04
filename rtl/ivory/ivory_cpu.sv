@@ -287,6 +287,12 @@ module ivory_cpu
   word_t       ret_single;
   logic [1:0]  ret_disp;
   logic [31:0] ret_oldcr;
+  // the caller's frame starts below the stack cache: refill it after the
+  // values are in place, the last thing a return does (spec 4.4); refilling
+  // first moved the window down over values still in the callee's frame
+  logic        ret_fill;
+  state_t      ret_end;               // where a return goes once its values are placed
+  assign ret_end = ret_fill ? S_RET_FILL : S_RETIRE;
 
   // ---------------------------------------------------------------------------
   // Combinational helpers

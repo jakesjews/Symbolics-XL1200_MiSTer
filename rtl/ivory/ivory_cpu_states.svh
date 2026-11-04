@@ -539,6 +539,7 @@
       icache_control <= 32'd1;
       prefetcher_control <= 32'h0FD;
       {stack_cache_lower_bound, stack_cache_overflow_limit, entry_max_args, pht_base, pht_mask} <= '0;
+      ret_fill <= 1'b0;
       chip_revision <= 32'd4;
       icount <= '0;
       trap_count <= '0;
@@ -701,7 +702,7 @@
           if (sc_a == sc_end) begin
             stack_cache_lower_bound <= sc_end;
             sc_busy <= 1'b0;
-            st <= S_RET_VALUES;
+            st <= S_RETIRE;   // the return's last step (S_RET_FILL)
           end else begin
             sc_a <= sc_a - 32'd1;
             st <= S_SC_FILL;

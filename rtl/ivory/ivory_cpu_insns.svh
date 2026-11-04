@@ -1072,21 +1072,20 @@
           cr <= ncr;
           lp <= nfp + {24'd0, ncr[7:0]};
           cnt <= '0;
-          // the caller's frame is reloaded into the stack cache
-          if (nfp < stack_cache_lower_bound) begin
-            sc_a <= stack_cache_lower_bound - 32'd1;
-            sc_end <= nfp;
-            stack_cache_overflow_limit <= stack_cache_overflow_limit - (stack_cache_lower_bound - nfp);
-            sc_busy <= 1'b1;
-            st <= S_SC_FILL;
-          end else st <= S_RET_VALUES;
+          // The values go to the caller's top of stack first, with the stack
+          // cache as the callee left it (they may lie above the caller's FP
+          // + 127); the caller's frame is reloaded into the cache last, in
+          // S_RET_FILL (spec 4.4: "The final thing the return instruction
+          // does")
+          ret_fill <= nfp < stack_cache_lower_bound;
+          st <= S_RET_VALUES;
         end
         S_RET_VALUES: begin
           if (ret_kind == 2'd2) st <= S_RET_COPY;
           else if (ret_kind == 2'd0) begin
             case (ret_disp)
-              VD_EFFECT: st <= S_RETIRE;
-              VD_VALUE: push(ret_single, S_RETIRE);
+              VD_EFFECT: st <= ret_end;
+              VD_VALUE: push(ret_single, ret_end);
               VD_MULTIPLE: push(ret_single, S_RET_PUSH1);
               default: begin
                 if (ret_arg[7:0] == 8'd0) push(ret_single, S_RET_REEXEC);
@@ -1095,17 +1094,26 @@
             endcase
           end else begin
             case (ret_disp)
-              VD_EFFECT: st <= S_RETIRE;
+              VD_EFFECT: st <= ret_end;
               VD_VALUE: begin
                 if (ret_nvals != 32'd0) sread(ret_vbase, S_RET_V1);
-                else push(NIL_W, S_RETIRE);
+                else push(NIL_W, ret_end);
               end
               default: st <= S_RET_COPY;
             endcase
           end
         end
-        S_RET_PUSH1: push(fixnum(32'd1), S_RETIRE);
-        S_RET_V1: push(stripcdr(m_rd), S_RETIRE);
+        // reload the caller's frame: from the lower bound - 1 down to FP
+        S_RET_FILL: begin
+          sc_a <= stack_cache_lower_bound - 32'd1;
+          sc_end <= fp;
+          stack_cache_overflow_limit <= stack_cache_overflow_limit - (stack_cache_lower_bound - fp);
+          sc_busy <= 1'b1;
+          ret_fill <= 1'b0;
+          st <= S_SC_FILL;
+        end
+        S_RET_PUSH1: push(fixnum(32'd1), ret_end);
+        S_RET_V1: push(stripcdr(m_rd), ret_end);
         S_RET_COPY: begin
           if (cnt < ret_nvals) sread(ret_vbase + cnt, S_RET_COPY1);
           else begin
@@ -1118,12 +1126,12 @@
           swrite(sp + 32'd1 + cnt, ret_kind == 2'd2 ? m_rd : setcdr(m_rd, CDR_NEXT), S_RET_COPY);
         end
         S_RET_AFTERCOPY: begin
-          if (ret_kind == 2'd2) st <= S_RETIRE;
-          else if (ret_disp == VD_MULTIPLE) push(fixnum(ret_nvals), S_RETIRE);
+          if (ret_kind == 2'd2) st <= ret_end;
+          else if (ret_disp == VD_MULTIPLE) push(fixnum(ret_nvals), ret_end);
           else if (ret_sppop) push(fixnum(ret_nvals), S_RET_REEXEC);
           else st <= S_RET_REEXEC;
         end
-        S_RET_REEXEC: begin set_pc(inst_pc); st <= S_RETIRE; end
+        S_RET_REEXEC: begin set_pc(inst_pc); st <= ret_end; end
 
         // frame_cleanup (subroutine; if an unwind-protect is started the instruction ends)
         S_CLEANUP: begin
