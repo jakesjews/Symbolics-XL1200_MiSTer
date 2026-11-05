@@ -2188,6 +2188,15 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   once 2 passed. On the MiSTer: the fat-init image boots, login loads its
   init file, Genera lists its disk, and the ping and CL-HTTP tests above
   pass.
+- Build 46 (Nov 5 2026, `releases/XL1200_20261105.rbf`, replacing build 45):
+  FPA timing (7fef411: Genera's latencies, the busy tag, the status queue,
+  the rebuilt arithmetic; [FPA timing](#fpa-timing-nov-5-2026)), nothing
+  else. Seed 5 of 7fef411 (Mac, 36 minutes): 35,356 ALMs (84%), block
+  memory 56%, setup slack +1.430 ns core, +1.461 video, +0.413 HDMI,
+  +0.442 HPS, hold +0.250. Seeds 2, 6, 9 and 10 had placed and were
+  routing when 5 passed, and were stopped. On the MiSTer: the fat-init
+  image boots, and the float forms, exceptions and timings in the FPA
+  section.
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's
