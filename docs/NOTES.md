@@ -443,6 +443,17 @@ the FEP and Genera can see. Fixed:
 - `sim/ether` covers both 82586 cases (a lap and a half of the receive
   area, freed as Genera frees it; nine frames into Main's eight-slot ring
   with an RU command meanwhile); the old RTL fails them.
+- On the MiSTer (build 45 against build 44, the same tests, the fat-init
+  image, tap0 over WiFi) neither kind of traffic tried showed the 82586
+  bugs: 100 small, 300 full-size and 100 fragmented 8000-byte pings all
+  answered, and 30 fetches of an 18 KB CL-HTTP page (551,130 bytes in
+  20-21 s), with a capture on the Mac counting no datagram sent twice
+  (the same IP id) on either build. The chip finishes a transmit within
+  microseconds unless Main's ring is full, so the stale-status window is
+  short at these rates. Genera answers ping 34-35 s after `Boot` on both
+  (the Mac's clock), and reads its disk through the changed SCSI model.
+  Pings above 8000 bytes go unanswered on both: Genera's IP takes about
+  8 KB a datagram (8500 bytes fail in the same six fragments as 8000).
 
 Checked and right as they are:
 
@@ -2020,6 +2031,15 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   `FEP7:>boids.lisp`) compiles and loads, and `(boids:demo)` in S-Geometry
   flies the 20-boid flock for 195 passes until a key stops it (before: a
   trap in the first pass).
+- Build 45 (Nov 4 2026, `releases/XL1200_20261104.rbf`, replacing build 44):
+  the I/O chips against their manuals (be45fca: WD33C93 CIP and reset bit,
+  the console DMA bank bit, three 82586 fixes), nothing else. Seed 2 of
+  be45fca (Mac, 47 minutes): 34,523 ALMs (82%), block memory 56%, setup
+  slack +0.829 ns core, +2.339 video, +0.309 HDMI, +0.573 HPS, hold
+  +0.248. Seed 6 could not fit; 10, 9 and 5 were stopped at 57 minutes
+  once 2 passed. On the MiSTer: the fat-init image boots, login loads its
+  init file, Genera lists its disk, and the ping and CL-HTTP tests above
+  pass.
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's
