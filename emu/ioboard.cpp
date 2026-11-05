@@ -81,7 +81,9 @@ void IoBoard::write(uint32_t pa, W w) {
   }
   switch (off) {
   case 0x04015000:
-    if ((dma_control & 0x08) && !(v & 0x08)) scsi.hardware_reset();
+    // Bit 0 is the WD33C93's reset pin, active low (Genera's
+    // %%MERLIN-INHIBIT-WD33C93-RESET; bit 3 resets the SCSI bus).
+    if (!(dma_control & 0x01) && (v & 0x01)) scsi.hardware_reset();
     dma_control = v;
     log("write", pa, w);
     return;
@@ -164,11 +166,14 @@ void IoBoard::dma_write_reg(int r, uint8_t v) {
   }
 }
 
-// One byte from a device into buffer memory.  Byte address bit 16 comes from
-// bit 5 of the board control register (set up by MERLIN-INITIALIZE-SERIAL).
+// One byte from a device into buffer memory.  Byte address bit 16 is the
+// serial control register's DMA bank bit (0x04014800 bit 5, Genera's
+// %%MERLIN-SERIAL-CTL-DMAC-BANK; the FEP sets it with 0xA4).
 void IoBoard::dma_to_memory(int ch, uint8_t b) {
   DmaChannel& c = dma[ch];
-  uint32_t a = ((dma_control >> 5) & 1) << 16 | c.addr;
+  auto sc = regs.find(0x04014800u);
+  uint32_t serial_control = sc == regs.end() ? 0 : sc->second;
+  uint32_t a = ((serial_control >> 5) & 1) << 16 | c.addr;
   uint32_t w = (a >> 2) & (BUFFER_WORDS - 1), sh = (a & 3) * 8;
   buffer[w] = (buffer[w] & ~(0xFFu << sh)) | ((uint32_t)b << sh);
   c.addr += (c.mode & 0x20) ? -1 : 1;

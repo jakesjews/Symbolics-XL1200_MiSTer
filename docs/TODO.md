@@ -60,17 +60,12 @@ In the order they'll be done. Bugs come first whenever they turn up.
      and loads the tests, the RTL runs them.
    - Gabriel and fib as speed regressions: cycle counts in Verilator, times
      on the MiSTer.
-2. Check the device models against their manuals
-   (`research/downloads/xl1200-documentation-addendum`): the 82586 (Intel
-   reference manual), the DUSCC (SCN26562/68562 users' guide, AN416, AN419),
-   the SCN2674 (Signetics data sheet), the WD33C93A (data sheet, version
-   differences and bug list; decide which revision the XL1200 has).
-3. FPA timing, once the processor's is close: the manual's latencies in FPA
+2. FPA timing, once the processor's is close: the manual's latencies in FPA
    clocks (the FPA has its own clock on the Merlin-II) scaled to the Ivory's,
    and the busy tag (dtp-null) on an early read. The status queue (registers
    4, 5, 7, 8, 9, 10: destinations and previous status).
-4. Calendar clock as GMT: Genera reads it as GMT, MiSTer's RTC is local time.
-5. Network, what's left after the wired port: the bridge into MiSTer's main
+3. Calendar clock as GMT: Genera reads it as GMT, MiSTer's RTC is local time.
+4. Network, what's left after the wired port: the bridge into MiSTer's main
    program upstream (a pull request); WiFi through a tap interface with
    proxy ARP on the MiSTer; namespace entries for the hosts Genera should
    talk to (its FTP and file servers refuse strangers), from `mkworld`; an
@@ -88,12 +83,12 @@ In the order they'll be done. Bugs come first whenever they turn up.
    Lisp in the fat world asking the router at boot and putting the lease
    in the running namespace (any LAN, the bridge as it is; NAT in the main
    program instead would need port forwards and kernel support).
-6. Disk throughput: the SCSI model now moves ten blocks a request with a
+5. Disk throughput: the SCSI model now moves ten blocks a request with a
    read window (before: one 1280-byte block a round trip, Save World at
    about 125 blocks a second, 160 KB/s). Measure Load World, Save World and
    paging on the MiSTer against that; a 1990 SCSI disk did several times
    the old figure. If still short, read straight into DDR3.
-7. A SCSI CD-ROM drive: Genera 8.3 shipped only on CD-ROM for Ivory
+6. A SCSI CD-ROM drive: Genera 8.3 shipped only on CD-ROM for Ivory
    machines (8.3 Release Notes), and on an XL a drive on the SCSI bus is
    read as ISO 9660 through `host|CDROMn:` pathnames, n its SCSI address
    (8.3 installation guides; `SYS:IO;ISO9660-ACCESS-PATH`), and the FEP's
@@ -104,9 +99,22 @@ In the order they'll be done. Bugs come first whenever they turn up.
    and READ(6), and handles UNIT ATTENTION after a change), read-only, an
    OSD slot for an `.iso` (the stock block interface; disc formats like
    `.cue`/`.bin` or `.chd` would be the main program's side, as other
-   cores' CD support is). Test media: the user's
+   cores' CD support is). The WD33C93 model then needs what disks never
+   use: a transfer count that runs out before the data (phase 0x46, an
+   interrupt) and Select-and-Transfer resuming from Command Phase 0x45, as
+   Genera splits a read at its 32 KB buffer
+   ([NOTES.md](NOTES.md#the-io-chips-against-their-manuals-nov-4-2026)).
+   Test media: the user's
    `bolix_cd.iso` (the 8.3 distribution CD); `Copy File` of a world from
    it, then a Breath of Life restore.
+7. The RS-232 port: DUSCC channel B (Genera's serial unit 1, AM9517
+   channels 2 and 3, interrupt bits 16 and 17) on MiSTer's UART, so
+   Genera's serial streams work; today output on it never completes and a
+   `close` waits forever ([NOTES.md](NOTES.md#the-io-chips-against-their-manuals-nov-4-2026)).
+   A UART with the baud rate and framing from its registers, 4-byte FIFOs,
+   the ready bits driving the two DMA channels, end of count and status
+   interrupts, the modem lines, the chip's reset values and its
+   write-1-to-clear status registers (about 400-700 ALMs, estimated).
 8. A SCSI tape drive (on hold, Nov 2 2026: after the fat image and the
    CD-ROM): the XL's optional tape unit, in the top drive slot,
    is a 3M MCD-40 SCSI cartridge drive taking DC 2000 cartridges (XL

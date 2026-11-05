@@ -224,10 +224,10 @@ module xl_iob #(
   logic [7:0]  dma_command, dma_status;
 
   // ---------------------------------------------------------------- board registers
-  logic [31:0] dma_control;      // 0x04015000 (bit 3 holds the WD33C93 in reset)
+  logic [31:0] dma_control;      // 0x04015000, the SCSI control register (bit 0 low holds the WD33C93 in reset)
   logic [31:0] scsi_window;      // 0x0401A000
   logic [17:0] dma_byte_addr;    // SCSI DMA byte address in the buffer
-  logic [31:0] reg_4800, reg_5800, reg_28000;
+  logic [31:0] reg_4800, reg_5800, reg_28000;   // 0x04014800: the serial control register (bit 5 the DMA bank)
   logic [7:0]  polled_latch;
 
   // ---------------------------------------------------------------- buffer memory
@@ -347,12 +347,13 @@ module xl_iob #(
       con_wait <= '0;
     end else begin
       // ---- console bytes into buffer memory (AM9517 channel 0); byte
-      // address bit 16 comes from bit 5 of the board control register
+      // address bit 16 is the serial control register's DMA bank bit (bit 5,
+      // Genera's %%MERLIN-SERIAL-CTL-DMAC-BANK; the FEP sets it with 0xA4)
       if (con_dma && bc == BC_CON && buf_ack) con_dma <= 1'b0;
       if (tick) begin
         if (con_wait == 10'd0 && con_pending && !dma_masked[0] && !con_dma) begin
           logic [16:0] a;
-          a = {dma_control[5], dma_cur_addr[0]};
+          a = {reg_4800[5], dma_cur_addr[0]};
           con_dma <= 1'b1;
           con_dma_word <= {1'b0, a[16:2]};
           con_dma_lane <= a[1:0];
@@ -456,7 +457,9 @@ module xl_iob #(
                 endcase
               end else case (off)
                 28'h4015000: begin
-                  if (dma_control[3] && !cpu_wdata[3]) wd_mr <= 1'b1;
+                  // bit 0 is the chip's reset pin, active low (Genera's
+                  // %%MERLIN-INHIBIT-WD33C93-RESET; bit 3 resets the SCSI bus)
+                  if (!dma_control[0] && cpu_wdata[0]) wd_mr <= 1'b1;
                   dma_control <= cpu_wdata;
                 end
                 // SCSI DMA: 0x0401A000 = buffer window in 4K-word pages (start

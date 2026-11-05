@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <vector>
 #include "Vtb_ether.h"
 #include "Vtb_ether___024root.h"
@@ -50,8 +51,9 @@ static uint32_t crc32_le(const uint8_t* p, int n) {
 }
 static uint32_t host_txr = 0, host_rxw = 0;
 static std::vector<std::vector<uint8_t>> sent;        // frames Main took
+static bool host_hold = false;                        // Main takes no frames (its TX ring fills)
 static void host_poll() {
-  if (mb(W_MAGIC) != MAGIC) return;
+  if (mb(W_MAGIC) != MAGIC || host_hold) return;
   uint32_t txw = (uint32_t)mb(W_TXW);
   while (host_txr != txw) {
     int slot = W_TX + SLOT * (host_txr % TX_RING);
@@ -406,6 +408,94 @@ int main(int argc, char** argv) {
     CHECK(sent.size() == before, "a frame reached Main with the network off");
     ack();
     top->ena = 1;
+  }
+
+  // ---- a lap and a half of the receive area, freed as Genera frees it
+  // (82586-RECEIVE-INTERRUPT: the RFD gets EL and the one before loses it,
+  // each RBD the same): the RFDs' RBD offsets still hold the first lap's
+  // buffers, and the chip has to take the next free RBD instead
+  {
+    build_ru(-1);
+    rfd_i = 0;
+    int last_rfd = NRFD - 1, last_rbd = NRBD - 1, next_rbd = 0;
+    wr16(rfd_at(last_rfd) + 2, 0x8000);
+    for (int i = 0; i < NRFD * 3 / 2; i++) {
+      char name[32];
+      snprintf(name, sizeof name, "rx lap frame %d", i);
+      int len = 60 + (i * 97) % 500;
+      int want = (std::max(len, 60) + RBD_SIZE - 1) / RBD_SIZE;
+      CHECK(host_send(frame(len, MAC, (uint8_t)(20 + i))), "%s: RX ring full", name);
+      if (!wait_status(0x4000, 150000)) { CHECK(false, "%s: FR not seen", name); dump(name); break; }
+      uint32_t rfd = rfd_at(rfd_i % NRFD);
+      CHECK((rd16(rfd) & 0xE000) == 0xA000, "%s: RFD status %04X", name, rd16(rfd));
+      int nrbd; uint16_t first;
+      std::vector<uint8_t> got = delivered(rfd, true, &nrbd, &first), f = frame(len, MAC, (uint8_t)(20 + i));
+      while (f.size() < 60) f.push_back(0);
+      int before = fails;
+      same(got, f, name);
+      CHECK(nrbd == want, "%s: %d RBDs, wanted %d", name, nrbd, want);
+      CHECK(first == off(rbd_at(next_rbd)), "%s: first RBD %04X, wanted %04X", name, first, off(rbd_at(next_rbd)));
+      if (fails != before) { dump(name); break; }
+      wr16(rfd, 0); wr16(rfd + 2, 0x8000);              // free the RFD
+      wr16(rfd_at(last_rfd) + 2, 0);
+      last_rfd = rfd_i % NRFD;
+      for (int k = 0; k < nrbd; k++) {                  // and its RBDs
+        int r = (next_rbd + k) % NRBD;
+        wr16(rbd_at(r), 0); wr16(rbd_at(r) + 8, RBD_SIZE | 0x8000);
+        wr16(rbd_at(last_rbd) + 8, RBD_SIZE);
+        last_rbd = r;
+      }
+      next_rbd = (next_rbd + nrbd) % NRBD;
+      rfd_i++;
+      ack();
+    }
+  }
+
+  // ---- channel attention while a transmit waits for the wire: Main takes
+  // nothing, so the ninth of nine frames waits for a TX ring slot.  The SCB
+  // shows the CU active from the moment the list is taken, and an RU
+  // command meanwhile completes at once (Genera waits about 2 ms for one).
+  {
+    host_hold = true;
+    size_t before = sent.size();
+    std::vector<uint32_t> cbs;
+    std::vector<std::vector<uint8_t>> fs;
+    for (int k = 0; k < 9; k++) {
+      fs.push_back(frame(100, PEER, (uint8_t)(200 + k)));
+      uint32_t cb = cb_transmit(fs.back(), {{0x18000u + 0x100u * k, 100}}, true);
+      if (!cbs.empty()) { wr16(cbs.back() + 4, off(cb)); wr16(cbs.back() + 2, rd16(cbs.back() + 2) & ~0x8000); }
+      cbs.push_back(cb);
+    }
+    wr16(SCB + 4, off(cbs[0]));
+    scb_command(0x0100);
+    int i = 0;
+    while (i < 5000 && rd16(SCB + 2) != 0) { tick(); i++; }
+    CHECK(rd16(SCB + 2) == 0, "CU start not taken");
+    tick(20);
+    CHECK((rd16(SCB) & 0x0700) == 0x0200, "CU not shown active after CU start: SCB %04X", rd16(SCB));
+    uint64_t t0 = cyc;
+    while (cyc - t0 < 15000 && rd16(cbs[7]) != 0xA000) tick();
+    tick(500);
+    CHECK(rd16(cbs[7]) == 0xA000 && rd16(cbs[8]) == 0, "ring not full as planned: CB7 %04X CB8 %04X",
+          rd16(cbs[7]), rd16(cbs[8]));
+    CHECK((rd16(SCB) & 0x0700) == 0x0200, "CU not active while a transmit waits: SCB %04X", rd16(SCB));
+    wr16(SCB + 2, (rd16(SCB) & 0xF000) | 0x0030);       // acknowledge, RU suspend
+    ca();
+    i = 0;
+    while (i < 2000 && rd16(SCB + 2) != 0) { tick(); i++; }
+    CHECK(rd16(SCB + 2) == 0, "RU suspend not taken while a transmit waits");
+    tick(20);
+    CHECK((rd16(SCB) & 0x0770) == 0x0210, "after RU suspend: SCB %04X (CU active, RU suspended wanted)", rd16(SCB));
+    CHECK(rd16(cbs[8]) == 0, "the waiting transmit completed early: %04X", rd16(cbs[8]));
+    host_hold = false;
+    CHECK(wait_status(0x2000, 50000), "CNA not seen after the list");
+    for (int k = 0; k < 9; k++) CHECK(rd16(cbs[k]) == 0xA000, "transmit %d of 9: CB status %04X", k, rd16(cbs[k]));
+    tick(50);
+    CHECK(sent.size() == before + 9, "Main took %zu frames, wanted 9", sent.size() - before);
+    for (size_t k = 0; k < 9 && before + k < sent.size(); k++) same(sent[before + k], fs[k], "nine frames");
+    ack();
+    scb_command(0x0020); CHECK(quiet(), "RU resume");
+    ack();
   }
 
   printf("%s: %d failures, %llu cycles\n", fails ? "FAIL" : "PASS", fails, (unsigned long long)cyc);

@@ -127,7 +127,9 @@ Coprocessor register 0o1002 is the microsecond clock (same number the VLM uses).
 
 ## I/O board
 
-- SCSI: Western Digital WD33C93A (string in `I333-info.flod`).
+- SCSI: Western Digital WD33C93, the original part (the FEP's and Genera's
+  "WD33C93A" is what they print for the A; see
+  [the chips against their manuals](#the-io-chips-against-their-manuals-nov-4-2026)).
 - Ethernet: Intel 82586 (`merlin-82586-make-and-initialize-ethernet`).
 - Console: phase-encoded video + SLB serial to the standard Symbolics console.
   SLB bytes are `1TTTCCCC` (sysdef `*SLB-CONSOLE-BYTE-TYPES*`): mouse switch,
@@ -138,7 +140,7 @@ Coprocessor register 0o1002 is the microsecond clock (same number the VLM uses).
 
 The FEP's `(SETF CONSOLE-MONITOR-PARAMETERS)` -> `SCREEN-INITIALIZE` (B&W-SCREEN)
 -> `VIDEO-MEMORY-LOAD-SYNC-PROGRAM` (MERLIN-VIDEO-MEMORY) writes 0 to the video
-control register (I/O board 0x0402C000), 0 to 0x0402D001, the sync program's
+control register (I/O board 0x0402C000), 0 to 0x0402D001 twice, the sync program's
 values one by one to 0x0402D000, 41 (#x29) to 0x0402D001, then sets control
 bit 1. The values come from `PRECALCULATED-SCN2674-SYNC-PROGRAM` in the
 kernel, which returns, per monitor:
@@ -149,8 +151,10 @@ kernel, which returns, per monitor:
 
 So the video timing comes from a Signetics SCN2674 video display controller:
 0x0402D000 is its initialization register port (IR0, IR1, ... in turn) and
-0x0402D001 its command register (0 = reset, #x29 presumably display on). Read
-with MAME's `scn2674.cpp` formulas (`research/downloads/mame/`):
+0x0402D001 its command register (0 = master reset, which the data sheet
+wants twice at power-up; #x29 = display on at the next scan line). Read
+with MAME's `scn2674.cpp` formulas (`research/downloads/mame/`), which the
+data sheet (Nov 4 2026) confirms for every field the FEP sets:
 
 - IR0 = 56: 8 scan lines a character row. IR4 = 109: 110 rows -> 880 lines.
 - IR5 = 35: 36 characters a row; a character is one 32-pixel video word, so
@@ -388,15 +392,102 @@ the full disk's both worlds take today's date.
 
 - SCSI DMA: 0x4401A000 = buffer window in 4K-word pages (start page bits 2:0,
   end page + 1 bits 5:3), 0x4401B800 = low 12 bits of the starting word
-  address. 0x4401A800/0x4401B000 are the ESDI equivalents. Bytes go into the
-  buffer low byte first.
-- WD33C93A: after Select-and-Transfer the FEP expects status 0x16 and then
+  address. 0x4401A800/0x4401B000 are the SCSI overrun and trigger registers
+  (Genera's `%MERLIN-SCSI-OVERRUN-REGISTER`, `%MERLIN-SCSI-TRIGGER-REGISTER`),
+  not modelled. Bytes go into the buffer low byte first.
+- WD33C93: after Select-and-Transfer the FEP expects status 0x16 and then
   0x85 (disconnect) unless EDI is set (MAME `wd33c9x.cpp` agrees). Statuses
   queue; reading the status register presents the next one.
 - ID PROM at 0x44016000: 32 bytes, one per word in bits 15:8. Bytes 0,1 =
   AA 55; 16-21 Ethernet address; 28 = checksum of the first byte[29] bytes,
   each rotated left by (index mod 8); 30 = 00; 31 = FF. The XL1200 path also
   reads the Ethernet address from 0x41008000 (6 words, bits 15:8).
+
+## The I/O chips against their manuals (Nov 4 2026)
+
+Each I/O board chip was checked against its manual
+(`research/downloads/xl1200-documentation-addendum/peripherals/`) for what
+the FEP and Genera can see. Fixed:
+
+- WD33C93, CIP: auxiliary status bit 4 stayed set for a whole
+  Select-and-Transfer. The chip sets it only while it interprets a command
+  (data sheet 6.2.1; 7.2: a running Level II command shows BSY 1, CIP 0),
+  and Genera spins on it with interrupts off after every command
+  (`WRITE-WD33C93-COMMAND-REGISTER`), so on the MiSTer every disk transfer
+  held the processor until the SD card answered. Now BSY alone until the
+  interrupt.
+- WD33C93, reset: the chip's reset pin is bit 0 of the SCSI control
+  register (0x04015000), active low (Genera's
+  `%%MERLIN-INHIBIT-WD33C93-RESET`); bit 3 resets the SCSI bus. The model
+  reset the chip on bit 3 falling; now on bit 0 rising. The FEP (0x8F,
+  0x86, 0xB7) and Genera toggle both together, so neither sees a change.
+- Console DMA bank: byte address bit 16 of the AM9517's transfers is bit 5
+  of the serial control register (0x04014800, Genera's
+  `%%MERLIN-SERIAL-CTL-DMAC-BANK`; the FEP writes 0, 0x84, 0xA4). The model
+  took bit 5 of the SCSI control register, which is 1 as well except while
+  Genera resets the SCSI bus (30 us), when a console byte would have landed
+  in the lower 64 KB.
+- 82586, receive: a frame takes the RBD offset in its RFD only as the first
+  frame after RU start, and the next free RBD after that (manual 2.5.2).
+  Genera sets the RFDs' offsets once, at start, so from the 61st frame on
+  the model put frames into the previous lap's buffers.
+- 82586, SCB status: written when a command is taken, not only after the
+  command list has run (2.3.4.1). Genera starts the CU only when it reads
+  it idle (`82586-DO-TRANSMIT-WORK`); the stale idle made it restart the
+  list at the block being sent, so back-to-back frames went out twice.
+- 82586, channel attention while a transmit waits for the wire (Main's TX
+  ring full, up to its 50 ms TXWAIT): the model took no CA until the frame
+  went; Genera gives up after about 2 ms ("82586//82596 appears to be
+  hung") and resets the chip. The transmit now waits in the idle state,
+  which serves CAs and received frames (2.7.1).
+- `sim/ether` covers both 82586 cases (a lap and a half of the receive
+  area, freed as Genera frees it; nine frames into Main's eight-slot ring
+  with an RU command meanwhile); the old RTL fails them.
+
+Checked and right as they are:
+
+- SCN2674: every field the FEP writes decodes as the data sheet defines it,
+  and the timing above holds (line 2 x (EC + 2 x sync) = 46 characters,
+  frame 899 lines). Neither the FEP nor Genera reads the chip, and Genera
+  never writes it (its constants are commented out "not used"). Not
+  modelled: status and interrupt registers (the Merlin's interrupt register
+  has no video source), cursor, screen start, split screen, interlace,
+  double height, IR8-IR14, the delayed commands.
+- WD33C93 revision: Genera writes Own ID 0x0F and resets the chip; status
+  0x01 marks an A, and only then does it use the A's CDB-size field and its
+  workaround for the A's bug P1. `Show Machine Configuration` prints "SCSI
+  part WD33C93A" in that case only, and the reference XL1201's doesn't, so
+  its board answered 0x00, as the model does. The A data sheet serves for
+  what the parts share.
+- 82586: initialisation (SCP, ISCP, SCB, the busy byte, CX and CNA) and
+  every command Genera issues (configure, IA-setup, transmit; acknowledge,
+  CU start, RU start).
+
+Departures kept (nothing on hand depends on them):
+
+- WD33C93: a short or missing data phase ends with 0x16 instead of 0x4B and
+  Genera's status-phase path (it reads the status byte either way). A
+  transfer count that runs out before the data stops a read with good
+  status and drops the rest of a write, and Select-and-Transfer ignores
+  Command Phase 0x45 (resume). Genera splits a transfer at its 32 KB
+  buffer and resumes; its disk driver caps a transfer at 25 pages (32,000
+  bytes), so only a CD-ROM or tape target would meet this. Targets never
+  disconnect; no selection timeout delay; the Reset command doesn't clear
+  the registers; synchronous transfer, parity and the DMA mode bits are
+  ignored.
+- 82586: RSCERRS (frames lost for want of buffers) doesn't count, so
+  Genera's `:NO-RESOURCES` meter stays 0; a CU start while a transmit waits
+  is ignored (Genera starts the CU only when it shows idle); MC-setup opens
+  every multicast; Dump writes zeros; the B and A bits are never set; a
+  frame cut short by the last RBD raises FR instead of being discarded
+  (after Genera first frees a buffer, none is ever marked last).
+- DUSCC: a register file in which GSR always says "channel A transmitter
+  ready" and channel A's transmit FIFO goes to the console. Status
+  registers keep what is written (the chip clears the bits written as 1).
+  Channel B, the machine's RS-232 port (serial unit 1, AM9517 channels 2
+  and 3), isn't modelled: Genera opens it and reads its modem lines, but
+  learns that a buffer went only from channel 3's end of count (interrupt
+  bit 17), so `:finish` or `close` on the port waits forever.
 
 ## CPU details found while bringing up the FEP
 
@@ -1581,7 +1672,7 @@ Each follows its C++ counterpart in `emu/`:
   buffer memory arbiter (console DMA, SCSI DMA, 82586, processor).
 - `xl_i82586`: the Ethernet chip without a network (as `emu/i82586.cpp`),
   16-bit cycles on the buffer memory.
-- `xl_scsi`: WD33C93 and disk targets on MiSTer `S` mounts: a 1280-byte
+- `xl_scsi`: WD33C93 (the original part) and disk targets on MiSTer `S` mounts: a 1280-byte
   block is three 512-byte sectors of a SCSI2SD-layout image. A read asks
   the main program for ten blocks (30 sectors) at a time into a 16 KB
   staging buffer and keeps that window, so the following reads of a
@@ -1593,7 +1684,8 @@ Each follows its C++ counterpart in `emu/`:
 - `xl_video`: video memory (block RAM, second port on the 80 MHz dot clock)
   and an SCN2674 timing generator driven by the initialization registers the
   FEP writes. Departure: the sync runs from power-up with the 80 MHz
-  monitor's settings (a real SCN2674 is silent until programmed), so the
+  monitor's settings (a real SCN2674 runs no sync until its two power-up
+  master resets, then from whatever its registers hold), so the
   MiSTer's display keeps its signal; the picture stays blank until the FEP
   turns it on. The OSD's "Debug line" draws eight status words in hex across
   the top 16 lines (`xl_machine` lists them).

@@ -19,11 +19,21 @@
 // transmit pushes the TBD chain to the wire (with the destination, source
 // and length from the block first when AL-LOC is 0) and completes when the
 // wire has taken the frame, TDR reports the link OK, DUMP writes zeros, NOP
-// and DIAGNOSE complete.  The SCB status word is written and INT raised
-// (irq) after every pass and every received frame.
+// and DIAGNOSE complete.  The SCB status word is written when a command is
+// accepted (the CU then shows active: Genera starts the CU only when it
+// reads idle) and again, with INT (irq), after every pass and every
+// received frame.  A transmit whose frame the wire hasn't taken yet waits
+// in E_IDLE (txw), so channel attentions and received frames are served
+// meanwhile (manual 2.7.1; Genera gives up on a CA after about 2 ms, and the
+// wire can be busy for up to its 50 ms TXWAIT); a CU command then is taken
+// for the block in progress (suspend, abort) or, CU start, not at all
+// (Genera never issues one while the CU shows active).
 //
 // A received frame goes to the RFD at the RFA, into the RBD chain the RFD
-// names (or the one in use, when its RBD offset is 0xFFFF), buffer by
+// names if it is the first frame since RU start, otherwise the next free
+// RBD (manual 2.5.2: the CPU puts the free buffer list in the first RFD
+// only; Genera never rewrites the other RFDs' RBD offsets, so after a lap
+// they still hold the buffers of the previous one), buffer by
 // buffer: each gets its actual count, F, and EOF with the frame's last byte;
 // the RFD gets the first RBD's offset, C and OK, and the frame's address
 // and length fields when AL-LOC is 0.  The FCS Main appends is not stored.
@@ -31,8 +41,9 @@
 // suspends it; an RBD with EL before the frame's end truncates it (no
 // resources, the RFD without OK).  Receive buffers are taken to start and
 // end on even bytes (Genera's are 192 bytes, word-aligned).  With the RU not
-// ready, a frame offered is dropped.  busy is set while the chip works
-// (lockstep holds the processor meanwhile).
+// ready, a frame offered is dropped (RSCERRS doesn't count it).  busy is set
+// while the chip works, a transmit waiting included (lockstep holds the
+// processor meanwhile).
 module xl_i82586 (
   input  logic        clk,
   input  logic        reset,
@@ -87,11 +98,13 @@ module xl_i82586 (
     E_TXD0, E_TXD1, E_TXW0, E_TXW,
     E_RX0, E_RX1, E_RX2, E_RXA1, E_RXA2, E_RXA3, E_RBD0, E_RBD1, E_RBD2, E_RBD3, E_RBD4,
     E_RXD0, E_RXD1, E_RXD2, E_RBDW, E_RBDW2, E_RXDRAIN, E_RXDRAIN2, E_RFD1, E_RFD2, E_RFD3,
-    E_STATUS, E_DONE
+    E_ACC, E_STATUS, E_DONE
   } estate_t;
   estate_t     st, ret;
 
   logic        in_reset, ca, ca_pend, need_init;
+  logic        txw;                   // a transmit waits for the wire (in E_IDLE)
+  logic        rx_first;              // the next frame takes the RFD's RBD offset
   logic [3:0]  stat;
   logic [2:0]  cus, rus;
   logic [15:0] cbl, cmd, c, v, lo;
@@ -123,7 +136,7 @@ module xl_i82586 (
   logic [1:0]  wait2;
 
   assign irq = !in_reset && stat != 4'd0;
-  assign busy = st != E_IDLE;
+  assign busy = st != E_IDLE || txw;
   assign rx_padr = ia;
   assign rx_prom = cfg_prom;
   assign rx_lpbk = cfg_lpbk;
@@ -158,6 +171,7 @@ module xl_i82586 (
       in_reset <= 1'b1;
       need_init <= 1'b1;
       ca <= 1'b0; ca_pend <= 1'b0;
+      txw <= 1'b0; rx_first <= 1'b0;
       stat <= '0; cus <= CU_IDLE; rus <= RU_IDLE;
       cbl <= NONE;
       ia <= '0;
@@ -176,6 +190,7 @@ module xl_i82586 (
           {cfg_alloc, cfg_prom, cfg_bcdis, cfg_lpbk, mc_any} <= '0;
           tx_clr <= 1'b1; rx_clr <= 1'b1;
           tenp <= 1'b0; tlen <= '0;
+          txw <= 1'b0;
           if (st != E_IDLE) begin st <= E_IDLE; m_req <= 1'b0; end
         end else begin
           in_reset <= 1'b0;
@@ -195,6 +210,9 @@ module xl_i82586 (
               rsc <= 1'b0;
               rd16(scb_base, rfa + 16'd2, E_RX0);
             end else rx_clr <= 1'b1;
+          end else if (txw && !tx_busy) begin       // the wire has the frame: C, OK
+            txw <= 1'b0;
+            wr16(cb, 16'd0, 16'hA000, E_CU5);
           end
 
         E_ADDR: begin
@@ -237,6 +255,7 @@ module xl_i82586 (
           if (v[7]) begin             // software reset: set up again at the next CA
             need_init <= 1'b1;
             stat <= '0; cus <= CU_IDLE; rus <= RU_IDLE;
+            if (txw) begin txw <= 1'b0; tx_clr <= 1'b1; end
             wr16(scb, 16'd2, 16'd0, E_DONE);
           end else begin
             case (v[6:4])
@@ -249,22 +268,23 @@ module xl_i82586 (
           end
         end
         E_RUS: begin
-          rfa <= v; cur_rbd <= NONE; rus <= RU_READY;
+          rfa <= v; cur_rbd <= NONE; rus <= RU_READY; rx_first <= 1'b1;
           wr16(scb, 16'd2, 16'd0, E_CU0);
         end
         E_CU0:
           case (cmd[10:8])
-            3'd1: rd16(scb, 16'd4, E_CU1);   // start: the command list
-            3'd2: begin if (cus == CU_SUSPENDED) cus <= CU_ACTIVE; st <= E_CU2; end
-            3'd3: begin if (cus == CU_ACTIVE) begin cus <= CU_SUSPENDED; stat <= stat | CNA; end st <= E_CU2; end
-            3'd4: begin if (cus != CU_IDLE) begin cus <= CU_IDLE; stat <= stat | CNA; end st <= E_CU2; end
-            default: st <= E_CU2;
+            3'd1: if (txw) st <= E_ACC; else rd16(scb, 16'd4, E_CU1);   // start: the command list
+            3'd2: begin if (cus == CU_SUSPENDED) cus <= CU_ACTIVE; st <= E_ACC; end
+            3'd3: begin if (cus == CU_ACTIVE) begin cus <= CU_SUSPENDED; stat <= stat | CNA; end st <= E_ACC; end
+            3'd4: begin if (cus != CU_IDLE) begin cus <= CU_IDLE; stat <= stat | CNA; end st <= E_ACC; end
+            default: st <= E_ACC;
           endcase
-        E_CU1: begin cbl <= v; cus <= CU_ACTIVE; st <= E_CU2; end
+        E_CU1: begin cbl <= v; cus <= CU_ACTIVE; st <= E_ACC; end
+        E_ACC: wr16(scb, 16'd0, {stat, 1'b0, cus, 1'b0, rus, 4'd0}, E_CU2);   // the command taken: CU and RU state
 
         // ---- command unit: one command block a pass
         E_CU2:
-          if (cus != CU_ACTIVE || n[12]) st <= E_STATUS;
+          if (cus != CU_ACTIVE || n[12] || txw) st <= E_STATUS;
           else if (cbl == NONE) begin
             cus <= CU_IDLE;
             stat <= stat | CNA;
@@ -373,13 +393,15 @@ module xl_i82586 (
           if (wait2 != 2'd0) wait2 <= wait2 - 2'd1;
           else if (tlen == 12'd0) begin tx_clr <= 1'b1; wr16(cb, 16'd0, 16'hA000, E_CU5); end
           else if (!tx_busy) wr16(cb, 16'd0, 16'hA000, E_CU5); // the wire has it: C, OK
+          else begin txw <= 1'b1; st <= E_IDLE; end            // wait in E_IDLE, serving CAs
 
         // ---- receive: a frame from the wire into the RFD and its RBDs
         E_RX0: begin rfd_cmd <= v; rd16(rfd, 16'd4, E_RX1); end
         E_RX1: begin rfd_link <= v; rd16(rfd, 16'd6, E_RX2); end
         E_RX2: begin : rx2
           logic [15:0] nb;
-          nb = v != NONE ? v : cur_rbd;
+          nb = rx_first && v != NONE ? v : cur_rbd;
+          rx_first <= 1'b0;
           first_rbd <= nb;
           cur_rbd <= nb;
           if (nb == NONE) begin                           // no buffers at all

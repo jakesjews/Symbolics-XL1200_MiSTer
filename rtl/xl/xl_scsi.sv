@@ -16,7 +16,7 @@
 // acknowledged only when the command has finished, so the processor sees
 // commands complete instantly, as in the reference model (lockstep
 // simulation); otherwise the command runs while the processor polls the
-// auxiliary status register (busy, then INT).
+// auxiliary status register (busy, then INT) or goes on until the interrupt.
 module xl_scsi #(
   parameter int NT = 2,          // targets 0..NT-1 (MiSTer images 0..NT-1), at most 7
   parameter bit SYNC_IO = 1'b0
@@ -273,7 +273,11 @@ module xl_scsi #(
           tid <= regs[R_DEST_ID][2:0];
           op <= regs[R_CDB1];
           cnt <= {regs[R_COUNT_HI], regs[R_COUNT_MID], regs[R_COUNT_LO]};
-          a = a | 8'h30;          // busy, command in progress
+          // busy until the interrupt; CIP (8'h10) only while the chip
+          // interprets the command, which this takes at once (data sheet
+          // 6.2.1 and 7.2: a running Level II command shows BSY 1, CIP 0;
+          // Genera spins on CIP with interrupts off after each command)
+          a = a | 8'h20;
           cs <= C_SELECT;
         end
 

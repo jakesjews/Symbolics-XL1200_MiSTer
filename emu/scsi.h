@@ -1,4 +1,4 @@
-// Western Digital WD33C93A SCSI bus interface controller (initiator role) with
+// Western Digital WD33C93 SCSI bus interface controller (initiator role) with
 // SCSI direct-access disk targets backed by image files, as on the Merlin I/O
 // board.  Data phases move bytes through a DMA port supplied by the board.
 #pragma once
