@@ -84,7 +84,7 @@ module xl_machine #(
   logic        mem_req, mem_we, mem_ack, mem_buserr;
   logic [31:0] mem_addr;
   word_t       mem_wdata, mem_rdata;
-  logic        cop_req, cop_we, cop_ack;
+  logic        cop_req, cop_we, cop_wait, cop_ack;
   logic [9:0]  cop_reg;
   word_t       cop_wdata, cop_rdata;
   logic [31:0] usec /*verilator public_flat_rd*/;
@@ -96,7 +96,7 @@ module xl_machine #(
     .clk, .reset, .run(mem_ready && vme_ready), .hold(LOCKSTEP && retire),
     .bus_req(mem_req), .bus_we(mem_we), .bus_addr(mem_addr), .bus_wdata(mem_wdata),
     .bus_ack(mem_ack), .bus_rdata(mem_rdata), .bus_buserr(mem_buserr), .bus_busy(mem_busy),
-    .cop_req, .cop_we, .cop_reg, .cop_wdata, .cop_ack, .cop_rdata, .cop_err(1'b0),
+    .cop_req, .cop_we, .cop_wait, .cop_reg, .cop_wdata, .cop_ack, .cop_rdata, .cop_err(1'b0),
     .hp_sb, .lp_sb, .reset_req(1'b0), .hp_sb_taken(), .lp_sb_taken(),
     .usec_clock(usec_now),
     .retire, .retire_counted, .halted,
@@ -418,7 +418,7 @@ module xl_machine #(
   logic   fpa_ack, clk_ack;
   word_t  fpa_rdata, clk_rdata;
   xl_fpa fpa (
-    .clk, .reset, .req(cop_req && !cop_reg[9]), .we(cop_we), .addr(cop_reg[8:0]),
+    .clk, .reset, .req(cop_req && !cop_reg[9]), .we(cop_we), .hold(cop_wait), .addr(cop_reg[8:0]),
     .wdata(cop_wdata[31:0]), .ack(fpa_ack), .rdata(fpa_rdata)
   );
   always_ff @(posedge clk) begin

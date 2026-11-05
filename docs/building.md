@@ -28,7 +28,8 @@ miss timing**: change `SEED` in `XL1200.qsf` and build again.
 - the Verilator lint of `XL1200.sv` and `rtl/`
 - the emulator's build and its CPU tests (`tools/cputest.py`)
 - the floating-point unit: the model against the host's IEEE arithmetic, the
-  RTL against the model (`sim/fpa`)
+  RTL's arithmetic against the model, the RTL on its bus with its latencies
+  (`sim/fpa`)
 - the 82586 Ethernet chip with Main's mailbox (`sim/ether`)
 
 The rest need an XL1200 FEP disk image:

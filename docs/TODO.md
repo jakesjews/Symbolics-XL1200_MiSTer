@@ -7,7 +7,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    full GC, Save World and booting the saved world, the MacIvory animation
    world's programs, ephemeral GC flips, the number types through the FPA).
    Left: an overnight run; a use check of each application in the fat
-   world on the MiSTer (item 8).
+   world on the MiSTer (item 7).
    Anything that breaks is reproduced in the free-running simulation or the
    model.
    Found and fixed in the tree (Nov 2 2026, docs/NOTES.md): `Load System
@@ -60,12 +60,8 @@ In the order they'll be done. Bugs come first whenever they turn up.
      and loads the tests, the RTL runs them.
    - Gabriel and fib as speed regressions: cycle counts in Verilator, times
      on the MiSTer.
-2. FPA timing, once the processor's is close: the manual's latencies in FPA
-   clocks (the FPA has its own clock on the Merlin-II) scaled to the Ivory's,
-   and the busy tag (dtp-null) on an early read. The status queue (registers
-   4, 5, 7, 8, 9, 10: destinations and previous status).
-3. Calendar clock as GMT: Genera reads it as GMT, MiSTer's RTC is local time.
-4. Network, what's left after the wired port: the bridge into MiSTer's main
+2. Calendar clock as GMT: Genera reads it as GMT, MiSTer's RTC is local time.
+3. Network, what's left after the wired port: the bridge into MiSTer's main
    program upstream (a pull request); WiFi through a tap interface with
    proxy ARP on the MiSTer; namespace entries for the hosts Genera should
    talk to (its FTP and file servers refuse strangers), from `mkworld`; an
@@ -83,7 +79,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    Lisp in the fat world asking the router at boot and putting the lease
    in the running namespace (any LAN, the bridge as it is; NAT in the main
    program instead would need port forwards and kernel support).
-5. A SCSI CD-ROM drive: Genera 8.3 shipped only on CD-ROM for Ivory
+4. A SCSI CD-ROM drive: Genera 8.3 shipped only on CD-ROM for Ivory
    machines (8.3 Release Notes), and on an XL a drive on the SCSI bus is
    read as ISO 9660 through `host|CDROMn:` pathnames, n its SCSI address
    (8.3 installation guides; `SYS:IO;ISO9660-ACCESS-PATH`), and the FEP's
@@ -102,7 +98,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    Test media: the user's
    `bolix_cd.iso` (the 8.3 distribution CD); `Copy File` of a world from
    it, then a Breath of Life restore.
-6. The RS-232 port: DUSCC channel B (Genera's serial unit 1, AM9517
+5. The RS-232 port: DUSCC channel B (Genera's serial unit 1, AM9517
    channels 2 and 3, interrupt bits 16 and 17) on MiSTer's UART, so
    Genera's serial streams work; today output on it never completes and a
    `close` waits forever ([NOTES.md](NOTES.md#the-io-chips-against-their-manuals-nov-4-2026)).
@@ -110,7 +106,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    the ready bits driving the two DMA channels, end of count and status
    interrupts, the modem lines, the chip's reset values and its
    write-1-to-clear status registers (about 400-700 ALMs, estimated).
-7. A SCSI tape drive (on hold, Nov 2 2026: after the fat image and the
+6. A SCSI tape drive (on hold, Nov 2 2026: after the fat image and the
    CD-ROM): the XL's optional tape unit, in the top drive slot,
    is a 3M MCD-40 SCSI cartridge drive taking DC 2000 cartridges (XL
    User's Guide: "MCD-405/SCSI"), which Genera drives as
@@ -121,7 +117,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    choose: blocks and filemarks), an OSD slot for it. Not needed for
    distributions: `Restore Distribution :Use Disk Yes` reads them from a
    FEP file (`tools/distfile.py`, docs/NOTES.md).
-8. The master disk: the fat world, version 3 (Nov 2 2026,
+7. The master disk: the fat world, version 3 (Nov 2 2026,
    [NOTES.md](NOTES.md#the-fat-world-version-3-nov-2-2026)), has every
    application of the checklist that runs on an Ivory in one world
    (`Genera-8-3-fat.ilod.4`), Flavors Statice in its own small world.
@@ -129,8 +125,8 @@ In the order they'll be done. Bugs come first whenever they turn up.
    a sample database. Left: a boot-and-use check of the rest on the MiSTer
    (docs/applications.md); a save from Concordia itself; Illustrate's frame
    never appears; Macsyma and NS stop at their license passwords.
-9. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
-10. Speed, only if the machine is really behind: measured after each step
+8. The real Merlin-II boot PROM in place of the stand-in, if a dump turns up.
+9. Speed, only if the machine is really behind: measured after each step
     (`PROFILE=1` on `sim/system` counts cycles by state) and against the
     published times. Standing (Oct 2026, build 30 at 50 MHz): `(fib 30)`
     2.80 s against the XL1201's 4.1 s; Gabriel 6.56x the 3600 overall, the

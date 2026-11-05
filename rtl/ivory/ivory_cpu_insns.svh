@@ -1579,7 +1579,7 @@
         end
         S_FPA_YW: if (cop_ack) begin cop_req <= 1'b0; st <= S_FPA_R; end
         S_FPA_R: begin
-          cop_req <= 1'b1; cop_we <= 1'b0;
+          cop_req <= 1'b1; cop_we <= 1'b0; cop_wait <= 1'b1;   // as a rev 4A Ivory waits long enough
           cop_reg <= fpa_fix ? 10'o400 : op[4:0] >= 5'o20 ? {3'd0, op[4:0], 2'd2} : 10'd2;
           st <= S_FPA_RW;
         end

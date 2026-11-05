@@ -197,7 +197,7 @@
             8'o154: st <= S_RIR_1;                                    // %read-internal-register
             8'o155: pop(S_WIR_1);                                     // %write-internal-register
             8'o156: begin                                             // %coprocessor-read
-              cop_req <= 1'b1; cop_we <= 1'b0; cop_reg <= operand;
+              cop_req <= 1'b1; cop_we <= 1'b0; cop_wait <= 1'b0; cop_reg <= operand;
               st <= S_COPR_1;
             end
             8'o157: pop(S_COPW_1);                                    // %coprocessor-write

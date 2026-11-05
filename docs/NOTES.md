@@ -1183,21 +1183,109 @@ describes:
   NaN flag, and those with > or < are invalid too; negate and absolute
   value are logical operations (no exceptions, NaNs kept). Compares set
   FPCN but leave the status codes.
-- Our FPA finishes every operation before the next access, so the busy tag
-  never shows; the RTL holds the bus off instead.
+- Each result advances the 3164's status queue (manual 12.5): its unit's
+  status code into SR6 (SR11 for the divider) and the one before into
+  SR10, its destination into SR5 or SR4 (SR7) and the one before into SR9
+  or SR8. Genera reads only SR6 and SR11, and clears SR10.
+- Results take time (below): until one is in, reads see the busy tag.
 
 Choices with no source behind them (the glue): the predicate result in bit
 0; which Weitek instructions the operations are (negate as the chip's
-logical `neg`, compares as its ordered predicates). Not modelled: the
-status queue (SR4, 5, 7, 8, 9: destinations; SR10: the previous status),
-FAST mode, the latencies (manual 9.2: add and multiply 2 cycles, divide
-⌈14/N⌉+3 single and ⌈28/N⌉+3 double, square root ⌈25/N⌉+3 and ⌈54/N⌉+3,
-N the divide clock's multiple).
+logical `neg`, compares as its ordered predicates); R0 as register 0 in
+the status queue; what a read returns along with the busy tag (the
+register's contents here). Not modelled: FAST mode.
+
+### FPA timing (Nov 5 2026)
+
+The latencies come from Genera. `*FPA-OPERATIONS*` (`i-sys/float.lisp`)
+gives each operation's in Ivory cycles for the XL1200: 3 for add,
+subtract, multiply, the compares, negate, absolute value, the conversions
+and the fixnum multiply; 4 for double add and subtract; 18 and 32 for the
+single and double divides; 29 and 59 for the single and double square
+roots. The commented-out "pre-XL1200" list beside it has the manual's
+latencies at 1x DIVCLK exactly (2, 17, 31, 28, 57; manual 9.2, figure 51),
+and the XL1200's are one more (two for the double square root and add):
+the 3164 clocked with the processor, plus a cycle for the Merlin-II's
+interface. `%FPA-WAIT` turns a latency of 10 or less into that many no-ops
+before the read (3 fewer after a test of `FP-COPROCESSOR-ENABLED-P`), and
+for the longer ones polls SR11 bit 30, divide or square root in progress.
+
+The part on the board is a WEITEK 3164-050-GCD (read from Douglas
+Fields's Merlin-II photographs, `research/downloads/symbolics-lisp-engineer`):
+the 50 ns grade, CLK at most 20 MHz and DIVCLK 40 MHz (manual 21.2 and the
+ordering information). Its clock comes from a PAL (FF13, `FPA-CLOCK`,
+115950-A) beside the 61.5 MHz and 1 MHz oscillators; 61.5 MHz divided by 3
+is the likely source but nothing settles it. Either way the real FPA can't
+add in less than two 50 ns cycles plus the interface.
+
+The model: the table's latencies, counted in this machine's 50 MHz cycles
+from the cycle the starting write is taken to the first read that sees
+the result. That keeps the FPA in step with the processor as the table
+assumes (Genera's waits are counted in instructions, which run faster
+here), and in time it is quicker than any reading of the real clocks:
+an add 60 ns, a single divide 360 ns, a double square root 1.18 µs.
+
+- The busy tag: until the result is in, a read gets the register's
+  contents tagged dtp-null. `WITH-FLOATING-POINT-STATUS-SAVED` loops on a
+  read of SR0 until its tag is a fixnum or single float, so the board did
+  this. A divide or square root shows dtp-null only until its in-progress
+  bit is set, on the third cycle (manual 12.5.3); then reads are ordinary,
+  SR11 bit 30 set until the cycle before the result is written and R0
+  holding its old value (the poll's exit leads straight to the read).
+- Writes wait while an operation runs.
+- The processor's own FPA instructions (single-float `+ - * /`, the
+  compares, `zerop`/`minusp`/`plusp`, negate, and the fixnum multiply)
+  read the result with `hold` and wait for it. A rev 4 Ivory "doesn't wait
+  long enough for the FPA to complete an integer multiply" (fixed in 4A,
+  `sys2/bignum.lisp`, whose trap handler reads the result again): the
+  chip waits a time of its own, enough on a 4A (the Ivory on Douglas
+  Fields's board, s/n 582, the one photographed).
+
+The arithmetic had taken 7 cycles for an add, 11 for a multiply, 63 for a
+divide and 70 for a square root (140 ns to 1.4 µs), slower than the real
+FPA for adds and divides, so `xl_fpa_unit` was rebuilt around the
+latencies. The cycle that takes the operation registers the operands and
+what comes straight from them (the add's exponent difference, the
+multiplier's significands, an integer's magnitude and leading zeros, a
+conversion's shift); getting from the processor's bus registers into the
+FPA already uses 12 of the cycle's 20 ns, so nothing heavier fits there.
+Then an add unpacks, aligns and adds in one cycle; a multiply takes the
+53 x 53 product in one (DSP blocks; the 64 x 16 steps are gone); a divide
+makes two quotient bits a cycle, 13 cycles for a single and 28 for a
+double; a square root a bit a cycle, 25 and 54 (its first root bit is
+always zero and is skipped). A last cycle rounds: a difference that
+cancelled two or more leading bits is exact and only shifted into place
+(the near path), everything else moves at most a bit and is rounded (the
+far path), so the shift and the round are never in series. The arithmetic
+then meets every latency (an add, multiply or conversion in 3 cycles, a
+single divide in 17, a double square root in 58), and the result waits
+out the rest.
+
+On the MiSTer (build 46, against build 45 the same night, on the fat-init
+image): a compiled loop of a million single-float adds 0.478 s (0.562), of
+a million single-float divides 0.880 s (1.808); Gabriel's FFT 0.448 s CPU
+(0.458: 8.6x the 3600, where a real Ivory is estimated at 6x); `(fib 30)`
+2.81 s, unchanged. Loops of double-float adds and square roots, which
+Lisp issues and which cons a double each, stay within the collector's
+noise (4.40 and 3.98 s against 4.34; 6.66 against 6.68). The float forms
+print what the emulator prints, Genera's own `(cos 1d0)` =
+0.5403023058681395d0 included (a few units off, like its `sin`);
+overflow, division by zero and underflow signal their errors in both
+precisions; 46341 squared, either sign, becomes a bignum, and -65536 x
+32768 is the last fixnum. The FPA is 3,091 ALMs (2,475 before) and two DSP
+blocks fewer.
 
 Checks: `sim/fpa/fpa_test` (the C++ against the host's IEEE arithmetic in
 all four rounding modes, ~5M cases), `sim/fpa/obj_dir/Vxl_fpa_unit`
 (`rtl/xl/xl_fpa_unit.sv` against the C++, every bit, flag and status, 10M
-random operations including denormals, NaNs and infinities), and
+random operations including denormals, NaNs and infinities, each result
+exactly at its latency; again at the shortest latency, which shows what
+the arithmetic itself needs), `sim/fpa/obj_bus/Vxl_fpa` (`xl_fpa` on its
+bus against the model's `Wtl3164`: random register writes, operations
+started as `%FPA-START` starts them, reads at random times after the
+start, each early read checked for the busy tag or the in-progress bit
+and the old contents, each held read for coming back exactly at the
+latency; 1M operations), and
 `sim/system` in lockstep (RTL machine with `xl_fpa` against the model): ten
 20M-instruction windows from 330M (Genera enables the FPA at 332M) to 3.63G
 (the Listener evaluating float forms) match. In the model,
@@ -1724,10 +1812,10 @@ Each follows its C++ counterpart in `emu/`:
 - `xl_pit`: the 82C54 (as `emu/pit.cpp`). A tick in the same cycle as a
   register write counts the cycle after, as the model counts it after the
   instruction (it used to be dropped).
-- `xl_fpa`, `xl_fpa_unit`: the WTL3164 (as `emu/fpa.cpp`): registers and bus
-  in `xl_fpa`, arithmetic in `xl_fpa_unit` over several cycles (multiply in
-  four 64x16 steps, divide 56 restoring steps, square root 64), the bus held
-  off until it finishes.
+- `xl_fpa`, `xl_fpa_unit`: the WTL3164 (as `emu/fpa.cpp`): registers, bus,
+  latencies, busy tag and status queue in `xl_fpa`, arithmetic in
+  `xl_fpa_unit` (an add, multiply or conversion in three cycles, a divide
+  two bits a cycle, a square root one; [FPA timing](#fpa-timing-nov-5-2026)).
 - `xl_mem`: main memory and the I/O board's buffer memory in DDR3, one word
   per 64-bit DDR word (main memory at DDR word 0x06000000, buffer at
   0x06400000). Main memory goes through an 8K-word direct-mapped cache
@@ -1804,7 +1892,9 @@ MiSTer (microseconds of the 50 MHz clock, SCSI commands running while the FEP
 polls, memory cleared from junk, the dot clock running) and saves the screen.
 It types TEXT from a given second (`|` Return, `~` a 10 s wait) and
 profiles cycles by state (`PROFILE=1`, from an instruction count or
-`PROFILE_FROM=typed`, the last key). At about 50 wall seconds per
+`PROFILE_FROM=typed`, the last key). `XLFPAMON=1` lists the FPA
+operations Genera starts, the fewest cycles from a start to the first
+read after it, and any read that got the busy tag. At about 50 wall seconds per
 simulated second (one thread; `--threads` makes it several times slower)
 a Genera boot plus one Gabriel benchmark is a 3-4 hour run on the Ubuntu
 server: `Hello|Load World FEP7:>Genera-8-3.ilod|~~Start|` and twelve

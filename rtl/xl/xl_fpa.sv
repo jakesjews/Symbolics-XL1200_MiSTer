@@ -1,14 +1,27 @@
 // Weitek WTL3164 floating-point accelerator on the Merlin-II (coprocessor
 // addresses 0-0o777).  Follows emu/fpa.h and emu/fpa.cpp, which explain the
 // interface (inferred from Genera's i-sys/float.lisp) and the arithmetic.
-// The arithmetic runs in xl_fpa_unit over several cycles; the bus holds off
-// every access until it has finished, so software sees results at once, as
-// with the C++ model.
+//
+// Timing: an operation's result is readable `lat` cycles after the write
+// that starts it, the latencies of Genera's XL1200 table (*FPA-OPERATIONS*,
+// in Ivory cycles: the 3164's at 1x DIVCLK, manual 9.2, plus one), counted
+// here in cycles of this machine's clock.  The arithmetic runs in
+// xl_fpa_unit.  Until the result is in, a read gets the register's contents
+// tagged dtp-null (the busy tag Genera's state save waits out), except that
+// a divide or square root shows dtp-null only until its in-progress bit
+// (SR11 bit 30) is set, on the third cycle (manual 12.5.3), and R0 keeps
+// its old value until the result is written.  The processor's own FPA
+// instructions read with `hold` and wait for the result, as a rev 4A Ivory
+// waits long enough; writes wait while an operation is in progress.  Each
+// result advances the 3164's status queue (manual 12.5): SR6 to SR10 and
+// the destination (R0, register 0) through SR4/5 to SR8/9, SR7 for the
+// divider.
 module xl_fpa (
   input  logic        clk,
   input  logic        reset,
   input  logic        req,
   input  logic        we,
+  input  logic        hold,      // a read that waits for the operation in progress
   input  logic [8:0]  addr,
   input  logic [31:0] wdata,
   output logic        ack,
@@ -21,12 +34,13 @@ module xl_fpa (
   // (manual 6.1), so the fixnum multiplicand and integer results are in R0
   logic [31:0] r0h, r0l, r1h, r1l, r2h, r2l;
   wire  [31:0] r0_int = {r0h[20:0], r0l[31:21]};
-  wire  [31:0] r1_int = {r1h[20:0], r1l[31:21]};
   logic        cond;
-  logic [7:0]  sr [12];      // status registers, bits 31:24 of the word
+  logic [7:0]  sr [12];      // status registers, bits 31:24 of the word (SR11 bit 30 is computed)
 
   // ---------------------------------------------------------------- decode
-  typedef struct packed { logic valid; fop_t op; logic dbl, trunc; logic [1:0] unit; } dec_t;
+  typedef struct packed {
+    logic valid; fop_t op; logic dbl, trunc; logic [1:0] unit; logic [5:0] lat;
+  } dec_t;
   localparam logic [1:0] U_ADD = 2'd0, U_MUL = 2'd1, U_DIV = 2'd2;
 
   function automatic dec_t decode(logic [8:0] a);   // a: the op address (multiple of 4)
@@ -69,6 +83,11 @@ module xl_fpa (
         default: d.valid = 1'b0;
       endcase
     end
+    // *FPA-OPERATIONS*: divides 18 and 32, square roots 29 and 59, double
+    // adds and subtracts 4, everything else 3
+    d.lat = d.op == F_DIV ? (d.dbl ? 6'd32 : 6'd18) :
+            d.op == F_SQRT ? (d.dbl ? 6'd59 : 6'd29) :
+            d.dbl && (d.op == F_ADD || d.op == F_SUB) ? 6'd4 : 6'd3;
     return d;
   endfunction
 
@@ -89,34 +108,51 @@ module xl_fpa (
 
   // ---------------------------------------------------------------- arithmetic unit
   logic        u_start, u_busy, u_done;
-  dec_t        u_d, run_d;
+  dec_t        sd, run_d;
   logic [63:0] u_x, u_y, u_bits;
   logic [7:0]  u_flags;
   logic [3:0]  u_status;
 
   xl_fpa_unit unit (
-    .clk, .reset, .start(u_start), .op(u_d.op), .dbl(u_d.dbl), .mode(sr[0][2:1]), .trunc(u_d.trunc),
-    .unf_round(sr[2][2]), .dnrm_exc(sr[2][4]),
-    .x(u_x), .y(u_y), .busy(u_busy), .done(u_done), .bits(u_bits), .flags(u_flags), .status(u_status)
+    .clk, .reset, .start(u_start), .op(sd.op), .dbl(sd.dbl), .mode(sr[0][2:1]), .trunc(sd.trunc),
+    .unf_round(sr[2][2]), .dnrm_exc(sr[2][4]), .x(u_x), .y(u_y), .lat(sd.lat),
+    .busy(u_busy), .done(u_done), .bits(u_bits), .flags(u_flags), .status(u_status)
   );
 
   // ---------------------------------------------------------------- bus
-  logic act;
-  assign act = req && !ack && !u_busy && !u_start;
+  // An access is taken in the cycle `act`; ack follows a cycle later
+  logic act, op_write;
+  assign op_write = addr[1:0] == 2'd1 && addr < 9'o600;   // op+1: R1 high, and the operation starts
+  assign act = req && !ack && !(u_busy && (we || hold));
+  assign sd = decode({addr[8:2], 2'b00});
+  assign u_start = act && we && op_write && sd.valid;
+  assign u_x = sd.op == F_IMUL ? {32'd0, r0_int} : in64(sd) ? {r0h, r0l} : {32'd0, r0h};
+  assign u_y = in64(sd) ? {wdata, r1l} : {32'd0, wdata};
+
+  // The busy tag, and a divide's or square root's in-progress bit, from
+  // the third cycle after its start
+  logic       run_dsr;
+  logic [1:0] age;           // cycles since the start, up to 3
+  wire dsr_shown = run_dsr && age == 2'd3;
+  wire busy_tag = u_busy && !dsr_shown;
+  wire dsrinp = u_busy && dsr_shown && !u_done;
 
   always_ff @(posedge clk) begin
     ack <= act;
-    u_start <= 1'b0;
+    if (u_start) begin run_d <= sd; run_dsr <= sd.unit == U_DIV; age <= 2'd1; end
+    else if (u_busy && age != 2'd3) age <= age + 2'd1;
     if (reset) begin
       for (int i = 0; i < 12; i++) sr[i] <= '0;
       ack <= 1'b0;
     end else begin
       if (act && !we) begin
         logic [31:0] v;
+        logic [7:0] s;
+        s = addr == 9'o613 ? {sr[11][7], dsrinp, sr[11][5:0]} : sr[4'(addr - 9'o600)];
         v = addr == 9'd1 ? r1l : addr == 9'd2 ? r0h : addr == 9'd3 ? r0l : addr == 9'o400 ? r0_int :
             pred_addr(addr) ? {31'd0, cond} :
-            addr >= 9'o600 && addr < 9'o614 ? {sr[4'(addr - 9'o600)], 24'd0} : 32'd0;
-        rdata <= mkw(sr[11][7] ? DTP_FIXNUM : DTP_SINGLE_FLOAT, v);
+            addr >= 9'o600 && addr < 9'o614 ? {s, 24'd0} : 32'd0;
+        rdata <= mkw(busy_tag ? DTP_NULL : sr[11][7] ? DTP_FIXNUM : DTP_SINGLE_FLOAT, v);
       end
       if (act && we) begin
         case (addr)
@@ -129,23 +165,14 @@ module xl_fpa (
           9'o624: for (int i = 0; i < 12; i++) sr[i] <= '0;
           default:
             if (addr >= 9'o600 && addr < 9'o614) sr[4'(addr - 9'o600)] <= wdata[31:24];
-            else if (addr[1:0] == 2'd1 && addr < 9'o600) begin
-              dec_t d;
-              logic int_in;
-              d = decode({addr[8:2], 2'b00});
-              int_in = d.valid && (d.op == F_IMUL || d.op == F_I2D || d.op == F_I2S);
-              if (int_in) begin r1h <= {11'd0, wdata[31:11]}; r1l <= {wdata[10:0], 21'd0}; end
-              else r1h <= wdata;
-              if (d.valid) begin
-                u_d <= d;
-                u_start <= 1'b1;
-                u_x <= d.op == F_IMUL ? {32'd0, r0_int} : in64(d) ? {r0h, r0l} : {32'd0, r0h};
-                u_y <= in64(d) ? {wdata, r1l} : {32'd0, wdata};
-              end
+            else if (op_write) begin
+              // an integer into R1 for the integer operations
+              if (sd.valid && (sd.op == F_IMUL || sd.op == F_I2D || sd.op == F_I2S)) begin
+                r1h <= {11'd0, wdata[31:11]}; r1l <= {wdata[10:0], 21'd0};
+              end else r1h <= wdata;
             end
         endcase
       end
-      if (u_start) run_d <= u_d;
 
       // Results (Wtl3164::execute)
       if (u_done) begin
@@ -164,11 +191,19 @@ module xl_fpa (
           r0h <= out64(run_d) ? u_bits[63:32] : u_bits[31:0];
           r0l <= out64(run_d) ? u_bits[31:0] : 32'd0;
         end
-        // compares write no register, so they leave the status alone (but set FPCN)
+        // compares write no register, so they leave the status alone (but
+        // set FPCN); the rest advance their unit's queue
         if (!is_pred(run_d.op)) begin
-          if (run_d.unit == U_ADD) sr[6][7:4] <= u_status;
-          else if (run_d.unit == U_MUL) sr[6][3:0] <= u_status;
-          else s11[3:0] = u_status;
+          if (run_d.unit == U_ADD) begin
+            sr[6][7:4] <= u_status; sr[10][7:4] <= sr[6][7:4];
+            sr[5] <= 8'd0; sr[9] <= sr[5];
+          end else if (run_d.unit == U_MUL) begin
+            sr[6][3:0] <= u_status; sr[10][3:0] <= sr[6][3:0];
+            sr[4] <= 8'd0; sr[8] <= sr[4];
+          end else begin
+            s11[3:0] = u_status;
+            sr[7] <= 8'd0;
+          end
         end
         sr[3] <= sr[3] | u_flags;
         // FPEX: an enabled exception (SR2's underflow bit is UNF CONTROL, but an

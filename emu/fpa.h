@@ -18,8 +18,13 @@
 // set; FPEX is raised by an exception whose trap is enabled and by every
 // underflow (whose result is an UNRM Lisp has to finish).  The arithmetic is
 // IEEE 754 with the four rounding modes; denormalized operands count as zero
-// (raising the denormalized-input flag under DNRM CONTROL).  Results are
-// ready at once, so reads never see the busy tag (dtp-null).
+// (raising the denormalized-input flag under DNRM CONTROL).  Each result
+// advances the 3164's status queue (manual 12.5): the unit's status code into
+// SR6 (adder 31:28, multiplier 27:24) or SR11 (divider), the one before into
+// SR10, and the destination, R0 (register 0), into SR5/SR4 with the one
+// before in SR9/SR8 (SR7 for the divider).  Results are ready at once here,
+// so reads never see the busy tag (dtp-null) and SR11's divide-in-progress
+// bit reads 0; the RTL (rtl/xl/xl_fpa.sv) has the latencies.
 #pragma once
 #include <cstdint>
 #include "ivory.h"

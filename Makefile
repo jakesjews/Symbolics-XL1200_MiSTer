@@ -13,12 +13,13 @@ lint-prepare:
 	@printf '`define BUILD_DATE "lint"\n' > lint/gen/build_id.v
 
 # The emulator and its CPU tests, the FPA (the model against the host's IEEE
-# arithmetic, the RTL against the model) and the 82586 with its mailbox wire.
+# arithmetic, the RTL's arithmetic against the model, the RTL on its bus with
+# its timing) and the 82586 with its mailbox wire.
 test: lint
 	$(MAKE) -C emu
 	python3 tools/cputest.py
 	$(MAKE) -C sim/fpa VERILATOR=$(VERILATOR)
-	cd sim/fpa && ./fpa_test && ./obj_dir/Vxl_fpa_unit
+	cd sim/fpa && ./fpa_test && ./obj_dir/Vxl_fpa_unit && ./obj_bus/Vxl_fpa
 	$(MAKE) -C sim/ether VERILATOR=$(VERILATOR)
 	cd sim/ether && ./obj_dir/Vtb_ether
 

@@ -243,8 +243,42 @@ int main(int argc, char** argv) {
   uint32_t watch = getenv("XLWATCH") ? (uint32_t)strtoul(getenv("XLWATCH"), nullptr, 16) : 0;
   uint64_t watch_mem = watch ? ddr.at(RAM_BASE + (watch & 0x07FFFFFFu)) : 0;
   bool watch_wr = false;
+  // XLFPAMON=1: the FPA's operations as Genera issues them: for each, how
+  // many started, the fewest cycles from a start to the first read after it
+  // (the processor's own instructions read with hold and wait), and every
+  // read that got the busy tag (dtp-null)
+  const bool fpamon = getenv("XLFPAMON") != nullptr;
+  std::map<unsigned, uint64_t> fpa_starts, fpa_held;
+  std::map<unsigned, uint64_t> fpa_gap;                     // op -> fewest cycles to a plain read
+  std::map<std::pair<unsigned, unsigned>, uint64_t> fpa_null;   // (op, register read) -> busy reads
+  uint64_t fpa_last_start = 0;
+  unsigned fpa_last_op = 0;
+  bool fpa_first = false;
   while (cycles < end) {
     tick();
+    if (fpamon && top->rootp->xl_machine__DOT__fpa__DOT__ack) {
+      // the access ends with the ack; the processor still holds its address and direction
+      auto& r = *top->rootp;
+      uint64_t at = cycles - 1;
+      unsigned a = r.xl_machine__DOT__core__DOT__cpu__DOT__cop_reg & 0777;
+      bool we = r.xl_machine__DOT__core__DOT__cpu__DOT__cop_we, hold = r.xl_machine__DOT__core__DOT__cpu__DOT__cop_wait;
+      if (we && (a & 3) == 1 && a < 0600) {
+        fpa_starts[a & ~3u]++; fpa_last_start = at; fpa_last_op = a & ~3u; fpa_first = true;
+      } else if (!we) {
+        unsigned tag = (unsigned)(r.xl_machine__DOT__fpa__DOT__rdata >> 32) & 077;
+        if (hold) fpa_held[fpa_last_op]++;
+        else if (fpa_first) {
+          uint64_t g = at - fpa_last_start;
+          if (!fpa_gap.count(fpa_last_op) || g < fpa_gap[fpa_last_op]) fpa_gap[fpa_last_op] = g;
+        }
+        if (!hold) fpa_first = false;
+        if (tag == 0) {
+          if (fpa_null[{fpa_last_op, a}]++ < 5)
+            printf("FPA busy read of %o, %llu cycles after starting op %o (%.6f s)\n", a,
+                   (unsigned long long)(at - fpa_last_start), fpa_last_op, cycles / CLK_HZ);
+        }
+      }
+    }
     if (profile && (profile_typed ? typed >= text.size() && keys.empty()
                                   : top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__icount >= profile_from)) {
       if (!prof_insns0) prof_insns0 = top->rootp->xl_machine__DOT__core__DOT__cpu__DOT__icount;
@@ -370,6 +404,15 @@ int main(int argc, char** argv) {
     const char* mem_names[] = {"CLEAR", "IDLE", "MISS", "FILL", "BUF_RD", "BUF_WAIT", "BUF_WR", "?", "?", "?", "?", "?", "?", "?", "?", "?"};
     for (int k = 0; k < 16; k++) if (prof_mmu[k]) printf("  mmu %-8s %5.1f%%\n", mmu_names[k], 100.0 * prof_mmu[k] / total);
     for (int k = 0; k < 16; k++) if (prof_mem[k]) printf("  mem %-8s %5.1f%%\n", mem_names[k], 100.0 * prof_mem[k] / total);
+  }
+  if (fpamon) {
+    printf("FPA operations: op, started, held reads, fewest cycles from start to a plain read\n");
+    for (auto& [op, n] : fpa_starts)
+      printf("  %3o %8llu %8llu  %s\n", op, (unsigned long long)n, (unsigned long long)fpa_held[op],
+             fpa_gap.count(op) ? std::to_string(fpa_gap[op]).c_str() : "-");
+    uint64_t nulls = 0;
+    for (auto& [k, n] : fpa_null) { nulls += n; printf("  busy reads of %o after op %o: %llu\n", k.second, k.first, (unsigned long long)n); }
+    printf("  %llu busy reads\n", (unsigned long long)nulls);
   }
   printf("%.2f s simulated, %llu instructions; screen in %s\n", cycles / CLK_HZ, (unsigned long long)top->insn_count,
          screen.c_str());

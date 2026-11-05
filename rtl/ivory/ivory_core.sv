@@ -20,6 +20,7 @@ module ivory_core
 
   output logic        cop_req,
   output logic        cop_we,
+  output logic        cop_wait,
   output logic [9:0]  cop_reg,
   output word_t       cop_wdata,
   input  logic        cop_ack,
@@ -68,7 +69,7 @@ module ivory_core
     .icache_on, .pf_on, .pf_high,
     .pht_base_o(pht_base), .pht_mask_o(pht_mask),
     .map_flush, .map_load, .map_inval, .map_vpn, .map_data, .map_reload,
-    .cop_req, .cop_we, .cop_reg, .cop_wdata, .cop_ack, .cop_rdata, .cop_err,
+    .cop_req, .cop_we, .cop_wait, .cop_reg, .cop_wdata, .cop_ack, .cop_rdata, .cop_err,
     .hp_sb, .lp_sb, .reset_req, .hp_sb_taken, .lp_sb_taken, .usec_clock,
     .retire, .retire_counted, .halted,
     .trap_mode, .eos(), .zos(), .insn_count, .halt_reason, .dbg_pc

@@ -367,7 +367,8 @@ W Wtl3164::read(unsigned a) {
   else if (a == 3) v = r0l;
   else if (a == 0400) v = int_of(r0h, r0l);
   else if (predicate(a)) v = cond;
-  else if (a >= 0600 && a < 0614) v = (uint32_t)sr[a - 0600] << 24;
+  else if (a >= 0600 && a < 0614)   // SR11 bit 30 (divide in progress) is the chip's own
+    v = (uint32_t)(a == 0613 ? sr[11] & ~0x40 : sr[a - 0600]) << 24;
   return mkw(fpex() ? DTP_FIXNUM : DTP_SINGLE_FLOAT, v);
 }
 
@@ -416,11 +417,21 @@ void Wtl3164::execute(unsigned op) {
     r0h = (uint32_t)(out64(d) ? r.bits >> 32 : r.bits);
     r0l = out64(d) ? (uint32_t)r.bits : 0;
   }
-  // compares write no register, so they leave the status alone (but set FPCN)
+  // compares write no register, so they leave the status alone (but set
+  // FPCN); the rest advance their unit's queue, destination R0
   if (!predicate) {
-    if (d.unit == U_ADD) sr[6] = (uint8_t)((sr[6] & 0x0F) | (r.status << 4));
-    else if (d.unit == U_MUL) sr[6] = (uint8_t)((sr[6] & 0xF0) | r.status);
-    else sr[11] = (uint8_t)((sr[11] & 0xF0) | r.status);
+    if (d.unit == U_ADD) {
+      sr[10] = (uint8_t)((sr[10] & 0x0F) | (sr[6] & 0xF0));
+      sr[6] = (uint8_t)((sr[6] & 0x0F) | (r.status << 4));
+      sr[9] = sr[5]; sr[5] = 0;
+    } else if (d.unit == U_MUL) {
+      sr[10] = (uint8_t)((sr[10] & 0xF0) | (sr[6] & 0x0F));
+      sr[6] = (uint8_t)((sr[6] & 0xF0) | r.status);
+      sr[8] = sr[4]; sr[4] = 0;
+    } else {
+      sr[11] = (uint8_t)((sr[11] & 0xF0) | r.status);
+      sr[7] = 0;
+    }
   }
   sr[3] |= r.flags;
   // FPEX: an exception whose trap is enabled (the underflow bit is UNF

@@ -1,6 +1,8 @@
 // The RTL FPA arithmetic (rtl/xl/xl_fpa_unit.sv) against the C++ model
 // (emu/fpa.cpp): random operations and operands, every result bit, flag and
-// status code compared.
+// status code compared, each result at the latency of Genera's XL1200 table
+// (xl_fpa's decode).  Then the same with the shortest latency the unit
+// takes, which shows what the arithmetic itself needs: never more.
 //   ./obj_dir/Vxl_fpa_unit [N]
 #include <cstdio>
 #include <cstdlib>
@@ -30,14 +32,22 @@ static uint64_t operand(bool dbl) {
   return dbl ? r : r & 0xFFFFFFFF;
 }
 
-int main(int argc, char** argv) {
-  long n = argc > 1 ? atol(argv[1]) : 200000;
-  Vxl_fpa_unit top;
+// *FPA-OPERATIONS* (i-sys/float.lisp), in cycles from the start to the first read of the result
+static int table_latency(fpa::Op op, bool dbl) {
+  if (op == fpa::DIV) return dbl ? 32 : 18;
+  if (op == fpa::SQRT) return dbl ? 59 : 29;
+  if (dbl && (op == fpa::ADD || op == fpa::SUB)) return 4;
+  return 3;
+}
+
+static const char* NAMES[20] = {"add", "sub", "mul", "div", "sqrt", "eq", "lt", "gt", "zerop", "minusp",
+                                "plusp", "neg", "abs", "i2d", "i2s", "d2s", "s2d", "d2i", "s2i", "imul"};
+
+static long run(Vxl_fpa_unit& top, long n, bool shortest, int work[20][2]) {
   uint64_t t = 0;
   auto tick = [&] { top.clk = 0; top.eval(); top.clk = 1; top.eval(); t++; };
   top.reset = 1; tick(); tick(); top.reset = 0;
   long failures = 0;
-  long counts[20] = {};
   for (long i = 0; i < n; i++) {
     fpa::Op op = (fpa::Op)(rng() % 20);
     bool dbl = rng() % 2;
@@ -60,21 +70,41 @@ int main(int argc, char** argv) {
     fpa::Result want = fpa::compute(op, dbl, x, y, mode, trunc, unfr, dexc);
     top.op = op; top.dbl = dbl; top.mode = mode; top.trunc = trunc; top.unf_round = unfr;
     top.dnrm_exc = dexc; top.x = x; top.y = y;
+    int lat = table_latency(op, dbl);
+    top.lat = shortest ? 3 : lat;
     top.start = 1;
     tick();
     top.start = 0;
-    int guard = 0;
-    while (!top.done && guard++ < 200) tick();
-    counts[op]++;
-    if (!top.done || top.bits != want.bits || top.flags != want.flags || top.status != want.status) {
+    // done in the cycle lat - 1 after the start, the result readable at lat
+    int k = 1;
+    while (!top.done && k < 200) { tick(); k++; }
+    bool late = shortest ? k + 1 > lat : k + 1 != lat;
+    if (k + 1 > work[op][dbl]) work[op][dbl] = k + 1;
+    if (!top.done || late || top.bits != want.bits || top.flags != want.flags || top.status != want.status) {
       if (failures++ < 30)
-        printf("op %d dbl %d mode %d trunc %d: %016llx %016llx -> %016llx %02x %d, want %016llx %02x %d%s\n",
-               op, dbl, mode, trunc, (unsigned long long)x, (unsigned long long)y,
+        printf("%s dbl %d mode %d trunc %d: %016llx %016llx -> %016llx %02x %d, want %016llx %02x %d; "
+               "readable at %d, latency %d%s\n",
+               NAMES[op], dbl, mode, trunc, (unsigned long long)x, (unsigned long long)y,
                (unsigned long long)top.bits, top.flags, top.status, (unsigned long long)want.bits,
-               want.flags, want.status, top.done ? "" : " (no done)");
+               want.flags, want.status, k + 1, lat, top.done ? "" : " (no done)");
     }
     tick();
+    if (top.busy) { if (failures++ < 30) printf("busy after done\n"); }
   }
-  printf("%ld operations, %ld failures, %llu cycles\n", n, failures, (unsigned long long)t);
+  printf("%ld operations%s, %ld failures, %llu cycles\n", n, shortest ? " at the shortest latency" : "",
+         failures, (unsigned long long)t);
+  return failures;
+}
+
+int main(int argc, char** argv) {
+  long n = argc > 1 ? atol(argv[1]) : 200000;
+  Vxl_fpa_unit top;
+  int at_table[20][2] = {}, shortest[20][2] = {};
+  long failures = run(top, n, false, at_table);
+  failures += run(top, n, true, shortest);
+  printf("cycles from the start to a readable result, single/double: the arithmetic's own (the table's)\n");
+  for (int op = 0; op < 20; op++)
+    printf("  %-6s %2d/%-2d (%d/%d)\n", NAMES[op], shortest[op][0], shortest[op][1],
+           table_latency((fpa::Op)op, false), table_latency((fpa::Op)op, true));
   return failures != 0;
 }

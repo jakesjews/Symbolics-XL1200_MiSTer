@@ -67,6 +67,7 @@ module ivory_cpu
 
   output logic        cop_req,
   output logic        cop_we,
+  output logic        cop_wait,       // a read that waits for a result in progress (FPA instructions)
   output logic [9:0]  cop_reg,
   output word_t       cop_wdata,
   input  logic        cop_ack,
