@@ -1275,6 +1275,17 @@ precisions; 46341 squared, either sign, becomes a bignum, and -65536 x
 32768 is the last fixnum. The FPA is 3,091 ALMs (2,475 before) and two DSP
 blocks fewer.
 
+In the RTL bench (`obj_free` with `XLFPAMON=1`, the full world, 60 s):
+Hello and Boot typed from 10 s (the FEP's prompt is up by then; keys
+before it are lost) put Genera's Listener up by 24 s, and the forms above
+and a loop of 2,000 double square roots and divides then printed what the
+host computes (`19883.544375079786d0`). Genera started 29,200 operations,
+18,045 read by the processor's own instructions with `hold`. The reads Lisp
+makes itself came at the soonest 10 cycles after a 3-cycle operation's
+start, 16 after a double add's (4), and 16 after a double divide's or
+square root's, which is the SR11 poll; no read got the busy tag, so at
+this clock Genera's no-op waits still cover every latency.
+
 Checks: `sim/fpa/fpa_test` (the C++ against the host's IEEE arithmetic in
 all four rounding modes, ~5M cases), `sim/fpa/obj_dir/Vxl_fpa_unit`
 (`rtl/xl/xl_fpa_unit.sv` against the C++, every bit, flag and status, 10M
@@ -1890,7 +1901,9 @@ before the RTL (docs/TODO.md).
 `obj_free/Vxl_machine` runs it as on the
 MiSTer (microseconds of the 50 MHz clock, SCSI commands running while the FEP
 polls, memory cleared from junk, the dot clock running) and saves the screen.
-It types TEXT from a given second (`|` Return, `~` a 10 s wait) and
+It types TEXT from a given second (`|` Return, `~` a 10 s wait; the FEP's
+prompt is up by 10 s and keys before it are lost; on the full world
+`Hello|Boot|` from 10 s has the Listener up by 24 s) and
 profiles cycles by state (`PROFILE=1`, from an instruction count or
 `PROFILE_FROM=typed`, the last key). `XLFPAMON=1` lists the FPA
 operations Genera starts, the fewest cycles from a start to the first
