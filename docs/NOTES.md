@@ -1362,6 +1362,63 @@ already fitted: both pay the latency of each miss, so the lever is the miss
 path (an earlier restart, a prefetch of the next line, overlapping a miss
 with the next instruction), not a bigger cache.
 
+### Disk throughput (Nov 4 2026)
+
+Build 45 (`xl_scsi` reading ten-block windows) on a copy of the fat-init
+image, timed on the MiSTer with `tools/mister/disklog.py` (`run.sh disk
+TEXT`: the image file's position in Main sampled every 5 ms from the last
+key typed) and with Genera's `time` and storage meters:
+
+- Load World of `Genera-8-3-fat-init.ilod.1` (161,454 blocks): 2.2 s from
+  Return to the FEP prompt, 14 requests. The FEP reads the world's header
+  and maps and adds the paging file; the world pages in afterwards.
+  Hello: 2.1 s, 41 requests.
+- Start: Genera answered ping 33.1 s after Return, the disk busy from 3.9 s
+  to 43 s. Its meters then: 4,227 disk requests
+  (`storage::*count-disk-requests-completed*`) bringing 4,542 fetched and
+  1,712 prefetched pages, all from the world file
+  (`si:*count-load-fetches*`, `si:*count-load-prefetches*`), and 32.1 s
+  waiting for pages (`si:*ms-time-page-idle-wait*`, in units of 1,024 us):
+  7.6 ms and 1.5 pages a request, almost all random (59 of Main's 3,550
+  window reads followed the one before).
+- A sequential read: `(time (with-open-file (s "FEP7:>Genera-8-3-full.ilod.1"
+  :element-type '(unsigned-byte 8)) (loop (if (send s :read-input-buffer)
+  (send s :advance-input-buffer) (return)))))`, 44,706 blocks: 48.66 s, 919
+  blocks a second, 1.18 MB/s. Main read 4,565 windows, all but a few
+  consecutive, 10.6 ms each; 13.3 s of the time was sequence breaks (the
+  driver's completion and copy run there).
+- Save World, complete, of that world (163,064 blocks): 12 min 3 s from the
+  last answer to the last request. The first 2 min 16 s are the before-cold
+  initializations and setup (random paging); then the file goes out in
+  ten-block writes alternating with ten-block reads of the old world: 413
+  blocks a second over the steadiest 150 s, 316 from the first thousand
+  blocks to the end. The earlier figure (Oct 31 2026, one block a round
+  trip, the 44,554-block site world) was about 125 blocks a second.
+
+Every case comes to about 100 requests a second, 8-10 ms each, whether a
+request moves one block or ten. A request is Main's poll, a 16 KB `fread`
+(a synchronous write for writes: the image is opened `O_SYNC` and the card
+mounted `sync`), the window across the HPS bus a byte at a time (`WIDE=0`,
+two GPO writes a byte), the WD33C93's byte DMA into buffer memory (a DDR3
+write a byte) and Genera's copy out of it. Which of these dominates hasn't
+been separated.
+
+The XL1200 shipped with a 380 MB ESDI disk ("20Mb memory, 380Mb ESDI disk,
+SCSI port", Computer Business Review, May 17 1990,
+[techmonitor.ai/?p=227099](https://techmonitor.ai/?p=227099)). Drives of
+that class (3,600 rpm, 10 Mbit/s, about 16 ms average seek: typical
+figures, not the XL's own drive) take some 15-25 ms for a random request
+and stream at most 1.25 MB/s off the platter, less when a driver issuing
+one request at a time misses a revolution between them. By that estimate
+random paging here is two to three times faster than the real disk, a
+sequential read about level with its platter rate, and Save World, which
+costs a real drive a seek each way between the old world and the new file,
+no slower. So the disk isn't short of the real machine, and Main writing
+image data straight into buffer memory (no HPS byte stream, no staging
+buffer) isn't needed. Should faster boots ever matter: a window sized to
+the command for an isolated read (a one-page fault moves ten blocks across
+the HPS bus now), and `WIDE=1` (16 bits a transfer).
+
 ## Compatibility
 
 Driven from the Mac with `tools/mister/run.sh type` (the Symbolics keys on
@@ -1690,6 +1747,7 @@ Each follows its C++ counterpart in `emu/`:
   sequential transfer (Load World, paging in a run of pages) are served
   from it; writes are grouped the same way, ten blocks a request. (Before
   Nov 2 2026 every block was its own round trip to the main program.)
+  Measured rates: "Disk throughput" under Performance.
 - `xl_console`: the console end of the serial line bus (key, mouse and
   status messages); `xl_keyboard` maps PS/2 to Symbolics keys.
 - `xl_video`: video memory (block RAM, second port on the 80 MHz dot clock)

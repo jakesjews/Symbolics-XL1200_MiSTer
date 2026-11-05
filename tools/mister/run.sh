@@ -4,12 +4,13 @@
 #   tools/mister/run.sh shot OUT.png  take a screenshot and fetch it
 #   tools/mister/run.sh type TEXT     type on the core (tools/mister/kbd.py)
 #   tools/mister/run.sh mgl NAME      start the core from _Computer/NAME.mgl (mounts its disk)
+#   tools/mister/run.sh disk TEXT     type TEXT and time the disk traffic after it (disklog.py)
 # With direct video on, MiSTer's screenshots are tiny: put direct_video=0 in the
 # [XL1200] section of MiSTer.ini while testing.
 set -euo pipefail
 mister=${MISTER:-root@mister}
 # file arguments are relative to where this is run from
-if [ $# -ge 2 ] && [ "$1" != type ] && [ "$1" != mgl ] && [ "${2#/}" = "$2" ]; then set -- "$1" "$PWD/$2"; fi
+if [ $# -ge 2 ] && [ "$1" != type ] && [ "$1" != mgl ] && [ "$1" != disk ] && [ "${2#/}" = "$2" ]; then set -- "$1" "$PWD/$2"; fi
 cd "$(dirname "$0")"
 # A command to MiSTer's main program. Loading a core re-executes the program,
 # which recreates /dev/MiSTer_cmd; a write that opened the old pipe in that
@@ -51,5 +52,9 @@ case "$1" in
     scp -q kbd.py "$mister":/tmp/kbd.py
     ssh "$mister" "python3 /tmp/kbd.py $(printf '%q' "$2")"
     ;;
-  *) echo "usage: $0 load RBF | shot OUT.png | type TEXT" >&2; exit 2 ;;
+  disk)
+    scp -q kbd.py disklog.py "$mister":/tmp/
+    ssh "$mister" "python3 /tmp/disklog.py --type $(printf '%q' "$2")"
+    ;;
+  *) echo "usage: $0 load RBF | shot OUT.png | type TEXT | mgl NAME | disk TEXT" >&2; exit 2 ;;
 esac
