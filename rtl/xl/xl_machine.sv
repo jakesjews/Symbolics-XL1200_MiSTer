@@ -40,7 +40,7 @@ module xl_machine #(
   input  logic [2:0]  mouse_buttons,
   input  logic signed [9:0] mouse_dx,
   input  logic signed [9:0] mouse_dy,
-  input  logic [64:0] rtc,
+  input  logic [32:0] timestamp,       // hps_io TIMESTAMP: seconds since 1970 (UTC from MiSTer_xl1200), bit 32 toggles
   input  logic        rtc_back28,
   input  logic        net_ena,             // the OSD's Network is not Off
 
@@ -288,7 +288,7 @@ module xl_machine #(
   logic       nv_ack;
   logic [7:0] nv_rdata;
   xl_nvram nvram (
-    .clk, .second, .rtc, .back28(rtc_back28),
+    .clk, .second, .timestamp, .back28(rtc_back28),
     .req(req && sel_nvram), .we(mem_we), .addr(pa[10:0]), .wdata(mem_wdata[7:0]),
     .ack(nv_ack), .rdata(nv_rdata)
   );

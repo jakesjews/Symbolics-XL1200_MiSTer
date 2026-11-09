@@ -179,5 +179,5 @@ lint_off -rule PINMISSING -file "XL1200.sv" -match "*Instance has missing pin: '
 lint_off -rule PINMISSING -file "*/XL1200.sv" -match "*Instance has missing pin: 'uart_speed'"
 lint_off -rule PINMISSING -file "XL1200.sv" -match "*Instance has missing pin: 'video_rotated'"
 lint_off -rule PINMISSING -file "*/XL1200.sv" -match "*Instance has missing pin: 'video_rotated'"
-lint_off -rule PINMISSING -file "XL1200.sv" -match "*Instance has missing pin: 'TIMESTAMP'"
-lint_off -rule PINMISSING -file "*/XL1200.sv" -match "*Instance has missing pin: 'TIMESTAMP'"
+lint_off -rule PINMISSING -file "XL1200.sv" -match "*Instance has missing pin: 'RTC'"
+lint_off -rule PINMISSING -file "*/XL1200.sv" -match "*Instance has missing pin: 'RTC'"

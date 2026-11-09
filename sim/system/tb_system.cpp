@@ -109,13 +109,8 @@ static volatile sig_atomic_t stop_requested = 0;
 static void on_sigusr1(int) { stop_requested = 1; }
 
 static void set_rtc() {
-  struct tm tm;
-  time_t t = BOOT_TIME;
-  gmtime_r(&t, &tm);
-  auto bcd = [](int v) { return (uint32_t)(((v / 10) << 4) | (v % 10)); };
-  top->rtc[0] = bcd(tm.tm_sec) | bcd(tm.tm_min) << 8 | bcd(tm.tm_hour) << 16 | bcd(tm.tm_mday) << 24;
-  top->rtc[1] = bcd(tm.tm_mon + 1) | bcd(tm.tm_year % 100) << 8 | (uint32_t)tm.tm_wday << 16 | 0x40u << 24;
-  top->rtc[2] ^= 1;   // RTC[64] toggles: new time
+  // hps_io TIMESTAMP: seconds since 1970 (UTC), bit 32 toggling with each new value
+  top->timestamp = ((top->timestamp ^ (1ull << 32)) & (1ull << 32)) | (uint32_t)BOOT_TIME;
 }
 
 int main(int argc, char** argv) {

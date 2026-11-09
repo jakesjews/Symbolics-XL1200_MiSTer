@@ -144,8 +144,10 @@ struct ModelState {
       RS(nvram__DOT__c_month) = bcd(tm.tm_mon + 1);
       RS(nvram__DOT__c_year) = bcd(tm.tm_year % 100);
     }
-    RS(nvram__DOT__loaded) = 1;
-    RS(nvram__DOT__rtc_seen) = top->rtc[2] & 1;
+    RS(nvram__DOT__guest_set) = nv.offset_seconds != 0;   // the machine set the clock: timestamps no longer apply
+    RS(nvram__DOT__ts_seen) = (top->timestamp >> 32) & 1;       // the bench's timestamp is not loaded over this
+    RS(nvram__DOT__ts_pend) = 0;
+    RS(nvram__DOT__cstate) = 0;
 
     // ---- FPA (xl_fpa); its arithmetic unit is idle between instructions
     Wtl3164& f = m.fpa;

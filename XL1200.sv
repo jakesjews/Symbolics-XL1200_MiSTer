@@ -63,7 +63,7 @@ wire   [1:0] buttons;
 wire [127:0] status;
 wire  [10:0] ps2_key;
 wire  [24:0] ps2_mouse;
-wire  [64:0] rtc;
+wire  [32:0] timestamp;    // seconds since 1970, from the main program (UTC with MiSTer_xl1200)
 
 wire  [NT-1:0] img_mounted;
 wire           img_readonly;
@@ -108,7 +108,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(NT), .BLKSZ(2)) hps_io
 
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
-	.RTC(rtc),
+	.TIMESTAMP(timestamp),
 
 	.info_req(info_req),
 	.info(info)
@@ -228,7 +228,7 @@ xl_machine #(.NT(NT), .CLK_HZ(50_000_000), .PROM_FILE("rtl/xl/boot_prom.mem")) m
 	.mouse_buttons(mouse_buttons),
 	.mouse_dx(mouse_dx),
 	.mouse_dy(mouse_dy),
-	.rtc(rtc),
+	.timestamp(timestamp),
 	.rtc_back28(~status[6]),
 	.net_ena(status[10:8] != 3'd1),
 

@@ -171,15 +171,8 @@ int main(int argc, char** argv) {
   top->reset = 1;
   top->rtc_back28 = 1;
   top->net_ena = getenv("XLNET") != nullptr;
-  {
-    time_t t = time(nullptr);
-    struct tm tm;
-    localtime_r(&t, &tm);
-    auto bcd = [](int v) { return (uint32_t)(((v / 10) << 4) | (v % 10)); };
-    top->rtc[0] = bcd(tm.tm_sec) | bcd(tm.tm_min) << 8 | bcd(tm.tm_hour) << 16 | bcd(tm.tm_mday) << 24;
-    top->rtc[1] = bcd(tm.tm_mon + 1) | bcd(tm.tm_year % 100) << 8 | (uint32_t)tm.tm_wday << 16 | 0x40u << 24;
-    top->rtc[2] = 1;
-  }
+  // hps_io TIMESTAMP: seconds since 1970, UTC as MiSTer_xl1200 sends it; bit 32 toggles
+  top->timestamp = (1ull << 32) | (uint32_t)time(nullptr);
   top->fw_reset = 0;
   for (int i = 0; i < 300; i++) tick();
   top->power_on = 0;

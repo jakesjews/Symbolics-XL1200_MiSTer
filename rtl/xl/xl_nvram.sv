@@ -8,15 +8,23 @@
 //         the week 1-7 (bit 6 frequency test), 0x7FD date, 0x7FE month,
 //         0x7FF year, all BCD
 //
-// The clock runs from a once-a-second pulse and starts from MiSTer's RTC.
+// The clock runs from a once-a-second pulse and starts from MiSTer's
+// timestamp (hps_io TIMESTAMP, seconds since 1970). Genera reads the chip as
+// GMT and applies the site's time zone, so the timestamp has to be UTC:
+// MiSTer_xl1200 sends it that way, as the main program does for the NeXT and
+// HP 9000 cores (the stock main program sends local time). Every timestamp
+// sent is taken until the machine sets the clock itself (W cleared), as the
+// NeXT core does: Main sends one when the core loads and one a minute after
+// that, so a core loaded before the MiSTer had its time from the network gets
+// it when it arrives.
 // Reads of the clock registers show the running clock unless R or W is set;
 // setting R or W latches it, and clearing W loads the registers into it.
 // The RAM is not kept across power cycles (no battery yet).
 module xl_nvram (
   input  logic        clk,
   input  logic        second,      // pulse: one second has passed
-  input  logic [64:0] rtc,         // hps_io RTC: BCD sec, min, hour, date, month, year, weekday 0-6
-  input  logic        back28,      // start the clock 28 years back (Genera rejects dates after 1999)
+  input  logic [32:0] timestamp,   // hps_io TIMESTAMP: seconds since 1970; bit 32 toggles with each new value
+  input  logic        back28,      // run the clock 28 years back (Genera 8.3 rejects dates after 1999)
 
   input  logic        req,
   input  logic        we,
@@ -40,28 +48,36 @@ module xl_nvram (
   logic [7:0] c_sec, c_min, c_hour, c_day, c_date, c_month, c_year;
   logic [7:0] r [8];           // 0x7F8-0x7FF as last latched or written
   logic       writing = 1'b0, frozen = 1'b0;
-  logic       loaded = 1'b0;
-  logic       rtc_seen = 1'b0;
+  logic       guest_set = 1'b0;   // the machine has set the clock: timestamps no longer apply
 
   function automatic logic [7:0] bcd_inc(input logic [7:0] v);
     return (v[3:0] == 4'd9) ? {v[7:4] + 4'd1, 4'd0} : {v[7:4], v[3:0] + 4'd1};
   endfunction
-  function automatic logic [7:0] days_in_month(input logic [7:0] month, input logic [7:0] year);
-    logic leap;
-    leap = year[4] ? (year[3:0] == 4'd2 || year[3:0] == 4'd6)
+  // BCD year 00-99 as 1970-2069: a leap year when divisible by 4 (2000 is one)
+  function automatic logic leap(input logic [7:0] year);
+    return year[4] ? (year[3:0] == 4'd2 || year[3:0] == 4'd6)
                    : (year[3:0] == 4'd0 || year[3:0] == 4'd4 || year[3:0] == 4'd8);
+  endfunction
+  function automatic logic [7:0] days_in_month(input logic [7:0] month, input logic [7:0] year);
     case (month)
-      8'h02: return leap ? 8'h29 : 8'h28;
+      8'h02: return leap(year) ? 8'h29 : 8'h28;
       8'h04, 8'h06, 8'h09, 8'h11: return 8'h30;
       default: return 8'h31;
     endcase
   endfunction
-  // BCD year minus 28, mod 100
-  function automatic logic [7:0] minus28(input logic [7:0] y);
-    logic [6:0] b;
-    b = 7'(y[7:4]) * 7'd10 + 7'(y[3:0]);
-    b = (b >= 7'd28) ? b - 7'd28 : b + 7'd72;
-    return {4'(b / 7'd10), 4'(b % 7'd10)};
+  function automatic logic [15:0] days_in_month_bin(input logic [7:0] month, input logic [7:0] year);
+    case (month)
+      8'h02: return leap(year) ? 16'd29 : 16'd28;
+      8'h04, 8'h06, 8'h09, 8'h11: return 16'd30;
+      default: return 16'd31;
+    endcase
+  endfunction
+  // 0-59 to BCD
+  function automatic logic [7:0] to_bcd(input logic [5:0] v);
+    logic [3:0] tens;
+    tens = (v >= 6'd50) ? 4'd5 : (v >= 6'd40) ? 4'd4 : (v >= 6'd30) ? 4'd3 :
+           (v >= 6'd20) ? 4'd2 : (v >= 6'd10) ? 4'd1 : 4'd0;
+    return {tens, 4'(v - 6'(tens) * 6'd10)};
   endfunction
 
   // The clock as register i shows it (stop and FT bits from the copies)
@@ -78,18 +94,70 @@ module xl_nvram (
     endcase
   endfunction
 
+  // Seconds since 1970 to the clock's registers: one subtraction a cycle,
+  // about 21,000 cycles for a date in the 2020s. 28 years back is 10,227
+  // days: seven leap days in any 28 years this side of 2100, and 1461 weeks
+  // exactly, so the day of the week keeps.
+  localparam [31:0] DAY    = 32'd86400;
+  localparam [31:0] BACK28 = 32'd883612800;
+  typedef enum logic [2:0] {C_IDLE, C_DAYS, C_YEARS, C_MONTHS, C_HOURS, C_MINUTES, C_DONE} cstate_t;
+  cstate_t     cstate = C_IDLE;
+  logic        ts_seen = 1'b0, ts_pend = 1'b0;
+  logic [31:0] t;              // seconds still to place
+  logic [15:0] d;              // days still to place
+  logic [7:0]  n_sec, n_min, n_hour, n_day, n_date, n_month, n_year;   // the registers being built
+
   always_ff @(posedge clk) begin
     ack <= req && !ack;
-    rtc_seen <= rtc[64];
+
+    // a new timestamp
+    ts_seen <= timestamp[32];
+    if (timestamp[32] != ts_seen) ts_pend <= 1'b1;
+    case (cstate)
+      C_IDLE: if (ts_pend && !guest_set) begin
+        ts_pend <= 1'b0;
+        t <= (back28 && timestamp[31:0] >= BACK28) ? timestamp[31:0] - BACK28 : timestamp[31:0];
+        d <= 16'd0;
+        n_sec <= 8'h00; n_min <= 8'h00; n_hour <= 8'h00;
+        n_day <= 8'd5;                                   // 1970-01-01 was a Thursday (1 Sunday .. 7 Saturday)
+        n_date <= 8'h01; n_month <= 8'h01; n_year <= 8'h70;
+        cstate <= C_DAYS;
+      end
+      C_DAYS: if (t >= DAY) begin
+        t <= t - DAY;
+        d <= d + 16'd1;
+        n_day <= (n_day == 8'd7) ? 8'd1 : n_day + 8'd1;
+      end else cstate <= C_YEARS;
+      C_YEARS: if (d >= (leap(n_year) ? 16'd366 : 16'd365)) begin
+        d <= d - (leap(n_year) ? 16'd366 : 16'd365);
+        n_year <= (n_year == 8'h99) ? 8'h00 : bcd_inc(n_year);
+      end else cstate <= C_MONTHS;
+      C_MONTHS: if (d >= days_in_month_bin(n_month, n_year)) begin
+        d <= d - days_in_month_bin(n_month, n_year);
+        n_month <= bcd_inc(n_month);
+      end else begin
+        n_date <= to_bcd(d[5:0] + 6'd1);
+        cstate <= C_HOURS;
+      end
+      C_HOURS: if (t >= 32'd3600) begin
+        t <= t - 32'd3600;
+        n_hour <= bcd_inc(n_hour);
+      end else cstate <= C_MINUTES;
+      C_MINUTES: if (t >= 32'd60) begin
+        t <= t - 32'd60;
+        n_min <= bcd_inc(n_min);
+      end else begin
+        n_sec <= to_bcd(t[5:0]);
+        cstate <= C_DONE;
+      end
+      C_DONE: cstate <= C_IDLE;                          // the clock takes it below
+      default: cstate <= C_IDLE;
+    endcase
 
     // the clock
-    if (!loaded && rtc[64] != rtc_seen) begin
-      c_sec <= rtc[7:0]; c_min <= rtc[15:8]; c_hour <= rtc[23:16];
-      c_date <= rtc[31:24]; c_month <= rtc[39:32];
-      c_year <= back28 ? minus28(rtc[47:40]) : rtc[47:40];
-      // 28 years keep the day of the week
-      c_day <= {5'd0, rtc[50:48]} + 8'd1;
-      loaded <= 1'b1;
+    if (cstate == C_DONE && !guest_set) begin
+      c_sec <= n_sec; c_min <= n_min; c_hour <= n_hour; c_day <= n_day;
+      c_date <= n_date; c_month <= n_month; c_year <= n_year;
     end else if (second) begin
       if (c_sec != 8'h59) c_sec <= bcd_inc(c_sec);
       else begin
@@ -127,7 +195,7 @@ module xl_nvram (
             if (writing && !wdata[7]) begin   // W cleared: the clock takes the registers
               c_sec <= {1'b0, r[1][6:0]}; c_min <= r[2]; c_hour <= r[3]; c_day <= {2'd0, r[4][5:0]};
               c_date <= r[5]; c_month <= r[6]; c_year <= r[7];
-              loaded <= 1'b1;
+              guest_set <= 1'b1;
             end
             // R or W latches the clock (unless this write ends a W)
             if (wdata[7:6] != 2'd0 && !(writing && !wdata[7]))
