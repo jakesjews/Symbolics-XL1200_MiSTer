@@ -94,18 +94,34 @@ module xl_nvram (
     endcase
   endfunction
 
-  // Seconds since 1970 to the clock's registers: one subtraction a cycle,
-  // about 21,000 cycles for a date in the 2020s. 28 years back is 10,227
-  // days: seven leap days in any 28 years this side of 2100, and 1461 weeks
-  // exactly, so the day of the week keeps.
+  // Seconds since 1970 to the clock's registers: one subtraction a cycle
+  // through a single subtractor, taking a day, a year, a month, an hour or a
+  // minute off what is left each time; about 21,000 cycles for a date in the
+  // 2020s. 28 years back is 10,227 days: seven leap days in any 28 years this
+  // side of 2100, and 1461 weeks exactly, so the day of the week keeps.
   localparam [31:0] DAY    = 32'd86400;
   localparam [31:0] BACK28 = 32'd883612800;
-  typedef enum logic [2:0] {C_IDLE, C_DAYS, C_YEARS, C_MONTHS, C_HOURS, C_MINUTES, C_DONE} cstate_t;
+  typedef enum logic [2:0] {C_IDLE, C_BACK, C_DAYS, C_YEARS, C_MONTHS, C_HOURS, C_MINUTES, C_DONE} cstate_t;
   cstate_t     cstate = C_IDLE;
   logic        ts_seen = 1'b0, ts_pend = 1'b0;
   logic [31:0] t;              // seconds still to place
   logic [15:0] d;              // days still to place
   logic [7:0]  n_sec, n_min, n_hour, n_day, n_date, n_month, n_year;   // the registers being built
+  logic [31:0] k;              // what this state takes off t
+  logic [15:0] dk;             // or off d
+  logic [32:0] tdiff;          // t - k, bit 32 set when t < k
+  logic [16:0] ddiff;          // d - dk, bit 16 set when d < dk
+  always_comb begin
+    case (cstate)
+      C_BACK:  k = BACK28;
+      C_DAYS:  k = DAY;
+      C_HOURS: k = 32'd3600;
+      default: k = 32'd60;
+    endcase
+    dk = (cstate == C_YEARS) ? (leap(n_year) ? 16'd366 : 16'd365) : days_in_month_bin(n_month, n_year);
+    tdiff = {1'b0, t} - {1'b0, k};
+    ddiff = {1'b0, d} - {1'b0, dk};
+  end
 
   always_ff @(posedge clk) begin
     ack <= req && !ack;
@@ -116,35 +132,39 @@ module xl_nvram (
     case (cstate)
       C_IDLE: if (ts_pend && !guest_set) begin
         ts_pend <= 1'b0;
-        t <= (back28 && timestamp[31:0] >= BACK28) ? timestamp[31:0] - BACK28 : timestamp[31:0];
+        t <= timestamp[31:0];
         d <= 16'd0;
         n_sec <= 8'h00; n_min <= 8'h00; n_hour <= 8'h00;
         n_day <= 8'd5;                                   // 1970-01-01 was a Thursday (1 Sunday .. 7 Saturday)
         n_date <= 8'h01; n_month <= 8'h01; n_year <= 8'h70;
+        cstate <= C_BACK;
+      end
+      C_BACK: begin                                      // the 28 years, when asked and when there are 28 to take
+        if (back28 && !tdiff[32]) t <= tdiff[31:0];
         cstate <= C_DAYS;
       end
-      C_DAYS: if (t >= DAY) begin
-        t <= t - DAY;
+      C_DAYS: if (!tdiff[32]) begin
+        t <= tdiff[31:0];
         d <= d + 16'd1;
         n_day <= (n_day == 8'd7) ? 8'd1 : n_day + 8'd1;
       end else cstate <= C_YEARS;
-      C_YEARS: if (d >= (leap(n_year) ? 16'd366 : 16'd365)) begin
-        d <= d - (leap(n_year) ? 16'd366 : 16'd365);
+      C_YEARS: if (!ddiff[16]) begin
+        d <= ddiff[15:0];
         n_year <= (n_year == 8'h99) ? 8'h00 : bcd_inc(n_year);
       end else cstate <= C_MONTHS;
-      C_MONTHS: if (d >= days_in_month_bin(n_month, n_year)) begin
-        d <= d - days_in_month_bin(n_month, n_year);
+      C_MONTHS: if (!ddiff[16]) begin
+        d <= ddiff[15:0];
         n_month <= bcd_inc(n_month);
       end else begin
         n_date <= to_bcd(d[5:0] + 6'd1);
         cstate <= C_HOURS;
       end
-      C_HOURS: if (t >= 32'd3600) begin
-        t <= t - 32'd3600;
+      C_HOURS: if (!tdiff[32]) begin
+        t <= tdiff[31:0];
         n_hour <= bcd_inc(n_hour);
       end else cstate <= C_MINUTES;
-      C_MINUTES: if (t >= 32'd60) begin
-        t <= t - 32'd60;
+      C_MINUTES: if (!tdiff[32]) begin
+        t <= tdiff[31:0];
         n_min <= bcd_inc(n_min);
       end else begin
         n_sec <= to_bcd(t[5:0]);
