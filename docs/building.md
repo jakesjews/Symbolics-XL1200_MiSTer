@@ -18,7 +18,7 @@
    results.
 2. The core is `output_files/XL1200.rbf`.
 
-**The design fills about 82% of the FPGA, so some fitter seeds don't fit or
+**The design fills about 84% of the FPGA, so some fitter seeds don't fit or
 miss timing**: change `SEED` in `XL1200.qsf` and build again.
 
 ## Tests
