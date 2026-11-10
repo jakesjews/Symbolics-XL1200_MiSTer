@@ -69,23 +69,21 @@ In the order they'll be done. Bugs come first whenever they turn up.
    - Gabriel and fib as speed regressions: cycle counts in Verilator, times
      on the MiSTer.
 2. Network, what's left after the wired port: the bridge into MiSTer's main
-   program upstream (a pull request); WiFi through a tap interface with
-   proxy ARP on the MiSTer; namespace entries for the hosts Genera should
-   talk to (its FTP and file servers refuse strangers), from `mkworld`; an
-   Ethernet address per core. The machine's address: the fat image has
-   192.168.50.92 fixed (the user's LAN) in two FEP files, the Hello.boot's
-   `Set Network Address` and the standalone namespace's host entry, and
-   Genera 8.3 has no DHCP, BOOTP or RARP client. A user can type `Set
-   Network Address CHAOS|1200,INTERNET|A.B.C.D` at the FEP after Hello
-   (`|` is Insert on the core): Genera takes it (checked Nov 2 2026, it
-   answered at the typed address only) and notes under the herald that the
-   namespace still has the old one. Next `fepfs.py set-address IMAGE
-   A.B.C.D` rewriting both files (check that the saved world takes a
-   changed namespace file at boot), and a gateway entry for traffic
-   beyond the LAN, then DHCP: a small client in
-   Lisp in the fat world asking the router at boot and putting the lease
-   in the running namespace (any LAN, the bridge as it is; NAT in the main
-   program instead would need port forwards and kernel support).
+   program upstream (a pull request); an Ethernet address per core. The
+   machine's address is the user's to set with Genera's own tools (Genera
+   8.3 has no DHCP, BOOTP or RARP client, and none is planned here, nor a
+   tool that rewrites the image): the `Set Network Address
+   CHAOS|1200,INTERNET|A.B.C.D` line, typed at the FEP after Hello (`|` is
+   Insert on the core; checked Nov 2 2026, Genera answered at the typed
+   address only and noted under the herald that the namespace still had
+   the old one) or changed in `FEP7:>Hello.boot`, and the namespace, which
+   the XL1200 serves itself and keeps in files on the disk: the host's
+   INTERNET address with `Edit Namespace Object`, other hosts with `Create
+   Namespace Object`, a gateway beyond the LAN as the host's
+   `DEFAULT-INTERNET-GATEWAY` user property (`ip-tcp/ip-routing.lisp`).
+   Left: go through those once on the MiSTer (a changed address after a
+   cold boot, a second host, a gateway) and put the steps that worked in
+   the README, in place of its "at every start".
 3. The RS-232 port: DUSCC channel B (Genera's serial unit 1, AM9517
    channels 2 and 3, interrupt bits 16 and 17) on MiSTer's UART, so
    Genera's serial streams work; today output on it never completes and a

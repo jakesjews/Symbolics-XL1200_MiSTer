@@ -115,8 +115,9 @@ one with `--internet A.B.C.D`. The OSD's Network option picks the port or
 turns it off. Genera answers ping and serves FTP (Genera 8.3 has no telnet
 server).
 
-WiFi can't carry it, and every XL1200 core has the same Ethernet address.
-The bridge is
+Over WiFi, set Network to `tap0` and add the
+[tap setup](docs/NOTES.md#wifi) to the MiSTer's `user-startup.sh`. Every
+XL1200 core has the same Ethernet address. The bridge is
 [tools/mister/Main_MiSTer-xl1200.patch](tools/mister/Main_MiSTer-xl1200.patch)
 until it is upstream.
 

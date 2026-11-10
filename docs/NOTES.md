@@ -1793,7 +1793,7 @@ Off, eth1, macvlan, tap0: the Sun cores' order, so Main's code for them
 serves).  Nothing runs by hand.  Over WiFi only tap0 can work: a WiFi
 client may only send frames with its own MAC, so eth0's raw socket and the
 macvlan fail there; tap0 with routing (proxy ARP both sides) on the MiSTer
-would put Genera on the LAN at its own address, a follow-up.
+puts Genera on the LAN at its own address ([WiFi](#wifi), below).
 
 - `rtl/xl/xl_eth_hps.sv` is the SparcStation 20 core's `eth_hps.sv`
   (GPL-2+) with the magic word "XLETH001": the mailbox protocol SSETH002
@@ -1894,6 +1894,35 @@ would put Genera on the LAN at its own address, a follow-up.
   reloading rebooted the board once; from the menu the switch is clean.)
   The section also carries direct_video 0 while the core is tested from
   the Mac.
+
+### WiFi
+
+The MiSTer routes for Genera instead of bridging: the main program's `tap0`
+option reads and writes a tap device, and Linux forwards between it and the
+WiFi side and answers ARP for each on the other (proxy ARP).  In
+`/media/fat/linux/user-startup.sh`, with Genera's address in place of
+192.168.50.92:
+
+```sh
+[ "$1" = stop ] || (
+  sleep 15
+  if [ "$(cat /sys/class/net/eth0/carrier 2>/dev/null)" != 1 ] && [ -e /sys/class/net/wlan0 ]; then
+    ip link show tap0 >/dev/null 2>&1 || ip tuntap add dev tap0 mode tap
+    ip link set tap0 up
+    sysctl -qw net.ipv4.ip_forward=1
+    sysctl -qw net.ipv4.conf.tap0.proxy_arp=1
+    ip route replace 192.168.50.92/32 dev tap0
+    ip neigh show proxy | grep -q "^192.168.50.92 dev wlan0" || ip neigh add proxy 192.168.50.92 dev wlan0
+  fi
+) &
+```
+
+It does nothing with a cable in the wired port, where the OSD's Network
+option is eth0; over WiFi the option is tap0.  This way (Nov 2 2026) the
+Mac pings Genera and its FTP server answers 220, and build 45's network
+tests ran over it (Nov 4, "The I/O chips against their manuals").  After a
+restart of the MiSTer the tap, the route and the proxy entry were there
+again from the script (seen Nov 10 2026, three days up; no ping that day).
 
 ## RTL Ivory (`rtl/ivory/`)
 
