@@ -477,15 +477,13 @@ Checked and right as they are:
 Departures kept (nothing on hand depends on them):
 
 - WD33C93: a short or missing data phase ends with 0x16 instead of 0x4B and
-  Genera's status-phase path (it reads the status byte either way). A
-  transfer count that runs out before the data stops a read with good
-  status and drops the rest of a write, and Select-and-Transfer ignores
-  Command Phase 0x45 (resume). Genera splits a transfer at its 32 KB
-  buffer and resumes; its disk driver caps a transfer at 25 pages (32,000
-  bytes), so only a CD-ROM or tape target would meet this. Targets never
-  disconnect; no selection timeout delay; the Reset command doesn't clear
-  the registers; synchronous transfer, parity and the DMA mode bits are
-  ignored.
+  Genera's status-phase path (it reads the status byte either way; the last
+  read of a file on the CD-ROM and a REQUEST SENSE of 128 bytes end this
+  way). Targets never disconnect; no selection timeout delay; the Reset
+  command doesn't clear the registers; synchronous transfer, parity and the
+  DMA mode bits are ignored. (A transfer count that runs out before the
+  data, and the resume from Command Phase 0x45, were departures until the
+  [CD-ROM drive](#the-cd-rom-drive-nov-10-2026).)
 - 82586: RSCERRS (frames lost for want of buffers) doesn't count, so
   Genera's `:NO-RESOURCES` meter stays 0; a CU start while a transmit waits
   is ignored (Genera starts the CU only when it shows idle); MC-setup opens
@@ -499,6 +497,118 @@ Departures kept (nothing on hand depends on them):
   and 3), isn't modelled: Genera opens it and reads its modem lines, but
   learns that a buffer went only from channel 3's end of count (interrupt
   bit 17), so `:finish` or `close` on the port waits forever.
+
+## The CD-ROM drive (Nov 10 2026)
+
+Genera 8.3 came to Ivory machines on CD-ROM only, and an XL reads a drive
+on its SCSI bus as ISO 9660 through `host|CDROMn:` pathnames, n the drive's
+SCSI address (8.1 Release Notes, "Changes to Enable CD-ROM Distribution";
+the 8.3 installation guide for XL machines, which names the Apple CD-ROM
+drive, a Sony CDU-8001, as the qualified one). The core's drive is SCSI
+target 2, `CDROM2:`, on OSD slot 2 with an `.iso` (MiSTer's block
+interface; `.cue`/`.bin` and `.chd` would be the main program's side).
+
+What Genera asks of it (`SYS:IO;ISO9660-ACCESS-PATH`, `-FILE-SYSTEM`,
+`SYS:I-SYS;SCSI-CONFIGURATION`):
+
+- A file access: TEST UNIT READY, or READ CAPACITY when it has no volume
+  yet (the sector size comes from there; 512-byte drives are provided for),
+  then READ(6). A CHECK CONDITION is followed by REQUEST SENSE with 128
+  bytes asked; on UNIT ATTENTION it forgets the volume and starts over, so
+  a changed disc is read afresh.
+- Its streams read into a 65,536-byte buffer, 32 blocks a READ, and
+  `SYS:I-SYS;MERLIN-SCSI-HARDWARE` moves at most its 32 KB I/O buffer a
+  transfer count: every such read runs the count out half way (below).
+- `Show Machine Configuration` polls every address: INQUIRY (64 bytes
+  asked), TEST UNIT READY "to clear out any UNIT ATTENTION", READ CAPACITY,
+  MODE SENSE(6). The reference XL1201 printed "SCSI address 6 on controller
+  0: codesrc genera83-SCSI2SD 4.2, removable CD-ROM, 310880 blocks of 2048
+  bytes (607M bytes total)" for its image of this CD; the core prints
+  "SCSI address 2 on controller 0: SYMBOLIC XL1200 CD-ROM 0001, removable
+  CD-ROM, 310880 blocks of 2048 bytes (607M bytes total)".
+- The FEP's `Hello` and Genera's disk driver ask every address for INQUIRY
+  and pass over a device that isn't type 0, so the drive changes nothing
+  for the disks.
+
+The drive (`xl_scsi`, `emu/scsi.cpp`): 2048-byte blocks, four card sectors
+each, eight to a window of the staging buffer. It answers with or without a
+disc. To everything but INQUIRY and REQUEST SENSE it reports once, as UNIT
+ATTENTION, a reset (0x29; the board resets the bus with the chip's reset
+pin) or a disc put in (0x28), then NOT READY (0x3A) while it has no disc,
+and it refuses a write before its data with DATA PROTECT (0x27). Its
+INQUIRY name is the core's own, like the disks'.
+
+The WD33C93 when the count runs out (data sheet 7.6.1; MAME's `wd33c9x.cpp`
+does the same): the data phase ends at Command Phase 0x46 and the chip
+expects status; the target asking for more data is an unexpected
+information phase, status 0x48 (data out) or 0x49 (data in), and the
+target stays connected. Genera's interrupt handler takes the low bits of a
+status with bit 3 as the phase the target wants, finds 0x46 among its
+data-transfer phases and resumes (`SCSI-TRANSFER-RECONNECT`): a new count,
+the DMA pointer back to the start of the buffer, the destination register
+written with address 0 and the direction bit (so the chip must remember
+which target it is connected to), Command Phase 0x45 and
+Select-and-Transfer again, which goes on with the data. Any other phase
+value in a resume expects something else than data and gets the same
+interrupt again. The chip's reset pin or its Reset command lets a waiting
+target go. Disks never met this (the disk driver caps a transfer at 32,000
+bytes), and no disk command of the FEP's or Genera's boot runs a count out.
+
+In the emulator (`xlemu -c DISC.iso`): Genera lists `CDROM2:>*.*` of the
+8.3 CD, and `Copy File CDROM2:>WORLDS>NETBOOT_CORE_GENERA_8_3.ILOD
+FEP7:>netboot-cd.ilod` writes 344,320 bytes identical to the file on the
+CD, five 64 KB reads each resumed once and a last one of nine blocks.
+
+`sim/scsi` (part of `make test`) drives the RTL chip as Genera's driver
+does, on generated images: the drive with no disc, a new disc, reads
+through counts that run out once, twice and mid-block, a resume at the
+wrong phase, a short data phase, writes refused, both resets while the
+target waits, and for the disks reads across windows and a write split by
+the count, read back and found in the image.
+
+On the MiSTer (build 48; a copy of the standalone disk grown to 300,000
+blocks, the 8.3 CD's image in slot 2): `Show Machine Configuration` prints
+the line above. `Show Directory CDROM2:>WORLDS>*.*` as the first command to
+the drive after a boot lists the seven worlds, so the access path met the
+reset's UNIT ATTENTION and started over. `Copy File
+CDROM2:>WORLDS>COLOR_FROM_GENERA_8_3.ILOD FEP7:>cd-color.ilod` takes 63 s
+by Genera's clock (20,928,000 bytes), and `GENERA_8_3.ILOD` (56,834,560
+bytes, on another seed's fit of the same code) 170 s: about 335 KB/s, where
+the drives of the day read 150. Both files, read back out of the disk
+image on the MiSTer with `fepfs.py get`, have the MD5 of the CD's. In the
+FEP-Tape activity `Read Image File CDROM2:>DISTRIBUTION>BASIC_WORLD.TAPE`,
+the installation guide's way to install from the CD, offers the tape's
+files in turn (the I328 kernel first) and restored `I328-INFO.FLOD.24`
+identical to the CD's own copy of it. The RTL had copied the netboot core
+the same way in the system simulation before (`sim/system`, the RTL taking
+over from an emulator snapshot of Genera, `XLCD=`).
+
+The drive cost nothing in the FPGA: `xl_scsi` alone synthesizes to 766
+ALMs, from 1,121 before it (650 in the fitted core, from 959), and the
+whole core's synthesis estimate is 34,031 ALMs against 34,356 for the
+calendar clock's first version. The range check and the size of a window read
+share one subtractor (blocks from the block moving to the image's end), a
+running block address replaced the index and its adders, the write path's
+byte counter and its two multiplies by 1280 went (a write now takes all
+its data, through as many counts as it needs), and the mount's division by
+three keeps a two-bit remainder and shifts the quotient in behind the
+dividend.
+
+Breath of Life: the CD has `SYS:IFEP;I325-BOL.FEP`, the Breath of Life
+kernel (FEP version 325, April 1991), and it boots in the emulator (`xlemu
+-k`): `Type "Disk Restore" to initialize your disk.` `Disk Restore (Unit)
+(Network Address)` takes keywords, among them `:Source` ("Source device or
+directory to copy flods and world from", default `CART:`), `:Format`,
+`:World File`, `:Create Boot Files`, `:Create Paging Files`, `:Standalone
+Site`. `Disk Restore 7` (SCSI target 0) polls the bus with INQUIRY, the
+CD-ROM drive included, and stops at "There is no CART tape drive on this
+machine". Its pathnames know the devices `FEP` and `CART`; `CDROM`, `CD`,
+`ISO`, `SCSI` and `TAPE` are "No device named". That agrees with the 8.1
+installation guide: XL sites with CD-ROM media also got a "CD-ROM XL
+Bootstrap Tape" (QIC-100) holding the Breath of Life kernel, and the 8.1
+Release Notes' choice between tape and CD-ROM is the MacIvory application's.
+On an XL the Breath of Life restores from the tape drive (TODO), and the
+CD-ROM serves a running Genera.
 
 ## CPU details found while bringing up the FEP
 
@@ -2236,6 +2346,16 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   status line shows the board's time (6:59:15 PM against `date` 18:59:15
   EST, the site zone) with `MiSTer_xl1200` running from MiSTer.ini's
   `main=`.
+- Build 48 (Nov 10 2026, `releases/XL1200_20261110.rbf`, replacing build 47):
+  the SCSI CD-ROM drive, with the WD33C93's count running out and its
+  resume (5cdcf2e, 6baa54d; [The CD-ROM drive](#the-cd-rom-drive-nov-10-2026)),
+  nothing else. Seed 5 of 6baa54d (Ubuntu, 36 minutes): 35,092 ALMs (84%),
+  block memory 56%, setup slack +0.419 ns core, +1.879 video, +0.513 HDMI,
+  +0.383 HPS, hold +0.204. Seed 2 (Mac, 33 minutes) routed with the HDMI
+  clock 5 ps short; seed 9 could not route (18 minutes) and seed 10 was
+  stopped at an hour, still routing. On the MiSTer: the standalone disk
+  boots, Genera lists the 8.3 CD and copies worlds from it byte for byte,
+  and FEP-Tape restores from the CD's tape image (the CD-ROM section).
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's

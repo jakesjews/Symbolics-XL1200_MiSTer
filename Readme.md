@@ -5,7 +5,7 @@
 A Symbolics XL1200 Lisp machine: the Ivory processor, the Merlin-II and I/O
 boards and the floating-point accelerator. It boots the XL1200's front-end
 processor (FEP) from a SCSI disk image and runs Genera 8.3 on the 1152 × 880
-black-and-white console, with keyboard, mouse and Ethernet.
+black-and-white console, with keyboard, mouse, Ethernet and a CD-ROM drive.
 
 Work in progress: [docs/TODO.md](docs/TODO.md).
 
@@ -67,6 +67,15 @@ your LAN; Insert types `|`) after `Hello` and before `Boot`, at every start.
 Type `Halt Machine` in Genera before you switch cores or copy the image off
 the card.
 
+## CD-ROM
+
+The OSD's `SCSI CD-ROM 2` takes a disc image (`.iso`), and Genera reads the
+disc as `CDROM2:`. With the Genera 8.3 CD in it:
+
+- `Show Directory CDROM2:>*.*`
+- `Copy File CDROM2:>WORLDS>GENERA_8_3.ILOD FEP7:>Genera-8-3.ilod`
+- in the FEP-Tape activity, `Read Image File CDROM2:>DISTRIBUTION>BASIC_WORLD.TAPE`
+
 ## Building a disk
 
 You need a Genera 8.3 world (`GENERA_8_3.ILOD` from the Genera 8.3 CD) and an
@@ -115,6 +124,7 @@ until it is upstream.
 
 - **The core writes to the disk image, so keep the `.7z` (or another copy) to start over from.**
 - Images must be SCSI2SD dumps: each 1280-byte block in 1536 bytes.
+- Disc images must be `.iso`; `.cue`/`.bin` and `.chd` aren't read.
 - With no disk mounted the machine halts; mounting one starts it.
 - Genera 8.3 doesn't accept dates after 1999: leave Clock at "28 years back" unless the world has the Y2K patch.
 - Save World shows "System Shutdown ..." with the clock stopped for several minutes; wait for "Saved to".
