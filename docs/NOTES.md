@@ -1775,6 +1775,11 @@ file found", as it would with no FrameThrower. The Joshua, Concordia,
 Statice and CLIM named in the collection's audit are installed files on
 the MacIvory disk, not systems in this world.
 
+The CD-ROM drive (Nov 10 2026, build 48): `Show Machine Configuration`,
+directory listings, two worlds copied from the 8.3 CD with the MD5s of the
+CD's files, and a FEP-Tape restore from its tape image
+([The CD-ROM drive](#the-cd-rom-drive-nov-10-2026)).
+
 ## Network
 
 The 82586 on the I/O board reaches a real network the way the Sun, NeXT,

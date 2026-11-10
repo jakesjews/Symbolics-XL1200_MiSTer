@@ -5,9 +5,16 @@ In the order they'll be done. Bugs come first whenever they turn up.
 1. A compatibility pass, in progress ([NOTES.md](NOTES.md#compatibility)
    has what passed: Zmacs, Document Examiner, Inspector, Debugger, Peek, a
    full GC, Save World and booting the saved world, the MacIvory animation
-   world's programs, ephemeral GC flips, the number types through the FPA).
+   world's programs, ephemeral GC flips, the number types through the FPA,
+   the CD-ROM drive: listings, worlds copied byte for byte, a FEP-Tape
+   restore from the CD's tape image).
    Left: an overnight run; a use check of each application in the fat
-   world on the MiSTer (item 5).
+   world on the MiSTer (item 5); for the CD-ROM drive
+   ([NOTES.md](NOTES.md#the-cd-rom-drive-nov-10-2026)), a disc changed
+   through the OSD while Genera runs (the new disc's UNIT ATTENTION is
+   checked in `sim/scsi` only), and a whole install from the 8.3 CD as its
+   guide has it: FEP-Tape's `Read Image File` of `BASIC_WORLD.TAPE` with
+   the kernel, flods and world onto a disk, and a boot from that world.
    Anything that breaks is reproduced in the free-running simulation or the
    model.
    Found and fixed in the tree (Nov 2 2026, docs/NOTES.md): `Load System
