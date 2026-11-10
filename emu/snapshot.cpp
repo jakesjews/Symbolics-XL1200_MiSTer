@@ -7,10 +7,14 @@
 #include "machine.h"
 
 namespace {
-const char MAGIC[8] = {'X', 'L', 'S', 'N', 'A', 'P', '0', '2'};
+// Version 03 adds the CD-ROM drive and the WD33C93's connection; a version
+// 02 snapshot still loads, those left as the machine was built.
+const char MAGIC[8] = {'X', 'L', 'S', 'N', 'A', 'P', '0', '3'};
+const char MAGIC_02[8] = {'X', 'L', 'S', 'N', 'A', 'P', '0', '2'};
 
 struct Out {
   FILE* f;
+  int version = 3;
   bool ok = true;
   void raw(const void* p, size_t n) { if (fwrite(p, 1, n, f) != n) ok = false; }
   template <class T> void pod(const T& v) { raw(&v, sizeof v); }
@@ -22,6 +26,7 @@ struct Out {
 };
 struct In {
   FILE* f;
+  int version = 3;
   bool ok = true;
   void raw(void* p, size_t n) { if (fread(p, 1, n, f) != n) ok = false; }
   template <class T> void pod(T& v) { raw(&v, sizeof v); }
@@ -69,10 +74,15 @@ template <class S> static void visit(S& s, Nvram& n) {
 }
 template <class S> static void visit(S& s, ScsiDisk& d) {
   s.pod(d.block_size); s.pod(d.stride); s.pod(d.blocks); s.pod(d.sense_key); s.pod(d.asc);
+  if (s.version >= 3) s.pod(d.attention);
 }
 template <class S> static void visit(S& s, WD33C93& w) {
   s.pod(w.a_part); s.pod(w.own_id); s.arr(w.regs, 0x20); s.pod(w.asr); s.deq(w.pending); s.pod(w.trace);
   for (int i = 0; i < 8; i++) visit(s, w.targets[i]);
+  if (s.version >= 3) {
+    s.pod(w.conn.active); s.pod(w.conn.out); s.pod(w.conn.id); s.arr(w.conn.cdb, 12); s.pod(w.conn.status);
+    s.vec(w.conn.data); s.pod(w.conn.pos);
+  }
 }
 template <class S> static void visit(S& s, I82586& e) {
   s.pod(e.in_reset); s.pod(e.ca); s.pod(e.need_init); s.pod(e.scb); s.pod(e.stat); s.pod(e.cus); s.pod(e.rus);
@@ -135,7 +145,8 @@ bool Snapshot::load(const std::string& path, Ivory& cpu, Machine& m) {
   In i{f};
   char magic[8];
   i.raw(magic, 8);
-  if (memcmp(magic, MAGIC, 8) != 0) { fprintf(stderr, "%s: not a snapshot\n", path.c_str()); fclose(f); return false; }
+  if (memcmp(magic, MAGIC_02, 8) == 0) i.version = 2;
+  else if (memcmp(magic, MAGIC, 8) != 0) { fprintf(stderr, "%s: not a snapshot\n", path.c_str()); fclose(f); return false; }
   V::visit(i, cpu);
   V::visit(i, m);
   fclose(f);

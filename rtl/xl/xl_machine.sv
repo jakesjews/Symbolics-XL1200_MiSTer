@@ -8,7 +8,7 @@
 // (four instructions a microsecond), so the Verilator testbench can run the
 // machine in lockstep with emu/.
 module xl_machine #(
-  parameter int    NT = 2,                 // SCSI disk targets
+  parameter int    NT = 3,                 // SCSI targets: disks 0 and 1, the CD-ROM drive
   parameter bit    LOCKSTEP = 1'b0,
   parameter bit    MEM_CLEAR = 1'b1,       // clear DDR3 memory at power-up
   parameter int    CLK_HZ = 50_000_000,   // no part slower than the real machine (docs/ivory.md)

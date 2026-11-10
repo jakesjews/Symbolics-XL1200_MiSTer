@@ -34,7 +34,7 @@ assign AUDIO_MIX = 0;
 assign LED_POWER = 0;
 assign BUTTONS   = 0;
 
-localparam NT = 2;   // SCSI disks 0 and 1
+localparam NT = 3;   // SCSI disks 0 and 1, the CD-ROM drive at 2
 
 `include "build_id.v"
 localparam CONF_STR = {
@@ -42,6 +42,7 @@ localparam CONF_STR = {
 	"-;",
 	"S0,DD IMGVHD,SCSI disk 0;",
 	"S1,DD IMGVHD,SCSI disk 1;",
+	"S2,ISO,SCSI CD-ROM 2;",
 	"-;",
 	"O[2],Aspect ratio,Original,Full Screen;",
 	"O[5:3],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer,HV-Integer;",
@@ -132,12 +133,13 @@ wire       power_on = ~&por;
 always @(posedge clk_sys) if (power_on) por <= por + 1'd1;
 
 // Mounting a disk while the boot PROM has halted for want of one starts the
-// machine again, as pressing reset after connecting the disk would.
+// machine again, as pressing reset after connecting the disk would. (A disc
+// in the CD-ROM drive, image 2, is not a disk to boot from.)
 wire halted;
 reg  reset;
 reg  mount_reset;
 always @(posedge clk_sys) begin
-	mount_reset <= |img_mounted && halted;
+	mount_reset <= |img_mounted[1:0] && halted;
 	reset <= RESET | status[0] | buttons[1] | power_on | mount_reset;
 end
 reg ddr_reset;   // RESET alone, for the DDR3 port (xl_machine)
@@ -152,7 +154,7 @@ reg        halted_q = 0, disk_seen = 0, ddr_stalled = 0;
 reg [22:0] ddr_wait = 0;
 always @(posedge clk_sys) begin
 	halted_q <= halted;
-	if (|img_mounted) disk_seen <= 1;
+	if (|img_mounted[1:0]) disk_seen <= 1;
 	if (!(DDRAM_BUSY && (DDRAM_RD || DDRAM_WE))) ddr_wait <= 0;
 	else if (!(&ddr_wait)) ddr_wait <= ddr_wait + 1'd1;
 	ddr_stalled <= &ddr_wait;

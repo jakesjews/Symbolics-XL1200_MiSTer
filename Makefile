@@ -14,8 +14,9 @@ lint-prepare:
 
 # The emulator and its CPU tests, the FPA (the model against the host's IEEE
 # arithmetic, the RTL's arithmetic against the model, the RTL on its bus with
-# its timing), the 82586 with its mailbox wire and the calendar clock against
-# the host's gmtime.
+# its timing), the 82586 with its mailbox wire, the calendar clock against
+# the host's gmtime and the SCSI chip with its disks and CD-ROM drive on
+# generated images.
 test: lint
 	$(MAKE) -C emu
 	python3 tools/cputest.py
@@ -25,5 +26,7 @@ test: lint
 	cd sim/ether && ./obj_dir/Vtb_ether
 	$(MAKE) -C sim/nvram VERILATOR=$(VERILATOR)
 	cd sim/nvram && ./obj_dir/Vxl_nvram
+	$(MAKE) -C sim/scsi VERILATOR=$(VERILATOR)
+	cd sim/scsi && ./obj_dir/Vxl_scsi
 
 .PHONY: lint lint-prepare test

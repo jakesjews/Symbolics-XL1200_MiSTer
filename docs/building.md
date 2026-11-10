@@ -33,15 +33,18 @@ miss timing**: change `SEED` in `XL1200.qsf` and build again.
 - the 82586 Ethernet chip with Main's mailbox (`sim/ether`)
 - the calendar clock: MiSTer's timestamp to the chip's registers and the
   running clock, against the host's `gmtime` (`sim/nvram`)
+- the SCSI chip with its disks and CD-ROM drive, driven as Genera drives
+  it, on generated images (`sim/scsi`)
 
 The rest need an XL1200 FEP disk image:
 
 - `emu/xlemu -d DISK.dd`: the emulator from reset to the FEP prompt
+  (`-c DISC.iso` puts a disc in its CD-ROM drive)
 - `sim/ivory`: `make`, then `./obj_dir/Vivory_core ../../rtl/xl/boot_prom.mem DISK.dd`,
   the RTL processor in lockstep with the emulator
 - `sim/system`: `make`, then `./obj_dir/Vxl_machine DISK.dd` (the whole
   machine in lockstep) or `./obj_free/Vxl_machine DISK.dd SECONDS` (free
-  running, as on the MiSTer)
+  running, as on the MiSTer); `XLCD=DISC.iso` puts a disc in the drive
 
 ## MiSTer_xl1200
 

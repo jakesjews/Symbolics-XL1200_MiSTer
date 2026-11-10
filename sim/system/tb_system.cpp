@@ -17,6 +17,9 @@
 // a sequence break a step later than the model once Genera enables them.)
 // SHOT_EVERY=N with FREE=1: SCREEN.pgm is rewritten from the RTL's video
 // memory every N million steps; SIGUSR1 ends the run.
+// XLCD=DISC.iso: that disc in both machines' CD-ROM drives (SCSI address 2;
+// the drives are there, empty, without it).
+// XLKEEP=FILE: the RTL's disk image is copied to FILE at the end.
 #include <algorithm>
 #include <chrono>
 #include <csignal>
@@ -138,6 +141,8 @@ int main(int argc, char** argv) {
   rbus.nvram.set_time_source([&rbus] { return BOOT_TIME + (time_t)(rbus.microsecond_clock() / 1000000); });
   rbus.load_prom(PROM_PATH);
   rbus.attach_disk(0, (dir / "ref.dd").string(), 1280, 1536);
+  const char* cd = getenv("XLCD");
+  rbus.attach_cdrom(2, cd ? cd : "");
   ref.init();
 
   // the RTL
@@ -166,6 +171,16 @@ int main(int argc, char** argv) {
   top->img_mounted = 1;
   tick();
   top->img_mounted = 0;
+  sd.targets = 3;
+  if (cd) {
+    sd.f[2] = fopen(cd, "rb");
+    for (int i = 0; i < 100; i++) tick();   // the disk's block count
+    top->img_size = fs::file_size(cd);
+    top->img_readonly = 1;
+    top->img_mounted = 4;
+    tick();
+    top->img_mounted = 0;
+  }
   top->power_on = 0;
   for (int i = 0; i < 100; i++) tick();     // memory ready (no clearing), block count
   top->reset = 0;
@@ -461,6 +476,8 @@ int main(int argc, char** argv) {
   }
 
   delete top;
+  if (const char* keep = getenv("XLKEEP"))   // the RTL's disk as the run left it
+    fs::copy_file(dir / "rtl.dd", keep, fs::copy_options::overwrite_existing);
   fs::remove_all(dir);
   return status;
 }

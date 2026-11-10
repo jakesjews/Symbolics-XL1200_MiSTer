@@ -15,6 +15,16 @@ void Machine::attach_disk(int id, const std::string& path, uint32_t bs, uint32_t
             (unsigned long long)iob.scsi.targets[id].blocks, bs, iob.scsi.targets[id].stride);
 }
 
+void Machine::attach_cdrom(int id, const std::string& path) {
+  ScsiDisk& t = iob.scsi.targets[id];
+  t.fit_cdrom();
+  if (!t.insert(path))
+    fprintf(stderr, "cannot open CD-ROM image %s\n", path.c_str());
+  else
+    fprintf(stderr, "SCSI %d: CD-ROM, %s, %llu blocks of %u bytes\n", id, path.empty() ? "no disc" : path.c_str(),
+            (unsigned long long)t.blocks, t.block_size);
+}
+
 void Machine::tick(uint64_t n) {
   cycles += n;
   iob.frame_counter = cycles / 64;

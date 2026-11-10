@@ -3,7 +3,7 @@
 #include <cstring>
 
 // ---------------------------------------------------------------------------
-// Direct-access disk target
+// Direct-access disk and CD-ROM targets
 // ---------------------------------------------------------------------------
 
 bool ScsiDisk::open(const std::string& path, uint32_t bs, uint32_t st) {
@@ -18,6 +18,38 @@ bool ScsiDisk::open(const std::string& path, uint32_t bs, uint32_t st) {
   return true;
 }
 
+void ScsiDisk::fit_cdrom() {
+  cdrom = true;
+  block_size = stride = 2048;
+  blocks = 0;
+  product = "XL1200 CD-ROM   ";
+  attention = 0x29;
+}
+
+bool ScsiDisk::insert(const std::string& path) {
+  if (f) fclose(f);
+  f = nullptr;
+  blocks = 0;
+  if (path.empty()) return true;
+  f = fopen(path.c_str(), "rb");
+  if (!f) return false;
+  fseeko(f, 0, SEEK_END);
+  blocks = (uint64_t)ftello(f) / block_size;
+  attention = 0x28;   // not ready to ready: the medium may have changed
+  return true;
+}
+
+void ScsiDisk::bus_reset() {
+  if (cdrom) attention = 0x29;
+}
+
+uint32_t ScsiDisk::data_out_length(const uint8_t* cdb) const {
+  if (cdrom) return 0;   // a write is refused before any data
+  if (cdb[0] == 0x0A) return (cdb[4] ? cdb[4] : 256) * block_size;
+  if (cdb[0] == 0x2A) return ((cdb[7] << 8) | cdb[8]) * block_size;
+  return 0;
+}
+
 static void put_be32(uint8_t* p, uint32_t v) { p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8; p[3] = v; }
 
 uint8_t ScsiDisk::execute(const uint8_t* cdb, std::vector<uint8_t>& in, const std::vector<uint8_t>& out,
@@ -26,6 +58,15 @@ uint8_t ScsiDisk::execute(const uint8_t* cdb, std::vector<uint8_t>& in, const st
   out_len = 0;
   in.clear();
   auto check = [&](uint8_t key, uint8_t code) { sense_key = key; asc = code; return (uint8_t)2; };
+  if (cdrom && cdb[0] != 0x03 && cdb[0] != 0x12) {
+    if (attention) {   // reported once, to the first command that isn't INQUIRY or REQUEST SENSE
+      uint8_t code = attention;
+      attention = 0;
+      return check(6, code);
+    }
+    if (!f) return check(2, 0x3A);   // not ready: medium not present
+    if (cdb[0] == 0x0A || cdb[0] == 0x2A) return check(7, 0x27);   // data protect: write protected
+  }
   switch (cdb[0]) {
   case 0x00:  // TEST UNIT READY
     sense_key = 0;
@@ -40,7 +81,9 @@ uint8_t ScsiDisk::execute(const uint8_t* cdb, std::vector<uint8_t>& in, const st
   case 0x12: {  // INQUIRY
     uint8_t s[36];
     memset(s, ' ', sizeof s);
-    s[0] = 0; s[1] = 0; s[2] = 1; s[3] = 1; s[4] = 31; s[5] = s[6] = s[7] = 0;
+    s[0] = cdrom ? 0x05 : 0x00;   // CD-ROM, removable
+    s[1] = cdrom ? 0x80 : 0x00;
+    s[2] = 1; s[3] = 1; s[4] = 31; s[5] = s[6] = s[7] = 0;
     memcpy(s + 8, vendor.data(), vendor.size() < 8 ? vendor.size() : 8);
     memcpy(s + 16, product.data(), product.size() < 16 ? product.size() : 16);
     memcpy(s + 32, rev.data(), rev.size() < 4 ? rev.size() : 4);
@@ -126,6 +169,8 @@ void WD33C93::hardware_reset() {
   memset(regs, 0, sizeof regs);
   asr = 0;
   pending.clear();
+  conn.active = false;   // the board resets the bus with the chip
+  for (ScsiDisk& t : targets) t.bus_reset();
   interrupt(0x00);
 }
 
@@ -167,6 +212,7 @@ void WD33C93::command(uint8_t c) {
   switch (c & 0x7F) {
   case 0x00:  // reset: advanced features if EAF set in own-id
     own_id = regs[R_OWN_ID] & 7;
+    conn.active = false;
     interrupt((a_part && (regs[R_OWN_ID] & 0x08)) ? 0x01 : 0x00);
     return;
   case 0x01:  // abort
@@ -192,6 +238,16 @@ static int cdb_length(uint8_t op, uint8_t cdb_size_reg) {
 }
 
 void WD33C93::select_and_transfer(bool) {
+  if (conn.active) {
+    // Issued while connected, the command resumes at the Command Phase
+    // register: 0x45 (and 0x41) go on with the data phase; every other phase
+    // expects something else than the data the target still asks for.
+    uint8_t phase = regs[R_COMMAND_PHASE];
+    if (trace) fprintf(stderr, "[wd33c93] resume at phase %02x count %u\n", phase, count());
+    if (phase == 0x45 || phase == 0x41) data_phase();
+    else interrupt(conn.out ? 0x48 : 0x49);
+    return;
+  }
   int id = regs[R_DEST_ID] & 7;
   ScsiDisk& t = targets[id];
   if (id == own_id || !t.present()) {
@@ -199,34 +255,59 @@ void WD33C93::select_and_transfer(bool) {
     interrupt(0x42);   // timeout during selection
     return;
   }
-  uint8_t cdb[16];
-  memcpy(cdb, &regs[R_CDB1], 12);
-  int len = cdb_length(cdb[0], regs[R_OWN_ID] >> 4);
+  conn = Connection();
+  conn.id = id;
+  memcpy(conn.cdb, &regs[R_CDB1], 12);
+  int len = cdb_length(conn.cdb[0], regs[R_OWN_ID] >> 4);
   (void)len;
-  std::vector<uint8_t> in, out;
-  bool is_write = false;
-  uint32_t out_len = 0;
+  // A write's data-out bytes are gathered first (the target needs them);
+  // every other command runs now and its data-in bytes wait for the count.
+  uint32_t want = t.data_out_length(conn.cdb);
+  if (want) {
+    conn.out = true;
+    conn.data.resize(want);
+  } else {
+    bool is_write = false;
+    uint32_t out_len = 0;
+    conn.status = t.execute(conn.cdb, conn.data, {}, is_write, out_len);
+  }
+  conn.active = true;
+  data_phase();
+}
+
+void WD33C93::data_phase() {
+  ScsiDisk& t = targets[conn.id];
   uint32_t n = count();
-  // For writes, gather the data-out bytes first (the target needs them).
-  bool write_cmd = cdb[0] == 0x0A || cdb[0] == 0x2A;
-  if (write_cmd) {
-    uint32_t want = (cdb[0] == 0x0A ? (cdb[4] ? cdb[4] : 256) : ((cdb[7] << 8) | cdb[8])) * t.block_size;
-    if (want > n) want = n;
-    out.resize(want);
-    for (uint32_t i = 0; i < want; i++) out[i] = dma_read ? dma_read() : 0;
-    n -= want;
+  uint64_t left = conn.data.size() - conn.pos;
+  uint32_t k = left < n ? (uint32_t)left : n;
+  for (uint32_t i = 0; i < k; i++, conn.pos++) {
+    if (conn.out) conn.data[conn.pos] = dma_read ? dma_read() : 0;
+    else if (dma_write) dma_write(conn.data[conn.pos]);
   }
-  uint8_t status = t.execute(cdb, in, out, is_write, out_len);
-  if (!in.empty()) {
-    uint32_t k = in.size() < n ? (uint32_t)in.size() : n;
-    for (uint32_t i = 0; i < k; i++) if (dma_write) dma_write(in[i]);
-    n -= k;
-  }
+  n -= k;
   set_count(n);
-  regs[R_TARGET_LUN] = status;
+  if (conn.pos < conn.data.size()) {
+    // The count ran out and the target asks for more data: an unexpected
+    // information phase (data out 0x48, data in 0x49) with the Command Phase
+    // at 0x46, the target left connected (data sheet 7.6.1).
+    regs[R_COMMAND_PHASE] = 0x46;
+    if (trace) fprintf(stderr, "[wd33c93] target %d cdb %02x: count ran out, %llu bytes to go\n", conn.id, conn.cdb[0],
+                       (unsigned long long)(conn.data.size() - conn.pos));
+    interrupt(conn.out ? 0x48 : 0x49);
+    return;
+  }
+  if (conn.out) {
+    std::vector<uint8_t> in;
+    bool is_write = false;
+    uint32_t out_len = 0;
+    conn.status = t.execute(conn.cdb, in, conn.data, is_write, out_len);
+  }
+  conn.active = false;
+  regs[R_TARGET_LUN] = conn.status;
   regs[R_COMMAND_PHASE] = 0x60;
-  if (trace) fprintf(stderr, "[wd33c93] target %d cdb %02x %02x %02x %02x %02x %02x status %d in %zu residual %u\n", id,
-                     cdb[0], cdb[1], cdb[2], cdb[3], cdb[4], cdb[5], status, in.size(), n);
+  if (trace) fprintf(stderr, "[wd33c93] target %d cdb %02x %02x %02x %02x %02x %02x status %d data %zu residual %u\n", conn.id,
+                     conn.cdb[0], conn.cdb[1], conn.cdb[2], conn.cdb[3], conn.cdb[4], conn.cdb[5], conn.status,
+                     conn.data.size(), n);
   // Command Complete gives 0x16; the target then goes bus free, which reports a
   // disconnect unless EDI (control bit 3) asks for the 0x16 to come at that point.
   interrupt(0x16);

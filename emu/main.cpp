@@ -66,6 +66,7 @@ static void backtrace(Ivory& cpu, Bus& m) {
 // One {...} escape in scripted console input; returns instructions to wait.
 //   m DX DY    move the mouse          b [L][M][R]  set the mouse buttons
 //   k NAME     tap a special key       w N          wait N million instructions
+//   c X        type X with Control held
 static uint64_t console_script(Console& console, const std::string& cmd) {
   static const struct { const char* name; uint8_t key; } keys[] = {
       {"Select", K_SELECT}, {"Function", K_FUNCTION}, {"Help", K_HELP}, {"Abort", K_ABORT},
@@ -90,6 +91,11 @@ static uint64_t console_script(Console& console, const std::string& cmd) {
     for (auto& k : keys)
       if (arg == k.name) { console.key(k.key, true); console.key(k.key, false); }
     return 2000000;
+  case 'c':
+    console.key(K_LEFT_CONTROL, true);
+    console.type(arg.c_str());
+    console.key(K_LEFT_CONTROL, false);
+    return 2000000;
   case 'w':
     return strtoull(arg.c_str(), nullptr, 0) * 1000000;
   default:
@@ -100,6 +106,7 @@ static uint64_t console_script(Console& console, const std::string& cmd) {
 
 static void usage() {
   fprintf(stderr, "usage: xlemu [-t tracefile] [-n insns] [-P prom.mem | -k kernel.fep] [-d disk.dd]\n"
+                  "             [-c disc.iso] (a CD-ROM drive at SCSI address 2 with this disc in it; -c - for an empty drive)\n"
                   "             [-W snapshot] (write the machine's state when the run stops, and disk.dd to snapshot.disk)\n"
                   "             [-R snapshot] (resume from it; -d must be a copy of its .disk; -Kat counts from the resume)\n");
   exit(1);
@@ -144,6 +151,7 @@ int main(int argc, char** argv) {
   // The FEP disk (-d): an XL1200 FEP disk image, licensed media that isn't in
   // the repository (docs/building.md). The machine writes to it, so give it a copy.
   std::string disk0 = "../research/media/disks/fepfs-lmfs-kernel.dd";
+  const char* cdrom = nullptr;   // -c: an ISO image in a CD-ROM drive at SCSI address 2 ("-": no disc)
   uint64_t stop_hpc = (uint64_t)0xFFFE0040u << 1;   // halfword PC
   uint64_t limit = 10000000;
   uint32_t disk_stride = 1536;   // SCSI2SD card layout; 1280 for packed block images
@@ -160,6 +168,7 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[i], "-D") && i + 1 < argc) dumpfile = argv[++i];
     else if (!strcmp(argv[i], "-p") && i + 1 < argc) progfile = argv[++i];
     else if (!strcmp(argv[i], "-d") && i + 1 < argc) disk0 = argv[++i];
+    else if (!strcmp(argv[i], "-c") && i + 1 < argc) cdrom = argv[++i];
     else if (!strcmp(argv[i], "-V") && i + 1 < argc) videofile = argv[++i];
     else if (!strcmp(argv[i], "-W") && i + 1 < argc) snap_write = argv[++i];
     else if (!strcmp(argv[i], "-R") && i + 1 < argc) snap_read = argv[++i];
@@ -229,6 +238,7 @@ int main(int argc, char** argv) {
     return 1;
   }
   m.attach_disk(0, disk0, 1280, disk_stride);
+  if (cdrom) m.attach_cdrom(2, strcmp(cdrom, "-") ? cdrom : "");
   // XLEMU_STOP_ON=TEXT: stop 50M instructions after the disk is written with
   // TEXT (build it at run time in the typed form, so the typed text itself
   // can't be paged out and trip it)

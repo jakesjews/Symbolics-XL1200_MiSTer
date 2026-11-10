@@ -59,6 +59,8 @@ public:
   static const uint32_t ECO_REGISTER = 0xFFF51111u;
 
   void attach_disk(int scsi_id, const std::string& path, uint32_t block_size = 1280, uint32_t stride = 1536);
+  // A CD-ROM drive at this address, with the ISO image in it ("" for an empty drive).
+  void attach_cdrom(int scsi_id, const std::string& path);
   void load_fep_file(const std::string& path);  // FEP kernel load format
   void load_prom(const std::string& path);      // boot PROM image (tools/bootprom.py)
   void tick(uint64_t n);                        // advance device time by n CPU cycles

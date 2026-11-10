@@ -11,7 +11,7 @@
 // the model, and dma_busy tells the machine to hold the processor while
 // console DMA lands and while the 82586 works).
 module xl_iob #(
-  parameter int NT = 2,
+  parameter int NT = 3,
   parameter bit LOCKSTEP = 1'b0,
   parameter logic [47:0] ETHERNET = 48'h08_00_05_12_00_01
 ) (

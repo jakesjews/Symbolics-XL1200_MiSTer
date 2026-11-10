@@ -211,10 +211,14 @@ struct ModelState {
     for (size_t i = 0; i < s.pending.size() && i < 4; i++) IOB(scsi__DOT__pend)[i] = s.pending[i];
     IOB(scsi__DOT__npend) = (uint8_t)std::min<size_t>(s.pending.size(), 4);
     IOB(scsi__DOT__own_id) = (uint8_t)s.own_id;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 3; i++) {   // the RTL's targets
       IOB(scsi__DOT__sense_key)[i] = s.targets[i].sense_key;
       IOB(scsi__DOT__asc)[i] = s.targets[i].asc;
     }
+    // the CD-ROM drive's UNIT ATTENTION (a command left waiting for a
+    // transfer count, WD33C93::conn, is not carried over)
+    IOB(scsi__DOT__cd_attn) = s.targets[2].attention != 0;
+    IOB(scsi__DOT__cd_attn_reset) = s.targets[2].attention == 0x29;
 
     // ---- 82586 (xl_i82586)
     I82586& e = b.ether;

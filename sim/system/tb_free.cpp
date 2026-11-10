@@ -11,6 +11,7 @@
 // a to b and from c to d seconds (the official Main releasing the core, then
 // restarting as MiSTer_xl1200), the disk mounted after d (MENU_MOUNT=early:
 // before a, so the second reset can catch the machine busy).
+// XLCD=DISC.iso: that disc in the CD-ROM drive (SCSI address 2).
 // TEXT is typed from AT-SECONDS of simulated time ('|' is Return, a key
 // every 50 ms, 3 s after a Return, '~' waits 10 s); the screen (the 1152 x
 // 880 raster from video memory) is saved every simulated second and at the end.
@@ -198,6 +199,16 @@ int main(int argc, char** argv) {
     top->reset = 1;
   }
   if (!(getenv("MENU") && mount_early)) mount();
+  sd.targets = 3;
+  if (const char* cd = getenv("XLCD")) {
+    sd.f[2] = fopen(cd, "rb");
+    for (int i = 0; i < 100; i++) tick();   // the disk's block count
+    top->img_size = fs::file_size(cd);
+    top->img_readonly = 1;
+    top->img_mounted = 4;
+    tick();
+    top->img_mounted = 0;
+  }
   for (int i = 0; i < 10; i++) tick();
   top->reset = 0;
   if (getenv("XLCOLORTEST")) return color_test();
