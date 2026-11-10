@@ -31,6 +31,8 @@ miss timing**: change `SEED` in `XL1200.qsf` and build again.
   RTL's arithmetic against the model, the RTL on its bus with its latencies
   (`sim/fpa`)
 - the 82586 Ethernet chip with Main's mailbox (`sim/ether`)
+- the calendar clock: MiSTer's timestamp to the chip's registers and the
+  running clock, against the host's `gmtime` (`sim/nvram`)
 
 The rest need an XL1200 FEP disk image:
 
@@ -43,9 +45,10 @@ The rest need an XL1200 FEP disk image:
 
 ## MiSTer_xl1200
 
-MiSTer's main program with the core's Ethernet bridge: the `xl1200` branch
+MiSTer's main program with the core's Ethernet bridge and its clock as GMT:
+the `xl1200` branch
 of [jakesjews/Main_MiSTer](https://github.com/jakesjews/Main_MiSTer/tree/xl1200),
-or [tools/mister/Main_MiSTer-xl1200-enet.patch](../tools/mister/Main_MiSTer-xl1200-enet.patch)
+or [tools/mister/Main_MiSTer-xl1200.patch](../tools/mister/Main_MiSTer-xl1200.patch)
 on [MiSTer-devel/Main_MiSTer](https://github.com/MiSTer-devel/Main_MiSTer).
 With the toolchain's `bin` on `PATH`, `make` there builds `bin/MiSTer`.
 

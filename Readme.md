@@ -25,7 +25,8 @@ Work in progress: [docs/TODO.md](docs/TODO.md).
    on the SD card.
 2. Copy [releases/MiSTer_xl1200](releases/MiSTer_xl1200) to the root of the
    SD card, next to `MiSTer`. It is MiSTer's main program with the core's
-   Ethernet bridge; without it the core runs but Genera has no network.
+   Ethernet bridge and its clock; without it the core runs, but Genera has
+   no network and its clock is off by your time zone.
 3. Add to `MiSTer.ini`:
 
    ```
@@ -107,7 +108,7 @@ server).
 
 WiFi can't carry it, and every XL1200 core has the same Ethernet address.
 The bridge is
-[tools/mister/Main_MiSTer-xl1200-enet.patch](tools/mister/Main_MiSTer-xl1200-enet.patch)
+[tools/mister/Main_MiSTer-xl1200.patch](tools/mister/Main_MiSTer-xl1200.patch)
 until it is upstream.
 
 ## Gotchas
@@ -122,7 +123,8 @@ until it is upstream.
 ## Troubleshooting
 
 - "Unable to get time from the network or the calendar clock": Clock to "28 years back".
-- Genera asks for the date right after the MiSTer starts: it loaded before MiSTer set its clock; type the date, or reload the core.
+- Genera's time is off by your time zone: `MiSTer_xl1200` from step 2 isn't running (`main=` in `MiSTer.ini`); MiSTer's own main program sends the clock as local time, and Genera reads it as GMT.
+- Genera asks for the date right after the MiSTer starts: it booted before MiSTer had the time from the network; type the date, or `Hello` and `Boot` again.
 - "This Lisp world has not been configured for use at the local site": the disk was built without `--standalone`.
 - "Unable to change site to Standalone. The directory >sys does not exist": step 3 of [Building a disk](#building-a-disk) hasn't been done on this disk.
 - A full GC freezes Genera: the paging file is smaller than physical memory; build the disk with `--blocks 240000`.

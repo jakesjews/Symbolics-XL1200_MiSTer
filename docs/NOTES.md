@@ -582,12 +582,25 @@ forms evaluate and the mouse brings up Genera's menus. With the FPA no
 warnings remain.
 
 Genera reads the calendar clock as GMT and shows local time by its time
-zone (EST until the site says otherwise); MiSTer's RTC is local time, so the
-status line is off by the zone (6:49 shown at 11:49 EDT). MiSTer sends a core
-the RTC once, when it loads it (`send_rtc(3)` in `user_io.cpp`; only Minimig
-gets it again every minute), so a core loaded just after the MiSTer starts,
-before its clock is set from the network, gets a wrong time, and Genera asks
-for the date.
+zone (EST until the site says otherwise). Until build 47 the clock started
+from MiSTer's RTC, which is local time, so the status line was off by the
+zone (6:49 shown at 11:49 EDT); it now starts from hps_io's `TIMESTAMP`
+(seconds since 1970), which Main sends as UTC only for the cores its
+`rtc_is_utc()` names (the NeXT and HP 9000 ones, UNIX guests that apply
+their own zone): `MiSTer_xl1200` adds the XL1200; the stock main program
+sends local time, and the clock is off as before. The core converts the
+seconds to the chip's BCD registers itself (`xl_nvram.sv`: one subtraction
+a cycle, 21,000 cycles for a date in the 2020s; the 28 years back are
+10,227 days, 1461 weeks exactly, so the weekday keeps; `sim/nvram` checks it
+against `gmtime`). Main sends a core its RTC and timestamp once, when it
+loads (`send_rtc(3)` in `user_io.cpp`; Minimig and the NeXT get theirs again
+every minute), so a core loaded just after the MiSTer started, before its
+clock was set from the network, had a wrong time and Genera asked for the
+date: `MiSTer_xl1200` sends the XL1200's timestamp every minute too, and
+the core takes each one until Genera sets the clock itself (the W bit
+cleared), as the NeXT core does. Genera reads the chip when it boots, so a
+world booted before the MiSTer was online still asks; Hello and Boot again
+once it is.
 
 What it took (first in the model, then the RTL):
 
@@ -1699,7 +1712,7 @@ would put Genera on the LAN at its own address, a follow-up.
   and eight buffers, an odd broadcast, a frame for another station
   (consumed, not delivered), suspend and resume, the last RFD and the
   driver's restart, AL-LOC 0 both ways, and the network off.  489k cycles.
-- Main's side: `tools/mister/Main_MiSTer-xl1200-enet.patch`,
+- Main's side: `tools/mister/Main_MiSTer-xl1200.patch`,
   `support/xl1200/xl1200.cpp` (the Sun bridge's mailbox keyed on XLETH001,
   self-contained apart from the A2065 module's host network calls; the OSD
   option at status bits 10:8, macvlan child "xl0"; a failed open waits for
@@ -2210,6 +2223,19 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   routing when 5 passed, and were stopped. On the MiSTer: the fat-init
   image boots, and the float forms, exceptions and timings in the FPA
   section.
+- Build 47 (Nov 9 2026, `releases/XL1200_20261109.rbf`, replacing build 46):
+  the calendar clock as GMT (48acaf4, ae36cae: the clock starts from
+  hps_io's `TIMESTAMP`, converted in `xl_nvram.sv`, and `MiSTer_xl1200`
+  sends it as UTC every minute; [Genera 8.3](#genera-83)), nothing else.
+  Seed 9 of ae36cae (Ubuntu, 1 h 38 min): 35,209 ALMs (84%), block memory
+  56%, setup slack +0.392 ns core, +1.670 video, +0.400 HDMI, +0.558 HPS,
+  hold +0.247. Of its five seeds only 9 routed: 5, 2 and 10 (Ubuntu) and 8
+  (Mac) were stopped at 2 h 24 min, still routing; the version before
+  (48acaf4, a subtractor per field, 35,401 ALMs) failed routing on all
+  four seeds in 27 min. On the MiSTer: the fat-init image boots and the
+  status line shows the board's time (6:59:15 PM against `date` 18:59:15
+  EST, the site zone) with `MiSTer_xl1200` running from MiSTer.ini's
+  `main=`.
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's
