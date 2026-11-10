@@ -533,8 +533,9 @@ module xl_scsi #(
         cd_attn_reset <= 1'b1;
       end
 
-      // ---- a disc put in (or taken out): the medium may have changed
-      if (cd_mount) begin
+      // ---- a disc put in: the medium may have changed (one taken out
+      // leaves the drive not ready)
+      if (cd_mount && |img_size[63:11]) begin
         cd_attn <= 1'b1;
         cd_attn_reset <= 1'b0;
       end

@@ -300,8 +300,6 @@ int main(int argc, char** argv) {
   // the disc taken out, another put in
   mount(2, nullptr, 0);
   EXPECT(run(2, {0x00}, 0, "TEST UNIT READY, disc out"), 2, "CHECK CONDITION, disc out");
-  expect_sense(2, 6, 0x28, "UNIT ATTENTION, medium changed");
-  EXPECT(run(2, {0x00}, 0, "TEST UNIT READY, no disc"), 2, "CHECK CONDITION, no disc");
   expect_sense(2, 2, 0x3A, "NOT READY, medium not present");
   mount(2, disc, (uint64_t)DISC_BLOCKS * 2048);
   EXPECT(run(2, {0x00}, 0, "TEST UNIT READY, disc back"), 2, "CHECK CONDITION, disc back");
