@@ -2,14 +2,7 @@
 
 In the order they'll be done. Bugs come first whenever they turn up.
 
-1. After `Halt Machine` the FEP doesn't show: the picture stays Genera's
-   (Nov 10 2026, build 48, every halt looked at), and `Hello` typed after
-   one of them changed nothing on the screen
-   ([NOTES.md](NOTES.md#setting-the-address-nov-10-2026)), so the core has
-   to be started again where a real XL1200 would take `Continue`, or
-   `Hello` and `Boot`. Find out whether the FEP is running and not drawing,
-   or not running.
-2. A compatibility pass, in progress ([NOTES.md](NOTES.md#compatibility)
+1. A compatibility pass, in progress ([NOTES.md](NOTES.md#compatibility)
    has what passed: Zmacs, Document Examiner, Inspector, Debugger, Peek, a
    full GC, Save World and booting the saved world, the MacIvory animation
    world's programs, ephemeral GC flips, the number types through the FPA,
@@ -44,15 +37,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    build 40 (the who-line clock stopped, no response; the second attempt
    got further and trapped instead), which the OSD halt and stall notices
    in the next build would name if it comes back.
-   Also open: the lockstep from reset on the master disk stops at step
-   1,822,307, the FEP kernel's first function entry after the boot PROM's
-   `%jump` (an entry-rest-not-accepted with more arguments than it takes):
-   the RTL writes the frame word {DTP-CALL-COMPILED-EVEN, the entry's PC}
-   at physical 0x103 and the model does not. Present at least since build
-   39; neither machine misbehaves for it (the FEP never returns there),
-   so `LOCKSTEP_FROM=N` windows are used meanwhile; one of the two entry
-   implementations is wrong and the spec decides.
-   And the lockstep inside Genera (`LOCKSTEP_SNAPSHOT`, NOTES.md, RTL
+   Also open: the lockstep inside Genera (`LOCKSTEP_SNAPSHOT`, NOTES.md, RTL
    boards) stops at the first low-priority sequence break: the model takes
    it an instruction before the RTL, whose fetch now samples the request in
    the cycle the previous instruction retires, before the bench's timer
@@ -75,13 +60,13 @@ In the order they'll be done. Bugs come first whenever they turn up.
      and loads the tests, the RTL runs them.
    - Gabriel and fib as speed regressions: cycle counts in Verilator, times
      on the MiSTer.
-3. Network, what's left after the wired port: the bridge into MiSTer's main
+2. Network, what's left after the wired port: the bridge into MiSTer's main
    program upstream (a pull request); an Ethernet address per core. The
    address, the gateway and WiFi are the user's to set, as the README's
    Network section has them
    ([NOTES.md](NOTES.md#setting-the-address-nov-10-2026)); no DHCP client
    and no tool that rewrites the image.
-4. The RS-232 port: DUSCC channel B (Genera's serial unit 1, AM9517
+3. The RS-232 port: DUSCC channel B (Genera's serial unit 1, AM9517
    channels 2 and 3, interrupt bits 16 and 17) on MiSTer's UART, so
    Genera's serial streams work; today output on it never completes and a
    `close` waits forever ([NOTES.md](NOTES.md#the-io-chips-against-their-manuals-nov-4-2026)).
@@ -89,7 +74,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    the ready bits driving the two DMA channels, end of count and status
    interrupts, the modem lines, the chip's reset values and its
    write-1-to-clear status registers (about 400-700 ALMs, estimated).
-5. Speed, only if the machine is really behind: measured after each step
+4. Speed, only if the machine is really behind: measured after each step
    (`PROFILE=1` on `sim/system` counts cycles by state) and against the
    published times. Standing (Oct 2026, build 30 at 50 MHz): `(fib 30)`
    2.80 s against the XL1201's 4.1 s; Gabriel 6.56x the 3600 overall, the

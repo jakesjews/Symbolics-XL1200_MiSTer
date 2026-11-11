@@ -673,6 +673,19 @@ Checked:
 - The RTL from the model's snapshot at the question (`sim/system`,
   `LOCKSTEP_SNAPSHOT`, `FREE=1`, typing `Yes|Continue|`): the same two
   screens.
+- The free-running RTL from reset, as on the MiSTer (`obj_free`, 95
+  simulated seconds): `Hello`, `Boot`, the Listener at 35 s, `Halt
+  Machine` and `Yes` to the FEP's prompt, `Continue` back to Genera, a
+  second halt, `Hello` and `Boot` to a second cold boot.  With a blank
+  disk the boot PROM still halts for want of one (0.5 s).
+- On the MiSTer (Nov 11 2026, a scratch copy of the standalone disk
+  through a temporary MGL).  Build 48 first, for the baseline: after
+  `Halt Machine` and `Yes` the picture stays Genera's, the status line's
+  clock stopped at the halt, and `Hello` does nothing.  Build 49: "Lisp
+  stopped itself" and `FEP Command:` over Genera's screen; `Continue`
+  gives Genera back (`Show Herald` answers, the clock runs); a second
+  halt, `Hello` (it runs the Hello.boot) and `Boot` cold boot it, the
+  status line saying so, with the date kept from the first boot.
 - `tools/cputest.py`, `stack_cache_move`: the same move and back in a
   dozen instructions, on the model (it fails on the model as it was).
 - Both lockstep benches from reset through the FEP boot and `Hello`, 40
@@ -2521,6 +2534,24 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   stopped at an hour, still routing. On the MiSTer: the standalone disk
   boots, Genera lists the 8.3 CD and copies worlds from it byte for byte,
   and FEP-Tape restores from the CD's tape image (the CD-ROM section).
+- Build 49 (Nov 11 2026, `releases/XL1200_20261111.rbf`, replacing build 48):
+  stack references by the stack cache's address bits, so `Halt Machine`
+  reaches the FEP (86bfd76, 0f1f0d5;
+  [Halt Machine](#halt-machine-nov-10-2026)), nothing else. Seed 4 of
+  0f1f0d5 (Mac, 38 minutes, 16 of them routing): 35,147 ALMs (84%), block
+  memory 56%, setup slack +0.916 ns core, +2.043 video, +0.118 HDMI,
+  +0.619 HPS, hold +0.254. It took twenty seeds. The first form of the
+  change (86bfd76: the memory stage chose between two 25-bit tests after
+  them, a level more ahead of the memory request) routed once in ten:
+  seed 3 (Ubuntu, 50 minutes), 0.303 ns short on the core clock at 35,319
+  ALMs; 6 and 8 could not route, the other seven were stopped at an hour.
+  The second form (0f1f0d5, the same function a level shorter) fits in
+  about 170 ALMs fewer, the registers the fitter had duplicated for
+  timing; of its seeds 5, 3 and 1 could not route and 9 was stopped at an
+  hour before 4 came in, five running at once by then (four on Ubuntu,
+  one on the Mac) with the limit raised to an hour and a half. By
+  synthesis the design is 68,565 logic cells against build 48's 68,536.
+  On the MiSTer: the Halt Machine section's test.
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
   starts) wedges the HPS SDRAM port: DDRAM_BUSY stays high and Main_MiSTer
   hangs on ioctl_wait (once the whole board reset). Put MiSTer's

@@ -64,7 +64,8 @@ Genera's network address on this disk is 192.168.50.92;
 [Network](#network) has how to change it.
 
 Type `Halt Machine` in Genera before you switch cores or copy the image off
-the card.
+the card. It leaves you at the FEP's prompt: `Continue` goes back to Genera,
+`Hello` and `Boot` start it again.
 
 ## CD-ROM
 
@@ -122,8 +123,8 @@ LAN (Genera 8.3 has no DHCP) and your router's address.
    `Set Network Address CHAOS|1200,INTERNET|A.B.C.D;gateway=G.G.G.G`, with
    Genera's address and your router's (Insert types `|`).
 5. Save with Control-X Control-S.
-6. Select L, `Halt Machine`, `Yes`, then start the core again and type
-   `Hello` and `Boot`.
+6. Select L, `Halt Machine`, `Yes`, then at the FEP's prompt type `Hello`
+   and `Boot`.
 7. From another machine, `ping A.B.C.D`.
 8. Once, to stop the note "The namespace needs to be fixed" at boot:
    `Edit Namespace Object Host XL1200`, right-click the old `INTERNET`
