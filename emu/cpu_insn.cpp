@@ -1922,14 +1922,14 @@ void Ivory::write_internal_register(int r, W w) {
     }
   }
   switch (r) {
-  case IR_FP: fp = wdata(w); return;
+  case IR_FP: sc_write_fp(wdata(w)); return;
   case IR_LP: lp = wdata(w); return;
   case IR_SP: sp = wdata(w); return;
   case IR_STACK_CACHE_LOWER_BOUND:
     if (log_errors && sclb_log++ < 200)
       fprintf(stderr, "[cpu] stack cache lower bound := %08x at pc %08x insn %llu fp %08x sp %08x\n", wdata(w),
               (uint32_t)(pc >> 1), (unsigned long long)icount, fp, sp);
-    stack_cache_lower_bound = wdata(w); return;
+    sc_write_lower_bound(wdata(w)); return;
   case IR_CONTINUATION: cont = stripcdr(w); return;
   case IR_ALU_AND_ROTATE_CONTROL: alu_control = wdata(w); return;
   case IR_CONTROL_REGISTER: cr = wdata(w); return;

@@ -344,21 +344,15 @@ int main(int argc, char** argv) {
     std::set<uint32_t> addrs(rlog.begin(), rlog.end());
     for (uint32_t a : dlog)
       if (a >= RAM_BASE && a < RAM_BASE + (16u << 20)) addrs.insert(a - RAM_BASE);
-    // The RTL keeps the stack cache window's words in the cache (write-back),
-    // the model in memory: a word there is the cache's.  The window is 128
-    // words from the lower bound (0 until Genera sets it), at most two pages.
-    uint32_t lb = R(stack_cache_lower_bound), wpage[2] = {~0u, ~0u};
-    for (int k = 0; k < 2; k++) {
-      uint32_t pa;
-      if (ref.debug_translate((lb + 127u * k) & ~0xFFu, pa)) wpage[k] = Machine::ram_index(pa) >> 8;
-    }
+    // A word the model wrote and the RTL didn't is a stack reference, or a
+    // memory cycle's write the stack cache shadows: the RTL keeps those in
+    // its stack cache, by address bits 6:0 (the same in the physical
+    // address), and the model in memory.
+    std::set<uint32_t> rtl_wrote;
+    for (uint32_t a : dlog)
+      if (a >= RAM_BASE && a < RAM_BASE + (16u << 20)) rtl_wrote.insert(a - RAM_BASE);
     auto rtl_word = [&](uint32_t a) {
-      for (int k = 0; k < 2; k++)
-        if ((a >> 8) == wpage[k]) {
-          uint32_t vma = (((lb + 127u * k) & ~0xFFu) | (a & 0xFF));
-          if (vma - lb < 128u) return (W)(R(sc_data)[vma & 127] & 0xFFFFFFFFFFull);
-        }
-      return ram_word(a);
+      return rtl_wrote.count(a) ? ram_word(a) : (W)(R(sc_data)[a & 127] & 0xFFFFFFFFFFull);
     };
     for (uint32_t a : addrs)
       if (rbus.ram[a] != rtl_word(a)) {

@@ -183,7 +183,13 @@ module ivory_cpu
 
   // Stack cache (docs/ivory.md): 128 words shadowing [lower bound, +127],
   // read combinationally from a registered address, written a cycle after
-  // the state that asks for it
+  // the state that asks for it.  A memory cycle (an address from a pointer)
+  // is the cache's inside the window.  A stack reference (FP, LP or SP
+  // relative, a push, a pop) is the cache's word at address bits 6:0
+  // wherever it points, as on the chip, which has no other place for one
+  // (the FEP moves FP and SP to its own stack before the lower bound and
+  // reads its locals there); only in the 128 words under the window, which
+  // a dump has put in memory, does it go to memory.
   // Two copies of the data: one read for the operand pre-read and the TOS
   // reload (sc_ra), one by the memory-access stage from the request's
   // address (m_addr); both written together.
@@ -197,17 +203,20 @@ module ivory_cpu
   assign sc_q = sc_data[sc_ra];
   always_ff @(posedge clk) if (sc_we) begin sc_data[sc_wa] <= sc_wd; sc_data2[sc_wa] <= sc_wd; end
 
-  function automatic logic in_window(logic [31:0] a);
-    return (a - stack_cache_lower_bound) < 32'd128;
+  // a stack reference to a: the cache's, unless a is in [lower bound - 128, lower bound)
+  function automatic logic stk_cached(logic [31:0] a);
+    logic [31:0] d;
+    d = a - stack_cache_lower_bound;
+    return !(&d[31:7]);
   endfunction
-  // the window checks the states share (a task inlines at every call)
+  // the checks the states share (a task inlines at every call)
   logic        sp_in_window, spm1_in_window, spp1_in_window;
   logic [31:0] sp_p1;
   logic        push_trig;            // a push to sp_p1 overflows the stack cache: SP<6:2> at the limit's
   assign sp_p1 = sp + 32'd1;
-  assign sp_in_window = in_window(sp);
-  assign spm1_in_window = in_window(sp - 32'd1);
-  assign spp1_in_window = in_window(sp_p1);
+  assign sp_in_window = stk_cached(sp);
+  assign spm1_in_window = stk_cached(sp - 32'd1);
+  assign spp1_in_window = stk_cached(sp_p1);
   assign push_trig = (sp_p1 & 32'h7C) == (stack_cache_overflow_limit & 32'h7C);
   // the dump quantum register (01031): 32 at reset and for values the cache can't dump
   function automatic logic [31:0] sc_quantum();
@@ -232,7 +241,8 @@ module ivory_cpu
   logic [31:0] m_addr;
   logic        m_we, m_phys;
   logic        m_through;             // a memory cycle's write: memory as well as the cache
-  logic        m_bypass;              // never the cache (dump, refill, a push outside the window)
+  logic        m_bypass;              // never the cache (dump, refill, a push under the window)
+  logic        m_stk;                 // a stack reference: stk_cached decides, not the window
   logic        m_first;               // the request hasn't been looked at yet
   logic        m_wait;                // waiting for the memory
   logic        m_cached;
@@ -240,7 +250,9 @@ module ivory_cpu
   logic        m_trans;               // the page accessed has transport traps enabled
   word_t       m_wd, m_rd;
   assign sc_q_m = sc_data2[m_addr[6:0]];
-  assign m_cached = !m_phys && !m_bypass && in_window(m_addr);
+  // a memory cycle inside the window, or a stack reference not under it
+  wire [31:0] m_off = m_addr - stack_cache_lower_bound;
+  assign m_cached = !m_phys && !m_bypass && (m_stk ? !(&m_off[31:7]) : !(|m_off[31:7]));
   assign mem_req = st == S_MEM_W && (m_first ? !m_cached || (m_we && m_through) : m_wait);
   assign mem_we = m_we;
   assign mem_addr = m_addr;

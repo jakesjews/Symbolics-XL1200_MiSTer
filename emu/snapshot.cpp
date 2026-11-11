@@ -8,13 +8,17 @@
 
 namespace {
 // Version 03 adds the CD-ROM drive and the WD33C93's connection; a version
-// 02 snapshot still loads, those left as the machine was built.
-const char MAGIC[8] = {'X', 'L', 'S', 'N', 'A', 'P', '0', '3'};
+// 02 snapshot still loads, those left as the machine was built.  Version 04
+// has the same fields: its stack cache lower bound and overflow limit moved
+// with the pushes, as the core's do, and an older one's are brought there
+// when it loads.
+const char MAGIC[8] = {'X', 'L', 'S', 'N', 'A', 'P', '0', '4'};
+const char MAGIC_03[8] = {'X', 'L', 'S', 'N', 'A', 'P', '0', '3'};
 const char MAGIC_02[8] = {'X', 'L', 'S', 'N', 'A', 'P', '0', '2'};
 
 struct Out {
   FILE* f;
-  int version = 3;
+  int version = 4;
   bool ok = true;
   void raw(const void* p, size_t n) { if (fwrite(p, 1, n, f) != n) ok = false; }
   template <class T> void pod(const T& v) { raw(&v, sizeof v); }
@@ -26,7 +30,7 @@ struct Out {
 };
 struct In {
   FILE* f;
-  int version = 3;
+  int version = 4;
   bool ok = true;
   void raw(void* p, size_t n) { if (fread(p, 1, n, f) != n) ok = false; }
   template <class T> void pod(T& v) { raw(&v, sizeof v); }
@@ -146,10 +150,12 @@ bool Snapshot::load(const std::string& path, Ivory& cpu, Machine& m) {
   char magic[8];
   i.raw(magic, 8);
   if (memcmp(magic, MAGIC_02, 8) == 0) i.version = 2;
+  else if (memcmp(magic, MAGIC_03, 8) == 0) i.version = 3;
   else if (memcmp(magic, MAGIC, 8) != 0) { fprintf(stderr, "%s: not a snapshot\n", path.c_str()); fclose(f); return false; }
   V::visit(i, cpu);
   V::visit(i, m);
   fclose(f);
   cpu.iv_phase = 0;   // error-log detail of the last instruction
+  if (i.version < 4) cpu.sc_normalize();
   return i.ok;
 }

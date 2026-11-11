@@ -219,6 +219,26 @@ def push_global_logic_variable(a):
     a.i('car', 'POP')                         # the cell, read: unbound
 
 
+@test([fix(11), fix(22), fix(33), fix(22), fix(33)])
+def stack_cache_move(a):
+    # The FEP's move to another stack (INVOKE-ON-FEP-STACK): FP, then SP,
+    # then the stack cache's lower bound, by a multiple of the cache's size,
+    # with the frame read at the new addresses in between and through
+    # memory after; then back the same way.  The frame is at F8001001.
+    a.const((LOC, 0xF8001001)); a.i('%write-internal-register', 5)   # the lower bound: this frame
+    a.i('push', '#', 11); a.i('push', '#', 22); a.i('push', '#', 33)  # FP|0, FP|1, FP|2
+    a.const((LOC, 0xF8001201)); a.i('%write-internal-register', 1)   # FP, 512 words up
+    a.i('no-op')
+    a.i('set-sp-to-address', 'FP', 2)
+    a.i('push', 'FP', 1)                                              # FP|3: 22, still the cache's
+    a.const((LOC, 0xF8001201)); a.i('%write-internal-register', 5)   # the lower bound follows
+    a.const((LOC, 0xF8001203)); a.i('%memory-read', 11 << 6)         # FP|4: 33, at its new address
+    a.const((LOC, 0xF8001001)); a.i('%write-internal-register', 1)   # and back
+    a.i('no-op')
+    a.i('set-sp-to-address', 'FP', 4)
+    a.const((LOC, 0xF8001001)); a.i('%write-internal-register', 5)
+
+
 def main():
     if not os.path.exists(XLEMU):
         print('build emu/xlemu first'); return 1

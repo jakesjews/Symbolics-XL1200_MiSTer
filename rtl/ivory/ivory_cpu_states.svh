@@ -41,22 +41,38 @@
   // never touch the cache.
   task automatic mem_rd_mem(input logic [31:0] a, input logic phys);
     m_addr <= a; m_we <= 1'b0; m_phys <= phys; m_bypass <= 1'b1; m_first <= 1'b1;
-    m_chk <= 1'b0; m_wchk <= 1'b0;
+    m_chk <= 1'b0; m_wchk <= 1'b0; m_stk <= 1'b0;
   endtask
   task automatic mem_wr_mem(input logic [31:0] a, input word_t w, input logic phys);
     m_addr <= a; m_we <= 1'b1; m_wd <= w; m_phys <= phys; m_bypass <= 1'b1; m_first <= 1'b1;
-    m_chk <= 1'b0; m_wchk <= 1'b0;
+    m_chk <= 1'b0; m_wchk <= 1'b0; m_stk <= 1'b0;
   endtask
   task automatic mem_rd(input logic [31:0] a, input logic phys);
     m_addr <= a; m_we <= 1'b0; m_phys <= phys; m_bypass <= 1'b0; m_first <= 1'b1;
-    m_chk <= 1'b0; m_wchk <= 1'b0;
+    m_chk <= 1'b0; m_wchk <= 1'b0; m_stk <= 1'b0;
   endtask
   task automatic mem_wr(input logic [31:0] a, input word_t w, input logic phys, input logic through);
     m_addr <= a; m_we <= 1'b1; m_wd <= w; m_phys <= phys; m_through <= through; m_bypass <= 1'b0;
     m_first <= 1'b1;
-    m_chk <= 1'b0; m_wchk <= 1'b0;
+    m_chk <= 1'b0; m_wchk <= 1'b0; m_stk <= 1'b0;
   endtask
-  // read_raw / write_raw: virtual address, page attributes checked outside the stack window
+  // a stack reference (FP, LP or SP relative): the cache's word at the
+  // address's low bits, or memory in the 128 words under the window
+  task automatic stk_rd(input logic [31:0] a);
+    mem_rd(a, 1'b0);
+    m_stk <= 1'b1;
+  endtask
+  task automatic fread(input logic [31:0] a, input state_t r);
+    stk_rd(a);
+    call(S_MEM_W, r);
+  endtask
+  task automatic fwrite(input logic [31:0] a, input word_t w, input state_t r);
+    mem_wr(a, w, 1'b0, 1'b0);
+    m_stk <= 1'b1;
+    call(S_MEM_W, r);
+  endtask
+  // read_raw / write_raw at an address from a register or a pointer (the
+  // binding stack, a catch block, stack-blt): the cache's inside the window
   task automatic sread(input logic [31:0] a, input state_t r);
     mem_rd(a, 1'b0);
     call(S_MEM_W, r);
@@ -180,14 +196,14 @@
     if (tos_ok) begin
       m_rd <= tos_q; m_trans <= 1'b0;
       st <= r;
-    end else sread(sp, r);
+    end else fread(sp, r);
   endtask
   task automatic write_tos(input word_t w, input state_t r);
     if (sp_in_window) begin
       sc_we <= 1'b1; sc_wa <= sp[6:0]; sc_wd <= w;
       tos <= w; tos_sp <= sp; tos_valid <= 1'b1; tos_reload <= 1'b0;
       st <= r;
-    end else swrite(sp, w, r);
+    end else fwrite(sp, w, r);
   endtask
   task automatic push(input word_t w, input state_t r);
     p_w <= setcdr(w, CDR_NEXT);
@@ -360,7 +376,7 @@
         oa = h[9:8] == 2'd0 ? fp + {24'd0, h[7:0]} :
              h[9:8] == 2'd1 ? lp + {24'd0, h[7:0]} :
              h[7:0] == 8'd0 ? sp : sp + {24'd0, h[7:0]} - 32'd255;
-        if (h[9:8] != 2'd3 && in_window(oa)) begin
+        if (h[9:8] != 2'd3 && stk_cached(oa)) begin
           sc_ra <= oa[6:0];
           opv_pre <= 1'b1;
         end
@@ -538,7 +554,12 @@
       // prefetcher as Genera itself sets it
       icache_control <= 32'd1;
       prefetcher_control <= 32'h0FD;
-      {stack_cache_lower_bound, stack_cache_overflow_limit, entry_max_args, pht_base, pht_mask} <= '0;
+      // an empty stack cache at the reset stack pointer, its overflow limit
+      // where Genera keeps it (a stack reference is the cache's from the
+      // first push, and a push at the limit dumps from the lower bound)
+      stack_cache_lower_bound <= 32'hF8008000;
+      stack_cache_overflow_limit <= 32'hF8008070;
+      {entry_max_args, pht_base, pht_mask} <= '0;
       ret_fill <= 1'b0;
       chip_revision <= 32'd4;
       icount <= '0;
@@ -612,7 +633,7 @@
 
         // ---------------------------------------------------------------- MEM
         S_MEM: begin
-          m_through <= 1'b1; m_bypass <= 1'b0; m_first <= 1'b1;
+          m_through <= 1'b1; m_bypass <= 1'b0; m_first <= 1'b1; m_stk <= 1'b0;
           st <= S_MEM_W;
         end
         // The memory-access stage: in its first cycle the request goes to the
@@ -717,7 +738,7 @@
             if (spm1_in_window) begin sc_ra <= sp[6:0] - 7'd1; tos_reload <= 1'b1; end
             ret();
           end else begin
-            mem_rd(sp, 1'b0);
+            stk_rd(sp);
             call(S_MEM_W, S_POP_DONE);
           end
         end
@@ -732,10 +753,10 @@
         S_OPV: begin
           opv_popped <= 1'b0;
           case (omode)
-            2'd0: begin mem_rd(fp + {24'd0, ooff}, 1'b0); st <= S_MEM_W; end
-            2'd1: begin mem_rd(lp + {24'd0, ooff}, 1'b0); st <= S_MEM_W; end
+            2'd0: begin stk_rd(fp + {24'd0, ooff}); st <= S_MEM_W; end
+            2'd1: begin stk_rd(lp + {24'd0, ooff}); st <= S_MEM_W; end
             2'd2: begin
-              mem_rd(ooff == 8'd0 ? sp : sp + {24'd0, ooff} - 32'd255, 1'b0);
+              stk_rd(ooff == 8'd0 ? sp : sp + {24'd0, ooff} - 32'd255);
               st <= S_MEM_W;
             end
             default: begin

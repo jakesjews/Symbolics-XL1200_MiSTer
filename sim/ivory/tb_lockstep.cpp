@@ -283,14 +283,19 @@ int main(int argc, char** argv) {
         snprintf(name, sizeof name, "irw[%o]", i);
         chk(name, *f, R(irw)[i]);
       }
-    std::set<uint32_t> addrs(rlog.begin(), rlog.end());
+    // A word the model wrote and the RTL didn't is a stack reference: the
+    // RTL keeps those in its stack cache, by address bits 6:0 (the same in
+    // the physical address), and the model in memory.
+    std::set<uint32_t> addrs(rlog.begin(), rlog.end()), rtl_wrote(dlog.begin(), dlog.end());
     addrs.insert(dlog.begin(), dlog.end());
-    for (uint32_t a : addrs)
-      if (rbus.ram[a] != dbus->ram[a]) {
+    for (uint32_t a : addrs) {
+      W rtl = rtl_wrote.count(a) ? dbus->ram[a] : (W)(R(sc_data)[a & 127] & 0xFFFFFFFFFFull);
+      if (rbus.ram[a] != rtl) {
         char name[32];
         snprintf(name, sizeof name, "mem %08x", a);
-        chk(name, rbus.ram[a], dbus->ram[a]);
+        chk(name, rbus.ram[a], rtl);
       }
+    }
     if (!bad.empty()) {
       printf("MISMATCH at step %llu (icount %llu), instruction at %08x.%d:\n%s",
              (unsigned long long)n, (unsigned long long)ref.icount, (uint32_t)(pc0 >> 1), (int)(pc0 & 1),

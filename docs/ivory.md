@@ -79,29 +79,74 @@ with the free-running RTL simulation for a quick FEP boot).
   never reads the limit or the quantum; it sets the limit to the lower bound
   + 112 at each of 67,000 stack-group switches; the FEP sets the lower bound
   1.8M instructions after reset, to its own frame, with the limit still 0.
+- The stack-group switch writes FP (the new stack's SP + 1) before the
+  lower bound, and pushes on the new stack in between; for that stretch it
+  picks an overflow limit "that will not cause an overflow with either the
+  old or the new stack pointer": the chip checks every push against the
+  limit, wherever the stack pointer is.
+
+### What the FEP expects (IFEP 333)
+
+The FEP kernel has no source on the CD; this is its code, disassembled
+(`tools/ivory.py`).  Three places write FP or the stack cache's registers:
+
+- `INVOKE-ON-FEP-STACK` (F8015419), which every entry from Lisp goes
+  through (`LISP-MODE-%HALT-TRAP-HANDLER` for `Halt Machine`): it saves the
+  registers, then moves to the FEP's stack without copying its frame.  With
+  the lower bound L and `*boot-stack-base*` B, the distance is D = (B with
+  L's low 8 bits) - L, a multiple of 256.  It writes FP + D to FP, a no-op,
+  `set-sp-to-address FP|4`, reads the lower bound (a push at the new SP),
+  takes D again from its local `FP|4` and writes L + D to the lower bound;
+  then the extra-stack limit.  So between the two writes a push, a pop and
+  an FP-relative operand at the new addresses have to be the cache's words
+  at the same low address bits: the frame never left the cache.  Then three
+  loops over the words from the lower bound to its frame: block-read and
+  block-write at the same new address (the cache's words into the FEP
+  stack's memory, by write-through), block-read at the old addresses into
+  an array (the Lisp stack's memory as it was), block-read at the new and
+  block-write at the old (the cache into the Lisp stack's memory).  On the
+  way back it subtracts D from FP and from the lower bound the same way
+  and restores the registers.
+- `%HALT` (F80155CC), the way back into the boot PROM: the lower bound and
+  FP to F8000000, SP to FP + 1, then a jump to FFFE0040.
 
 ### Rules (ours where the sources stop)
 
 - 128 words, direct-mapped by address bits 6:0, in block RAM. The window is
   [lower bound, lower bound + 127]: an address is shadowed when
   `(address - lower bound) < 128` unsigned.
-- Accesses to shadowed virtual addresses go to the cache: no translation,
-  no page fault, no transport trap, no modified or ephemeral bits. Pushes and
-  operand references (FP, LP and SP relative) write the cache only. Memory
-  cycles (`%memory-write`, block writes, rplaca and the rest: everything
-  that takes an address from a pointer) write the cache and memory. Accesses
-  outside the window go to memory as before, pushes included (so a stack
-  that software hasn't mapped into the cache still works).
-- Overflow: after a push, when SP bits 6:2 equal the overflow limit's, the
-  cache is dumped: the `quantum` lowest words, from the lower bound up, are
-  written to memory (raw writes through the MMU), and the lower bound and
-  the overflow limit both rise by the quantum. The quantum is the low bits
-  of the dump-quantum register (01031, in the microcode's scratchpad range),
-  which resets to 32 and is 32 if software writes 0 or more than 128 there
-  (the chip's value isn't documented; Genera's invariant `limit = lower
-  bound + 112` holds for any). A push outside the window never dumps. A
-  fault during the dump halts the processor: the spec says it cannot
-  happen, because stacks are wired.
+- A memory cycle (`%memory-read`, `%memory-write`, block reads and writes,
+  car, rplaca and the rest: everything that takes an address from a
+  pointer; also the binding stack, catch blocks and `stack-blt`, whose
+  addresses come from registers and locatives) is the cache's inside the
+  window: no translation, no page fault, no transport trap, no modified or
+  ephemeral bits; a write goes to the cache and to memory. Outside the
+  window it is memory's.
+- A stack reference (an FP, LP or SP relative operand, a push, a pop, the
+  frame header a return reads) is the cache's word at address bits 6:0,
+  wherever it points, and writes the cache only: the chip has no other
+  place for one, and the FEP's move to its own stack depends on it (above).
+  One exception, ours: in the 128 words under the window, [lower bound -
+  128, lower bound), it goes to memory. Those are words a dump has taken
+  from the frame that is running (the chip's dumps are not known to do
+  that; ours can, below) and the values a return leaves under a raised
+  bound before its refill. (Until Nov 10 2026 every stack reference
+  outside the window went to memory, so the FEP read its locals from the
+  boot stack's memory and `Halt Machine` ended in a processor fault.)
+- Overflow: after a push to the cache, when SP bits 6:2 equal the overflow
+  limit's, the cache is dumped: the `quantum` lowest words, from the lower
+  bound up, are written to memory (raw writes through the MMU), and the
+  lower bound and the overflow limit both rise by the quantum. The quantum
+  is the low bits of the dump-quantum register (01031, in the microcode's
+  scratchpad range), which resets to 32 and is 32 if software writes 0 or
+  more than 128 there (the chip's value isn't documented; Genera's
+  invariant `limit = lower bound + 112` holds for any). A push under the
+  window, which is memory's, never dumps. A fault during the dump halts the
+  processor: the spec says it cannot happen, because stacks are wired.
+- Reset: the lower bound is the reset stack pointer (F8008000) and the
+  limit 112 above it, an empty cache where the first push goes (the chip's
+  reset values aren't documented; the boot PROM stand-in runs on that
+  stack until it sets the bound to the FEP's frame).
 - Refill: when a return leaves FP below the lower bound, the words from the
   old lower bound - 1 down to FP are read from memory into the cache, the
   overflow limit falls by the same count, and the lower bound becomes FP.
@@ -117,9 +162,18 @@ with the free-running RTL simulation for a quick FEP boot).
   nothing else (as Genera does: it sets the bound and the limit in an order
   that keeps the cache consistent).
 - RTL: `sc_data` (one M10K, read combinationally from a registered address),
-  `in_window`, the `mem_rd`/`mem_wr` tasks (a `through` flag on writes),
-  `S_PUSH` (one cycle in the window), `S_SC_DUMP*` and `S_SC_FILL*`; a
-  fault during a dump or refill is halt code 11 on the debug line.
+  `stk_cached` and `m_cached`, the `mem_rd`/`mem_wr` tasks (a `through`
+  flag on writes; `fread`/`fwrite` for a stack reference, `sread`/`swrite`
+  for an address from a register), `S_PUSH` (one cycle in the cache),
+  `S_SC_DUMP*` and `S_SC_FILL*`; a fault during a dump or refill is halt
+  code 11 on the debug line.
+- The model (`emu/`) keeps the stack in memory and has no cache. It moves
+  the lower bound and the limit as the RTL does (a push at the limit, a
+  return under the bound), and for the stretch between a write of FP away
+  from the window and the next write of the lower bound it answers stack
+  references there by slot (`sread`/`swrite` in `emu/cpu.h`): the word
+  written since, else the old window's word in memory; the lower bound's
+  write then copies the slots to memory under the new window.
 
 ### Measured
 

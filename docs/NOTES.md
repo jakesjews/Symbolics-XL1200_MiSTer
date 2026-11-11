@@ -55,7 +55,8 @@ the FEP disk as on a real machine.
 - Stack: modelled as write-through memory (no separate 128-word stack cache).
   The architecture requires stack-cache writes to write through, and Genera's
   stack-group switch dumps the cache with raw block reads, which is a no-op in
-  this model.
+  this model.  The one place the cache shows, the FEP's move to its own
+  stack, is modelled by itself ([Halt Machine](#halt-machine-nov-10-2026)).
 - Address translation: map cache backed by the PHT (spec 2.3); the PHT hash
   box is implemented from the spec. VMA=PMA zone: VMA 0xF8000000+x → PA x.
 - Traps: pre/post traps per spec 5.1; frame layout and control-register masks
@@ -618,6 +619,77 @@ CD-ROM serves a running Genera.
   copes with long arrays). VLM does the same.
 - Error traps pass a microstate number; the FEP only prints it ("Error trap
   #o~O"), Genera decodes it with a per-chip-revision table (not yet modelled).
+
+### Halt Machine (Nov 10 2026)
+
+On build 48 `Halt Machine` left Genera's picture with "Machine Halt" in the
+status line and the FEP never answered.  The model did the same in two
+minutes (`Hello`, `Boot`, a snapshot at the Listener, `Halt Machine`, `Yes`):
+"stack overflow in extra-stack mode" at FEP-MODE-TRAP-HANDLER, 1.7 million
+instructions after the `Yes`, and the RTL from that snapshot (`FREE=1`)
+halted at the same PC with code 6, the same fault.  The processor had
+stopped: the OSD's "Processor halted" notice would have been up.
+
+What led there, from a trace of the model's last instructions and the
+kernel's code (`tools/ivory.py` on `I333-kernel.fep`; the names are in
+`tools/data/i333-functions.txt`):
+
+- Genera's `%halt` is an instruction exception whose handler the FEP
+  supplies, `LISP-MODE-%HALT-TRAP-HANDLER`.  It calls `INVOKE-ON-FEP-STACK`
+  with a closure that exposes the FEP's window, prints "Lisp stopped
+  itself" and runs the command loop.
+- `INVOKE-ON-FEP-STACK` saves the registers and moves to the FEP's stack
+  by adding a multiple of 256 words to FP, SP and the stack cache's lower
+  bound, in that order, and reads its own locals at the new addresses in
+  between ([ivory.md](ivory.md#what-the-fep-expects-ifep-333) has the
+  sequence).  The frame stays in the stack cache: on the chip an
+  FP-relative operand is the cache's word at the address's low bits,
+  whatever the lower bound says.
+- Both implementations took a stack reference outside the cache's window
+  from memory (the RTL by a rule of ours, the model because it has no
+  cache), so the FEP read whatever the boot stack's memory held at the new
+  FP + 4 where it had left the distance: not a fixnum, an error trap in
+  FEP mode, and the trap frame's push found SP past the extra-stack limit,
+  which was still Genera's.
+
+The fix is the chip's behaviour: a stack reference is the cache's word at
+address bits 6:0 wherever it points (`ivory_cpu.sv`, `stk_cached`), and
+memory only in the 128 words under the window, where our dumps can put a
+running frame's words.  Pushes there dump at the overflow limit like any
+other, so the processor resets with an empty cache at its reset stack
+pointer.  The model gets the same for the stretch between a write of FP
+and the next write of the lower bound, and keeps the two registers as the
+RTL does ([ivory.md](ivory.md#rules-ours-where-the-sources-stop)).  Only
+three pieces of software write FP or the lower bound: Genera's stack-group
+switch, `INVOKE-ON-FEP-STACK` and the FEP's `%HALT` (its way back into the
+boot PROM).
+
+Checked:
+
+- The model from reset (`xlemu`): `Hello`, `Boot`, `Halt Machine`, `Yes`
+  shows "Lisp stopped itself" and `FEP Command:` over Genera's screen;
+  `Continue` gives Genera back (the clock runs, commands work); a second
+  halt, then `Hello` and `Boot`, cold boots it and `Show Herald` answers.
+- The RTL from the model's snapshot at the question (`sim/system`,
+  `LOCKSTEP_SNAPSHOT`, `FREE=1`, typing `Yes|Continue|`): the same two
+  screens.
+- `tools/cputest.py`, `stack_cache_move`: the same move and back in a
+  dozen instructions, on the model (it fails on the model as it was).
+- Both lockstep benches from reset through the FEP boot and `Hello`, 40
+  million steps each with no difference (`sim/ivory`; `sim/system`, video
+  memory identical).
+
+The lockstep benches compared a word the model wrote with the RTL's
+memory, or with its cache for an address in the window.  A stack reference
+is now the cache's wherever it is, so both take the RTL's word from memory
+when the RTL wrote memory in that step and from the cache slot otherwise.
+That also ends the stop at step 1,822,307, the FEP kernel's first function
+entry: the difference was the bench's (the model had pushed a word to
+memory at 0x103, the RTL to its cache, and `sim/ivory` read the RTL's
+memory, which still held the PC the boot PROM wrote there), not an entry
+instruction's.  A snapshot is version 04: the model now moves the stack
+cache's lower bound and overflow limit as the RTL does, and an older
+snapshot's are brought up to the top of its stack when it loads.
 
 ## Genera 8.5 (OpenGenera world)
 
@@ -1975,10 +2047,11 @@ copy of the prebuilt disk, tap0 over WiFi, the Mac as the other machine):
   in "Automatic Login" behind it, and so did Zmacs' save of the Hello.boot.
   Function 0 S (its background stream) and a key let it finish; the
   console is then logged out.
-- After `Halt Machine` and Yes the picture stays Genera's, with "Machine
+- After `Halt Machine` and Yes the picture stayed Genera's, with "Machine
   Halt" in the status line (screenshots after three of the four halts),
   and after the first, `Hello` typed then changed nothing on the screen in
-  forty seconds; the core was started again each time.  To do.
+  forty seconds; the core was started again each time.  The FEP wasn't
+  running: [Halt Machine](#halt-machine-nov-10-2026).
 - At the FEP, `Boot` after `Show File FEP7:>Hello.boot` takes that file as
   its default and runs the Hello.boot again; `Boot FEP7:>Boot.boot` then.
 
@@ -2106,10 +2179,10 @@ the disk argument a copy of `FILE.disk`; steps and typing counted from it),
 and `FREE=1` then runs the RTL alone, for what it does with the state on its
 own screen. Starting inside Genera found the bench behind the speed work:
 the transfer now fills the RTL's stack cache (128 words by address bits 6:0)
-from the model's memory, the comparison takes a word in the stack cache
-window from the cache (the RTL writes the window back only when it moves;
-the lower bound is 0 until Genera sets it, so runs from reset never saw
-this), and the lockstep instruction count is 34 bits (the microsecond clock
+from the model's memory, the comparison takes a word the RTL didn't write
+to memory in that step from its stack cache (the RTL writes the cache back
+only when it dumps; [Halt Machine](#halt-machine-nov-10-2026)), and the
+lockstep instruction count is 34 bits (the microsecond clock
 is a quarter of it, and a snapshot is past 2^32). It still stops at the
 first low-priority sequence break, which the model takes an instruction
 before the RTL (docs/TODO.md).

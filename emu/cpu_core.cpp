@@ -27,6 +27,10 @@ void Ivory::init() {
   cr = (uint32_t)TM_FEP << CR_TRAP_MODE_SHIFT;
   sp = 0xF8000000u + 0100000;   // %INIT-SP (VMA=PMA 10000 octal); the boot code sets its own
   fp = lp = sp;
+  // an empty stack cache there, as the core resets it
+  stack_cache_lower_bound = sp;
+  stack_cache_overflow_limit = sp + 112;
+  sc_detached = false;
   cont = 0;
   preempt_register = 0;
   ib_valid = false;
@@ -219,6 +223,62 @@ bool Ivory::page_transport_enabled(uint32_t vma) {
   MapEntry* e = map_lookup(vma >> 8);
   if (!e) e = map_fill(vma);
   return (e->access & 0x10) != 0;
+}
+
+// A snapshot written before the model moved the stack cache's registers
+// with the pushes (sc_pushed) has the lower bound wherever the last
+// stack-group switch or return left it: bring the window up to the top of
+// the stack, in dump quanta and not past the frame, as the dumps would have.
+void Ivory::sc_normalize() {
+  uint32_t q = wdata(stack_cache_dump_quantum);
+  if (q == 0 || q > 128) q = 32;
+  while (sp - stack_cache_lower_bound >= 112 && sp - stack_cache_lower_bound < 0x10000000u &&
+         stack_cache_lower_bound + q <= fp) {
+    stack_cache_lower_bound += q;
+    stack_cache_overflow_limit += q;
+  }
+}
+
+// %write-internal-register FP: away from the window (and the 128 words
+// under it, where a return's frame is), the cache's words stay where they
+// are and stack references find them by their low address bits.
+void Ivory::sc_write_fp(uint32_t nfp) {
+  if (!sc_detached) {
+    uint32_t d = nfp - stack_cache_lower_bound;
+    if (d >= 128 && d < 0xFFFFFF80u) {
+      sc_detached = true;
+      sc_base = stack_cache_lower_bound;
+      sc_top = sp;
+      memset(sc_over_valid, 0, sizeof sc_over_valid);
+    }
+  }
+  fp = nfp;
+}
+
+// %write-internal-register of the lower bound: the window is now there, and
+// the cache's words are what it shows.  After a move of FP they go to memory
+// under the new window, up to the stack pointer: the words written since
+// the move and the old window's up to its top (above that the cache holds
+// what nobody reads), where the page is at hand (a stack's pages near its
+// frame are; a word that can't be written stays as it was).
+void Ivory::sc_write_lower_bound(uint32_t nlb) {
+  if (sc_detached) {
+    sc_detached = false;
+    uint32_t live = sc_top - sc_base < 128 ? sc_top - sc_base : 127;
+    for (uint32_t a = nlb; a - nlb < 128 && a - nlb <= sp - nlb; a++) {
+      uint32_t o = (a - sc_base) & 127, pa;
+      W w;
+      if (sc_over_valid[a & 127]) w = sc_over[a & 127];
+      else if (o <= live && debug_translate(sc_base + o, pa)) w = bus->phys_read(pa);
+      else continue;
+      if (a < VMA_PMA_BASE) {
+        MapEntry* e = map_lookup(a >> 8);
+        if (!e || (e->access & 0x40)) continue;
+      }
+      write_raw(a, w);
+    }
+  }
+  stack_cache_lower_bound = nlb;
 }
 
 W Ivory::read_raw(uint32_t vma) {
@@ -872,7 +932,10 @@ void Ivory::do_return(int kind, int arg, bool sp_pop) {
   // The caller's frame is reloaded into the stack cache (spec: the return
   // instruction makes sure the frame returned to is in the cache), so the
   // cache now starts no higher than its FP.
-  if (fp < stack_cache_lower_bound) stack_cache_lower_bound = fp;
+  if (fp < stack_cache_lower_bound && !sc_detached) {
+    stack_cache_overflow_limit -= stack_cache_lower_bound - fp;
+    stack_cache_lower_bound = fp;
+  }
   if (kind == 2) {
     // return-kludge: copy values to the top of the caller's stack
     for (uint32_t i = 0; i < nvals; i++) swrite(sp + 1 + i, sread(vbase + i));

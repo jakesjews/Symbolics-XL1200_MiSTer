@@ -8,7 +8,7 @@
               if (omode == 2'd3) err(E_I_STAGE, inst_pc[32:1]);
               else begin
                 addr <= oaddr;
-                sread(oaddr, op == 8'o142 ? S_STCPC_1 : S_STC_1);
+                fread(oaddr, op == 8'o142 ? S_STCPC_1 : S_STC_1);
               end
             end
             8'o200, 8'o201: opval(1'b1, S_RPL_1);                     // rplaca, rplacd
@@ -41,7 +41,7 @@
             8'o114: opval(1'b0, S_UMINUS_1);
             8'o143, 8'o144: begin                                     // increment, decrement
               if (omode == 2'd3) err(E_I_STAGE, inst_pc[32:1]);
-              else begin addr <= oaddr; sread(oaddr, S_INC_1); end
+              else begin addr <= oaddr; fread(oaddr, S_INC_1); end
             end
             8'o220, 8'o221: opval(1'b1, S_SHIFT_1);                   // rot, lsh
             8'o302, 8'o303: opval(1'b0, S_32BIT_1);                   // %32-bit-plus/difference
@@ -125,7 +125,7 @@
             end
             8'o160, 8'o161, 8'o162, 8'o163: begin                     // %block-n-read-alu
               if (omode == 2'd3) err(E_I_STAGE, inst_pc[32:1]);
-              else begin addr <= oaddr; sread(oaddr, S_BLKALU_1); end
+              else begin addr <= oaddr; fread(oaddr, S_BLKALU_1); end
             end
             8'o030, 8'o031, 8'o032, 8'o033: opval(1'b1, S_BLKW_1);    // %block-n-write
 
@@ -180,8 +180,8 @@
             // format takes the "truncated 8 bit" operand, one entry for all
             // modes); CLOS puts other values in the mode bits, which decoded
             // as an FP-relative operand sent self's address as the index
-            8'o110, 8'o320, 8'o321, 8'o111: begin x0 <= {24'd0, operand[7:0]}; sread(fp + 32'd2, S_IVM_2); end   // mapped
-            8'o112, 8'o322, 8'o323, 8'o113: begin x0 <= {24'd0, operand[7:0]}; sread(fp + 32'd3, S_IVU_2); end   // unmapped
+            8'o110, 8'o320, 8'o321, 8'o111: begin x0 <= {24'd0, operand[7:0]}; fread(fp + 32'd2, S_IVM_2); end   // mapped
+            8'o112, 8'o322, 8'o323, 8'o113: begin x0 <= {24'd0, operand[7:0]}; fread(fp + 32'd3, S_IVU_2); end   // unmapped
             8'o324, 8'o325, 8'o326: opval(1'b0, S_IREF_1);            // %instance-ref/set/loc
 
             // subprimitives
@@ -192,7 +192,7 @@
             8'o230, 8'o231: opval(1'b1, S_PPLUS_1);                   // %pointer-plus/difference
             8'o145: begin                                             // %pointer-increment
               if (omode == 2'd3) err(E_I_STAGE, inst_pc[32:1]);
-              else begin addr <= oaddr; sread(oaddr, S_PINC_1); end
+              else begin addr <= oaddr; fread(oaddr, S_PINC_1); end
             end
             8'o154: st <= S_RIR_1;                                    // %read-internal-register
             8'o155: pop(S_WIR_1);                                     // %write-internal-register
@@ -209,7 +209,7 @@
             8'o235: opval(1'b1, S_PSTORE_1);                          // %p-store-contents
             8'o146, 8'o147: begin                                     // %set-cdr-code-1/2
               if (omode == 2'd3) err(E_I_STAGE, inst_pc[32:1]);
-              else begin addr <= oaddr; sread(oaddr, S_SETCDR_1); end
+              else begin addr <= oaddr; fread(oaddr, S_SETCDR_1); end
             end
             8'o342: begin                                             // %merge-cdr-no-pop
               if (omode == 2'd3) err(E_I_STAGE, inst_pc[32:1]);
@@ -222,7 +222,7 @@
                   pull_n <= 32'd4 - {24'd0, cr[7:0]};
                   call(S_PULL, S_DISP_RETRY);
                 end else err(E_TOO_FEW_ARGUMENTS, 32'd0);
-              end else sread(fp + (op == 8'o052 ? 32'd2 : 32'd3), S_DISP_1);
+              end else fread(fp + (op == 8'o052 ? 32'd2 : 32'd3), S_DISP_1);
             end
             8'o011: opval(1'b1, S_JUMP_1);                            // %jump
             8'o054: begin                                             // %check-preempt-request

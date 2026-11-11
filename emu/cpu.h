@@ -128,6 +128,9 @@ public:
   W debug_read(uint32_t vma);
   bool debug_translate(uint32_t vma, uint32_t& pa);
   bool pht_walk(uint32_t vma, uint32_t& pa);   // the PHT alone, no map cache (error log)
+  // A snapshot from before the model kept the stack cache's two registers
+  // as the core does: the window brought up to the top of the stack.
+  void sc_normalize();
 
   static const int MAP_SIZE = 4096;
   MapEntry map[MAP_SIZE];
@@ -160,12 +163,56 @@ private:
   void mem_write(W addr, int cycle, W value, bool preserve_cdr = true);
   W fetch_word(uint32_t vma);  // instruction fetch
 
-  // stack (write-through, held in memory)
-  W sread(uint32_t a) { return read_raw(a); }
-  void swrite(uint32_t a, W w) { write_raw(a, w); }
+  // stack (write-through, held in memory).  The chip answers a stack
+  // reference (FP, LP or SP relative, a push, a pop) from the stack cache's
+  // word at address bits 6:0, wherever it points (docs/ivory.md).  That
+  // shows when FP moves away from the cache's window before the lower bound
+  // does: the FEP's INVOKE-ON-FEP-STACK moves both by a multiple of 256
+  // words and reads its locals at the new addresses in between; Genera's
+  // stack-group switch pushes there.  From such a write of FP until the
+  // lower bound's, a stack reference away from the window is the cache's
+  // slot (sc_over when written since, else the window's word in memory),
+  // and the lower bound's write leaves the slots in memory under the new
+  // window.  Not in a snapshot: it lasts a few instructions.
+  bool sc_detached = false;
+  uint32_t sc_base = 0, sc_top = 0;   // the window the cache's words came from, and its top word (SP then)
+  W sc_over[128] = {};
+  bool sc_over_valid[128] = {};
+  void sc_write_fp(uint32_t nfp);
+  void sc_write_lower_bound(uint32_t nlb);
+  W sread(uint32_t a) {
+    if (sc_detached) {
+      uint32_t d = a - sc_base;
+      if (d >= 128 && d < 0xFFFFFF80u)
+        return sc_over_valid[a & 127] ? sc_over[a & 127] : read_raw(sc_base + (d & 127));
+    }
+    return read_raw(a);
+  }
+  void swrite(uint32_t a, W w) {
+    if (sc_detached) {
+      uint32_t d = a - sc_base;
+      if (d >= 128 && d < 0xFFFFFF80u) { sc_over[a & 127] = w; sc_over_valid[a & 127] = true; return; }
+      if (d < 128) sc_over_valid[a & 127] = false;
+    }
+    write_raw(a, w);
+  }
+  // After a push: one that lands on the overflow limit (SP<6:2> the
+  // limit's) makes the chip dump the cache's lowest words to memory and
+  // raise the lower bound and the limit by what it dumped: the dump
+  // quantum in the core, register 01031, 32 words unless software says
+  // otherwise.  The model has nothing to dump and moves the registers.  A
+  // push in the 128 words under the window is memory's and dumps nothing.
+  void sc_pushed() {
+    if ((sp & 0x7C) != (stack_cache_overflow_limit & 0x7C)) return;
+    if (sp - stack_cache_lower_bound >= 0xFFFFFF80u) return;
+    uint32_t q = wdata(stack_cache_dump_quantum);
+    if (q == 0 || q > 128) q = 32;
+    stack_cache_lower_bound += q;
+    stack_cache_overflow_limit += q;
+  }
   W tos() { return sread(sp); }
-  void push(W w) { swrite(sp + 1, setcdr(w, CDR_NEXT)); sp++; }
-  void push_raw(W w) { swrite(sp + 1, w); sp++; }
+  void push(W w) { swrite(sp + 1, setcdr(w, CDR_NEXT)); sp++; sc_pushed(); }
+  void push_raw(W w) { swrite(sp + 1, w); sp++; sc_pushed(); }
   W pop() { W w = sread(sp); sp--; return w; }
   void set_tos(W w) { swrite(sp, setcdr(w, CDR_NEXT)); }
 

@@ -16,7 +16,7 @@
           if (cc_bad) begin
             if (wtype(a1) == DTP_LIST_INSTANCE) exc(3'd1, mkw(DTP_LOCATIVE, addr), '0, '0);
             else err(E_SET_TO_CAR_CDR_LIST_TYPE, 32'd0);
-          end else swrite(addr, {a1[39:38], cc_r[37:0]}, S_RETIRE);
+          end else fwrite(addr, {a1[39:38], cc_r[37:0]}, S_RETIRE);
         end
 
         // set-to-cdr-push-car
@@ -30,7 +30,7 @@
             carcdr(a1, 1'b0, S_STCPC_3);
           end
         end
-        S_STCPC_3: swrite(addr, {a1[39:38], cc_r[37:0]}, S_STCPC_4);
+        S_STCPC_3: fwrite(addr, {a1[39:38], cc_r[37:0]}, S_STCPC_4);
         S_STCPC_4: push(t0, S_RETIRE);
 
         // rplaca, rplacd
@@ -308,7 +308,7 @@
           if (!is_numeric_type(wtype(m_rd))) err(E_UNARY_ARITH_TYPE, 32'd0);
           else if (is_fixnum(m_rd) && !(op == 8'o143 ? m_rd[31:0] == 32'h7FFFFFFF
                                                      : m_rd[31:0] == 32'h80000000))
-            swrite(addr, {m_rd[39:38], DTP_FIXNUM, v}, S_RETIRE);
+            fwrite(addr, {m_rd[39:38], DTP_FIXNUM, v}, S_RETIRE);
           else exc(3'd1, mkw(DTP_LOCATIVE, addr), '0, '0);
         end
 
@@ -415,8 +415,8 @@
 
         // ---------------------------------------------------------------- data movement
         S_PUSHI_1: push(opv, S_RETIRE);
-        S_POPI_1: swrite(addr, pop_w, S_RETIRE);
-        S_MOVEM_1: swrite(addr, m_rd, S_RETIRE);
+        S_POPI_1: fwrite(addr, pop_w, S_RETIRE);
+        S_MOVEM_1: fwrite(addr, m_rd, S_RETIRE);
         S_PUSHNIL_1: begin
           if (!is_fixnum(opv)) err(E_ONE_OPERAND_FIXNUM_TYPE, 32'd0);
           else begin cnt <= opv[31:0]; st <= S_PUSHNIL_2; end
@@ -430,7 +430,7 @@
         end
         S_SSTS_1: begin
           sp <= addr;
-          swrite(addr, m_rd, S_RETIRE);
+          fwrite(addr, m_rd, S_RETIRE);
         end
         S_PASR_1: begin
           if (!is_fixnum(opv)) err(E_ONE_OPERAND_FIXNUM_TYPE, 32'd0);
@@ -610,16 +610,16 @@
         S_FAST_1: begin
           a2 <= pop_w;
           if (op == 8'o351) pop(S_FAST_2);
-          else sread(addr, S_FAST_4);
+          else fread(addr, S_FAST_4);
         end
-        S_FAST_2: begin val <= pop_w; sread(addr, S_FAST_4); end
-        S_FAST_4: begin t0 <= m_rd; sread(addr + 32'd1, S_FAST_5); end
-        S_FAST_5: begin t1 <= m_rd; sread(addr + 32'd2, S_FAST_6); end
+        S_FAST_2: begin val <= pop_w; fread(addr, S_FAST_4); end
+        S_FAST_4: begin t0 <= m_rd; fread(addr + 32'd1, S_FAST_5); end
+        S_FAST_5: begin t1 <= m_rd; fread(addr + 32'd2, S_FAST_6); end
         S_FAST_6: begin
           t2 <= m_rd;
           if (!is_fixnum(a2)) err(E_FAST_ARRAY_ACCESS_TYPE, 32'd0);
           else if (a2[31:0] >= m_rd[31:0]) err(E_ARRAY_REGISTER_FORMAT_OR_BOUNDS, 32'd0);
-          else if (t0[21:0] != irw[IRW_EVENT_COUNT][21:0]) sread(addr - 32'd1, S_FAST_7);   // stale
+          else if (t0[21:0] != irw[IRW_EVENT_COUNT][21:0]) fread(addr - 32'd1, S_FAST_7);   // stale
           else st <= S_FAST_ACCESS;
         end
         S_FAST_7: begin
@@ -642,11 +642,11 @@
             t0 <= nctl;
             t1 <= setdata(t1, mr_final + 32'd1);
             t2 <= setdata(t2, {17'd0, mr_d[14:0]});
-            swrite(addr, nctl, S_FAST_9);
+            fwrite(addr, nctl, S_FAST_9);
           end
         end
-        S_FAST_9: swrite(addr + 32'd1, t1, S_FAST_10);
-        S_FAST_10: swrite(addr + 32'd2, t2, S_FAST_11);
+        S_FAST_9: fwrite(addr + 32'd1, t1, S_FAST_10);
+        S_FAST_10: fwrite(addr + 32'd2, t2, S_FAST_11);
         S_FAST_11: begin
           if (a2[31:0] >= t2[31:0]) err(E_ARRAY_REGISTER_FORMAT_OR_BOUNDS, 32'd0);
           else st <= S_FAST_ACCESS;
@@ -721,7 +721,7 @@
         S_LOOPINC_1: begin
           t0 <= m_rd;
           t0_max <= m_rd[31:0] == 32'h7FFFFFFF;   // compared here, not on the next cycle's SP paths
-          sread(sp - 32'd1, S_LOOPINC_2);
+          fread(sp - 32'd1, S_LOOPINC_2);
         end
         S_LOOPINC_2: begin
           if (fix2(t0, m_rd) && !t0_max) begin
@@ -772,7 +772,7 @@
           else begin
             if (r.rl_we) rotate_latch <= r.rl;
             alu_control <= r.ac;
-            if (r.cond) sread(sp - 32'd1, S_BLKTEST_2);
+            if (r.cond) fread(sp - 32'd1, S_BLKTEST_2);
             else begin
               if (!operand[2]) bar[op[1:0]] <= setdata(bar[op[1:0]], x0 + 32'd1);
               st <= S_RETIRE;
@@ -797,7 +797,7 @@
             bar[op[1:0]] <= setdata(bar[op[1:0]], mr_final + 32'd1);
             if (r.rl_we) rotate_latch <= r.rl;
             alu_control <= r.ac;
-            swrite(addr, setdata(t0, r.result), S_RETIRE);
+            fwrite(addr, setdata(t0, r.result), S_RETIRE);
           end
         end
 
@@ -1014,13 +1014,13 @@
           if (cr[CR_APPLY] && wtype(t0) == DTP_NIL) begin
             sp <= sp - 32'd1;
             cr[CR_APPLY] <= 1'b0;
-            sread(sp - 32'd1, S_PAA_3);
+            fread(sp - 32'd1, S_PAA_3);
           end else if (!cr[CR_APPLY]) push(mkw(DTP_LIST, fp + {24'd0, e_max}), S_RETURN);
-          else sread(sp - 32'd1, S_PAA_4);
+          else fread(sp - 32'd1, S_PAA_4);
         end
         S_PAA_3: write_tos(setcdr(m_rd, CDR_NIL), S_PAA_5);
         S_PAA_5: push(mkw(DTP_LIST, fp + {24'd0, e_max}), S_RETURN);
-        S_PAA_4: swrite(sp - 32'd1, setcdr(m_rd, CDR_NORMAL), S_PAA_6);
+        S_PAA_4: fwrite(sp - 32'd1, setcdr(m_rd, CDR_NORMAL), S_PAA_6);
         S_PAA_6: push(mkw(DTP_LIST, fp + {24'd0, e_max}), S_PAA_7);
         S_PAA_7: begin
           lp <= lp + 32'd1;
@@ -1059,8 +1059,8 @@
           end
         end
         S_RET_SINGLE: begin ret_single <= stripcdr(m_rd); st <= S_RET_FRAME1; end
-        S_RET_FRAME1: sread(fp, S_RET_FRAME2);
-        S_RET_FRAME2: begin t0 <= m_rd; sread(fp + 32'd1, S_RET_FRAME3); end
+        S_RET_FRAME1: fread(fp, S_RET_FRAME2);
+        S_RET_FRAME2: begin t0 <= m_rd; fread(fp + 32'd1, S_RET_FRAME3); end
         S_RET_FRAME3: begin
           logic [31:0] nfp, ncr;
           if (ret_kind == 2'd2 || ret_disp != VD_RETURN) set_pc(cont_to_pc(cont));
@@ -1096,7 +1096,7 @@
             case (ret_disp)
               VD_EFFECT: st <= ret_end;
               VD_VALUE: begin
-                if (ret_nvals != 32'd0) sread(ret_vbase, S_RET_V1);
+                if (ret_nvals != 32'd0) fread(ret_vbase, S_RET_V1);
                 else push(NIL_W, ret_end);
               end
               default: st <= S_RET_COPY;
@@ -1115,7 +1115,7 @@
         S_RET_PUSH1: push(fixnum(32'd1), ret_end);
         S_RET_V1: push(stripcdr(m_rd), ret_end);
         S_RET_COPY: begin
-          if (cnt < ret_nvals) sread(ret_vbase + cnt, S_RET_COPY1);
+          if (cnt < ret_nvals) fread(ret_vbase + cnt, S_RET_COPY1);
           else begin
             sp <= sp + ret_nvals;
             st <= S_RET_AFTERCOPY;
@@ -1123,7 +1123,7 @@
         end
         S_RET_COPY1: begin
           cnt <= cnt + 32'd1;
-          swrite(sp + 32'd1 + cnt, ret_kind == 2'd2 ? m_rd : setcdr(m_rd, CDR_NEXT), S_RET_COPY);
+          fwrite(sp + 32'd1 + cnt, ret_kind == 2'd2 ? m_rd : setcdr(m_rd, CDR_NEXT), S_RET_COPY);
         end
         S_RET_AFTERCOPY: begin
           if (ret_kind == 2'd2) st <= ret_end;
@@ -1326,7 +1326,7 @@
             else exc(3'd1, fixnum(x0), '0, '0);
           end else begin
             t0 <= mr_d;
-            sread(fp + 32'd3, S_IVM_5);
+            fread(fp + 32'd3, S_IVM_5);
           end
         end
         S_IVM_5: begin
@@ -1340,7 +1340,7 @@
         end
         S_IVM_6: begin
           x1 <= mr_final;
-          if (mr_final == x1) swrite(fp + 32'd3, setcdr(t1, 2'd1), S_IVM_ACCESS);
+          if (mr_final == x1) fwrite(fp + 32'd3, setcdr(t1, 2'd1), S_IVM_ACCESS);
           else st <= S_IVM_ACCESS;
         end
         S_IVM_ACCESS: begin
@@ -1437,7 +1437,7 @@
           if (op == 8'o230) push(setdata(pop_w, pop_w[31:0] + a2[31:0]), S_RETIRE);
           else push(fixnum(pop_w[31:0] - a2[31:0]), S_RETIRE);
         end
-        S_PINC_1: swrite(addr, setdata(m_rd, m_rd[31:0] + 32'd1), S_RETIRE);
+        S_PINC_1: fwrite(addr, setdata(m_rd, m_rd[31:0] + 32'd1), S_RETIRE);
 
         // ---------------------------------------------------------------- internal registers
         S_RIR_1: begin
@@ -1650,15 +1650,15 @@
         S_PSTORE_1: begin a2 <= opv; pop(S_PSTORE_2); end
         S_PSTORE_2: begin a1 <= pop_w; read_addr(pop_w, S_PSTORE_3); end
         S_PSTORE_3: write_addr(a1, {m_rd[39:38], a2[37:0]}, S_RETIRE);
-        S_SETCDR_1: swrite(addr, setcdr(m_rd, op == 8'o146 ? 2'd1 : 2'd2), S_RETIRE);
-        S_MERGE_1: begin t0 <= m_rd; sread(addr, S_MERGE_2); end
-        S_MERGE_2: swrite(addr, setcdr(m_rd, wcdr(t0)), S_RETIRE);
+        S_SETCDR_1: fwrite(addr, setcdr(m_rd, op == 8'o146 ? 2'd1 : 2'd2), S_RETIRE);
+        S_MERGE_1: begin t0 <= m_rd; fread(addr, S_MERGE_2); end
+        S_MERGE_2: fwrite(addr, setcdr(m_rd, wcdr(t0)), S_RETIRE);
 
         // ---------------------------------------------------------------- %generic/%message-dispatch
         S_DISP_RETRY: begin set_pc(inst_pc); st <= S_RETIRE; end
         S_DISP_1: begin
           t0 <= stripcdr(m_rd);   // generic function
-          sread(fp + (op == 8'o052 ? 32'd3 : 32'd2), S_DISP_2);
+          fread(fp + (op == 8'o052 ? 32'd3 : 32'd2), S_DISP_2);
         end
         S_DISP_2: begin
           t1 <= stripcdr(m_rd);   // instance
@@ -1710,17 +1710,17 @@
           a3 <= mr_d;   // parameter
           if (!is_pc_type(wtype(t2))) err(E_GENERIC_SEARCH_ENTRY_NOT_PC, ka + 32'd1);
           else if (op == 8'o052) begin
-            if (wtype(mr_d) != DTP_NIL) swrite(fp + 32'd2, mr_d, S_DISP_JUMP);
+            if (wtype(mr_d) != DTP_NIL) fwrite(fp + 32'd2, mr_d, S_DISP_JUMP);
             else st <= S_DISP_JUMP;
-          end else sread(fp + 32'd2, S_DISP_10);
+          end else fread(fp + 32'd2, S_DISP_10);
         end
         S_DISP_10: begin
           a1 <= m_rd;
-          if (wtype(a3) != DTP_NIL) swrite(fp + 32'd2, a3, S_DISP_12);
-          else sread(fp + 32'd3, S_DISP_11);
+          if (wtype(a3) != DTP_NIL) fwrite(fp + 32'd2, a3, S_DISP_12);
+          else fread(fp + 32'd3, S_DISP_11);
         end
-        S_DISP_11: swrite(fp + 32'd2, m_rd, S_DISP_12);
-        S_DISP_12: swrite(fp + 32'd3, a1, S_DISP_JUMP);
+        S_DISP_11: fwrite(fp + 32'd2, m_rd, S_DISP_12);
+        S_DISP_12: fwrite(fp + 32'd3, a1, S_DISP_JUMP);
         S_DISP_JUMP: begin set_pc(cont_to_pc(t2)); st <= S_RETIRE; end
 
         S_JUMP_1: begin
