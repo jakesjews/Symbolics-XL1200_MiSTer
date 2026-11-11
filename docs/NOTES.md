@@ -1924,6 +1924,64 @@ tests ran over it (Nov 4, "The I/O chips against their manuals").  After a
 restart of the MiSTer the tap, the route and the proxy entry were there
 again from the script (seen Nov 10 2026, three days up; no ping that day).
 
+### Setting the address (Nov 10 2026)
+
+Genera 8.3 has no DHCP, BOOTP or RARP client; the address is static, and
+Genera's own two places hold it.  Tried on the MiSTer (build 48, a scratch
+copy of the prebuilt disk, tap0 over WiFi, the Mac as the other machine):
+
+- The FEP's `Set Network Address` line is the whole configuration.  Each
+  comma-separated entry is `interface:network|address;option=value;...`
+  (`network/namespaces.lisp`, `parse-primary-network-address`), and IP reads
+  the options `gateway` (or `gw`) and `mask` (`ip-tcp/ip-routing.lisp`): a
+  gateway named there becomes a temporary gateway host when the namespace
+  has none at that address.  `DEFAULT-INTERNET-GATEWAY` on the host object
+  is only read on a machine with more than one interface.  `mask` was not
+  tried.
+- `Edit File FEP7:>Hello.boot` in Genera, the line changed to
+  `Set Network Address CHAOS|1200,INTERNET|192.168.50.97;gateway=192.168.50.1`,
+  Control-X Control-S: "Written: FEP7:>Hello.boot.3".  After `Halt Machine`
+  and a restart of the core, `Hello` runs the newest version, the FEP takes
+  the line whole, and Genera answers ping at .97 and not at .92
+  (`sys:primary-network-address` holds the string).
+- Beyond the LAN: `(tcp:open-tcp-stream (net:parse-host "INTERNET|1.1.1.1")
+  80 nil)` connects with the gateway option, and Terminal (Select T,
+  `INTERNET|64.13.139.230`, N to 3600-LOGIN and SUPDUP, Y to TELNET) held a
+  telnet session with a public host.  With the address typed at the FEP
+  without the option, the same form failed (tried once, twelve seconds
+  after login).  With the option it also failed once at that point and
+  connected a minute later: Genera pings a gateway before it routes
+  through it and asks a silent one again every minute
+  (`*dead-gateway-ping-interval*`).
+- The namespace: at boot Genera notifies "The local host XL1200 did not
+  have address 192.168.50.97 on network INTERNET but it was specified in
+  the FEP.  The namespace needs to be fixed." and adds the address to its
+  host object for the session; everything above worked in that state.
+  `Edit Namespace Object Host XL1200` then shows both INTERNET addresses;
+  Mouse-R on the old one, `Remove this field`, `Save Object`, Y: "HOST
+  XL1200 saved on the Primary Namespace Server for Namespace STANDALONE".
+  The next two cold boots had no note: the saved world takes the changed
+  namespace files at boot.
+- FTP from the Mac (`curl`): the server answers 220 and takes `USER
+  lisp-machine` with no password; the working directory is
+  `>LISP-MACHINE>`, which doesn't exist, so paths are given whole.  A
+  directory listing (`-X "LIST >lispm>*.*.*"`), a fetch and a store all
+  work in active mode.  In passive mode the server answers 227 with a port
+  and refuses the connection to it; EPSV and EPRT are unknown commands.
+- An FTP connection before anyone has logged in at the console never gets
+  its 220: the server process logs in to the sys host itself, wants to type
+  out the init file's "Loading ..." line and stops in Output Hold, holding
+  the Automatic Login lock (`io/open.lisp`).  Every later FTP session ends
+  in "Automatic Login" behind it, and so did Zmacs' save of the Hello.boot.
+  Function 0 S (its background stream) and a key let it finish; the
+  console is then logged out.
+- After `Halt Machine` and Yes the picture stays Genera's, with "Machine
+  Halt" in the status line (screenshots after three of the four halts),
+  and after the first, `Hello` typed then changed nothing on the screen in
+  forty seconds; the core was started again each time.  To do.
+- At the FEP, `Boot` after `Show File FEP7:>Hello.boot` takes that file as
+  its default and runs the Hello.boot again; `Boot FEP7:>Boot.boot` then.
+
 ## RTL Ivory (`rtl/ivory/`)
 
 `ivory_cpu.sv` is a state machine that follows the C++ model function by

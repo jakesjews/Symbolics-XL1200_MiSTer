@@ -60,9 +60,8 @@ The disk's other worlds load at the FEP prompt after `Hello`, in place of
 - Flavors Statice: `Load World FEP7:>Genera-8-3-flavors-statice.ilod`, then
   `Start`
 
-Genera's network address on this disk is 192.168.50.92. On another network,
-type `Set Network Address CHAOS|1200,INTERNET|A.B.C.D` (a free address on
-your LAN; Insert types `|`) after `Hello` and before `Boot`, at every start.
+Genera's network address on this disk is 192.168.50.92;
+[Network](#network) has how to change it.
 
 Type `Halt Machine` in Genera before you switch cores or copy the image off
 the card.
@@ -107,19 +106,45 @@ Clock can be "Today":
 
 ## Network
 
-Genera's Ethernet goes out of the MiSTer's wired port; the main program from
-step 2 carries the frames, as for the Sun and NeXT cores, so nothing runs by
-hand. Genera needs an address on your LAN: the prebuilt disk has
-192.168.50.92 ([changing it](#the-prebuilt-disk)), and a disk you build gets
-one with `--internet A.B.C.D`. The OSD's Network option picks the port or
-turns it off. Genera answers ping and serves FTP (Genera 8.3 has no telnet
-server).
+Genera 8.3 joins your LAN through the MiSTer at an address you give it. Other
+machines can ping it and move files to and from it with FTP, and Genera's
+Terminal program opens telnet sessions on your LAN or beyond it.
 
-Over WiFi, set Network to `tap0` and add the
-[tap setup](docs/NOTES.md#wifi) to the MiSTer's `user-startup.sh`. Every
-XL1200 core has the same Ethernet address. The bridge is
-[tools/mister/Main_MiSTer-xl1200.patch](tools/mister/Main_MiSTer-xl1200.patch)
-until it is upstream.
+You need `MiSTer_xl1200` from [Setup](#setup) step 2, a free address on your
+LAN (Genera 8.3 has no DHCP) and your router's address.
+
+1. With a cable in the MiSTer, leave the OSD's Network option at `eth0`. Over
+   WiFi, set it to `tap0` and add the [tap setup](docs/NOTES.md#wifi), with
+   Genera's address in it, to the MiSTer's `user-startup.sh`.
+2. Start Genera and `Login Lisp-Machine`.
+3. `Edit File FEP7:>Hello.boot`.
+4. Change the `Set Network Address` line to
+   `Set Network Address CHAOS|1200,INTERNET|A.B.C.D;gateway=G.G.G.G`, with
+   Genera's address and your router's (Insert types `|`).
+5. Save with Control-X Control-S.
+6. Select L, `Halt Machine`, `Yes`, then start the core again and type
+   `Hello` and `Boot`.
+7. From another machine, `ping A.B.C.D`.
+8. Once, to stop the note "The namespace needs to be fixed" at boot:
+   `Edit Namespace Object Host XL1200`, right-click the old `INTERNET`
+   address, `Remove this field`, then type `Save Object` and `Y`.
+
+For one start only, type the line from step 4 at the FEP after `Hello`. A
+disk you build gets its address with `--internet A.B.C.D`.
+
+Using it:
+
+- FTP from another machine, in active mode, as `lisp-machine`:
+  `curl -P - -u lisp-machine:x "ftp://A.B.C.D/%3Elispm%3Ebank.lisp" -o bank.lisp`
+  fetches `>lispm>bank.lisp`, and
+  `curl -P - -u lisp-machine:x -T hello.text "ftp://A.B.C.D/%3Elispm%3Ehello.text"`
+  sends a file there.
+- Telnet from Genera: Select T, type the host as `INTERNET|A.B.C.D`, answer
+  N until it offers TELNET, then Y.
+
+How it works, and the bridge in the main program
+([tools/mister/Main_MiSTer-xl1200.patch](tools/mister/Main_MiSTer-xl1200.patch)
+until it is upstream): [docs/NOTES.md](docs/NOTES.md#network).
 
 ## Gotchas
 
@@ -130,17 +155,22 @@ until it is upstream.
 - Genera 8.3 doesn't accept dates after 1999: leave Clock at "28 years back" unless the world has the Y2K patch.
 - Save World shows "System Shutdown ..." with the clock stopped for several minutes; wait for "Saved to".
 - To compile files, log in first.
+- Log in at Genera's console before using FTP from another machine: a connection made earlier hangs, and file saves with it, until you press Function 0 S at the console.
+- Genera 8.3 has no telnet server; other machines reach it by FTP.
+- Every XL1200 core has the same Ethernet address, so one per LAN.
 
 ## Troubleshooting
 
 - "Unable to get time from the network or the calendar clock": Clock to "28 years back".
 - Genera's time is off by your time zone: `MiSTer_xl1200` from step 2 isn't running (`main=` in `MiSTer.ini`); MiSTer's own main program sends the clock as local time, and Genera reads it as GMT.
-- Genera asks for the date right after the MiSTer starts: it booted before MiSTer had the time from the network; type the date, or `Hello` and `Boot` again.
+- Genera asks for the date right after the MiSTer starts: it booted before MiSTer had the time from the network; type the date, or start the core again.
 - "This Lisp world has not been configured for use at the local site": the disk was built without `--standalone`.
 - "Unable to change site to Standalone. The directory >sys does not exist": step 3 of [Building a disk](#building-a-disk) hasn't been done on this disk.
 - A full GC freezes Genera: the paging file is smaller than physical memory; build the disk with `--blocks 240000`.
 - No picture on direct video: the display has to take an 80 MHz, 54 kHz signal.
-- Genera doesn't answer ping: a cable in the MiSTer's port, `MiSTer_xl1200` and its `MiSTer.ini` entry, an address on your LAN (the prebuilt disk's is 192.168.50.92).
+- Genera doesn't answer ping: `MiSTer_xl1200` and its `MiSTer.ini` entry, the Network option (`eth0` with a cable, `tap0` over WiFi), an address on your LAN (the prebuilt disk's is 192.168.50.92).
+- A connection beyond your LAN fails just after Genera starts: try again in a minute.
+- FTP connects but a transfer is refused: the client is in passive mode; use active mode.
 - No FEP prompt: a debug build's Debug line shows where it stopped, [docs/NOTES.md](docs/NOTES.md#debug-line).
 
 Building the core and running the tests: [docs/building.md](docs/building.md).

@@ -2,7 +2,14 @@
 
 In the order they'll be done. Bugs come first whenever they turn up.
 
-1. A compatibility pass, in progress ([NOTES.md](NOTES.md#compatibility)
+1. After `Halt Machine` the FEP doesn't show: the picture stays Genera's
+   (Nov 10 2026, build 48, every halt looked at), and `Hello` typed after
+   one of them changed nothing on the screen
+   ([NOTES.md](NOTES.md#setting-the-address-nov-10-2026)), so the core has
+   to be started again where a real XL1200 would take `Continue`, or
+   `Hello` and `Boot`. Find out whether the FEP is running and not drawing,
+   or not running.
+2. A compatibility pass, in progress ([NOTES.md](NOTES.md#compatibility)
    has what passed: Zmacs, Document Examiner, Inspector, Debugger, Peek, a
    full GC, Save World and booting the saved world, the MacIvory animation
    world's programs, ephemeral GC flips, the number types through the FPA,
@@ -68,23 +75,13 @@ In the order they'll be done. Bugs come first whenever they turn up.
      and loads the tests, the RTL runs them.
    - Gabriel and fib as speed regressions: cycle counts in Verilator, times
      on the MiSTer.
-2. Network, what's left after the wired port: the bridge into MiSTer's main
+3. Network, what's left after the wired port: the bridge into MiSTer's main
    program upstream (a pull request); an Ethernet address per core. The
-   machine's address is the user's to set with Genera's own tools (Genera
-   8.3 has no DHCP, BOOTP or RARP client, and none is planned here, nor a
-   tool that rewrites the image): the `Set Network Address
-   CHAOS|1200,INTERNET|A.B.C.D` line, typed at the FEP after Hello (`|` is
-   Insert on the core; checked Nov 2 2026, Genera answered at the typed
-   address only and noted under the herald that the namespace still had
-   the old one) or changed in `FEP7:>Hello.boot`, and the namespace, which
-   the XL1200 serves itself and keeps in files on the disk: the host's
-   INTERNET address with `Edit Namespace Object`, other hosts with `Create
-   Namespace Object`, a gateway beyond the LAN as the host's
-   `DEFAULT-INTERNET-GATEWAY` user property (`ip-tcp/ip-routing.lisp`).
-   Left: go through those once on the MiSTer (a changed address after a
-   cold boot, a second host, a gateway) and put the steps that worked in
-   the README, in place of its "at every start".
-3. The RS-232 port: DUSCC channel B (Genera's serial unit 1, AM9517
+   address, the gateway and WiFi are the user's to set, as the README's
+   Network section has them
+   ([NOTES.md](NOTES.md#setting-the-address-nov-10-2026)); no DHCP client
+   and no tool that rewrites the image.
+4. The RS-232 port: DUSCC channel B (Genera's serial unit 1, AM9517
    channels 2 and 3, interrupt bits 16 and 17) on MiSTer's UART, so
    Genera's serial streams work; today output on it never completes and a
    `close` waits forever ([NOTES.md](NOTES.md#the-io-chips-against-their-manuals-nov-4-2026)).
@@ -92,7 +89,7 @@ In the order they'll be done. Bugs come first whenever they turn up.
    the ready bits driving the two DMA channels, end of count and status
    interrupts, the modem lines, the chip's reset values and its
    write-1-to-clear status registers (about 400-700 ALMs, estimated).
-4. Speed, only if the machine is really behind: measured after each step
+5. Speed, only if the machine is really behind: measured after each step
    (`PROFILE=1` on `sim/system` counts cycles by state) and against the
    published times. Standing (Oct 2026, build 30 at 50 MHz): `(fib 30)`
    2.80 s against the XL1201's 4.1 s; Gabriel 6.56x the 3600 overall, the
