@@ -162,7 +162,11 @@ The FEP kernel has no source on the CD; this is its code, disassembled
   nothing else (as Genera does: it sets the bound and the limit in an order
   that keeps the cache consistent).
 - RTL: `sc_data` (one M10K, read combinationally from a registered address),
-  `stk_cached` and `m_cached`, the `mem_rd`/`mem_wr` tasks (a `through`
+  `stk_cached` and `m_cached` (the memory stage's decision, ahead of the
+  memory request: both tests in one level of five-bit groups, the kind of
+  access selected inside each; with the selection after two 25-bit
+  reductions the fitter used about 200 more ALMs, on registers it
+  duplicated for timing), the `mem_rd`/`mem_wr` tasks (a `through`
   flag on writes; `fread`/`fwrite` for a stack reference, `sread`/`swrite`
   for an address from a register), `S_PUSH` (one cycle in the cache),
   `S_SC_DUMP*` and `S_SC_FILL*`; a fault during a dump or refill is halt

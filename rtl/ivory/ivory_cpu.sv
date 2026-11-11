@@ -250,9 +250,18 @@ module ivory_cpu
   logic        m_trans;               // the page accessed has transport traps enabled
   word_t       m_wd, m_rd;
   assign sc_q_m = sc_data2[m_addr[6:0]];
-  // a memory cycle inside the window, or a stack reference not under it
+  // A memory cycle inside the window (offset bits 31:7 all zero), or a
+  // stack reference not under it (not all one).  One level of five-bit
+  // groups serves both, the kind of access selected inside each (this is
+  // ahead of the memory request): a group answers "has a one" for a memory
+  // cycle and "has a zero" for a stack reference, and the access is the
+  // cache's when any group's answer equals m_stk.
   wire [31:0] m_off = m_addr - stack_cache_lower_bound;
-  assign m_cached = !m_phys && !m_bypass && (m_stk ? !(&m_off[31:7]) : !(|m_off[31:7]));
+  logic [4:0] m_grp;
+  always_comb
+    for (int g = 0; g < 5; g++)
+      m_grp[g] = m_stk ? !(&m_off[7 + 5 * g +: 5]) : |m_off[7 + 5 * g +: 5];
+  assign m_cached = !m_phys && !m_bypass && ((|m_grp) == m_stk);
   assign mem_req = st == S_MEM_W && (m_first ? !m_cached || (m_we && m_through) : m_wait);
   assign mem_we = m_we;
   assign mem_addr = m_addr;
