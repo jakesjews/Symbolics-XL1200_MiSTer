@@ -19,7 +19,10 @@
 2. The core is `output_files/XL1200.rbf`.
 
 **The design fills about 84% of the FPGA, so some fitter seeds don't fit or
-miss timing**: change `SEED` in `XL1200.qsf` and build again.
+miss timing**: change `SEED` in `XL1200.qsf` and build again. The seed
+there is the release's, which was compiled with `build-mac.sh`; the same
+seed gives another result in Docker (seed 4 doesn't route there), so with
+`build.sh` expect to try a few.
 
 ## Tests
 

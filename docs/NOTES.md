@@ -2549,7 +2549,10 @@ the ALU's rotate) against the shared rotate unit, roughly 400 ALMs.
   about 170 ALMs fewer, the registers the fitter had duplicated for
   timing; of its seeds 5, 3 and 1 could not route and 9 was stopped at an
   hour before 4 came in, five running at once by then (four on Ubuntu,
-  one on the Mac) with the limit raised to an hour and a half. By
+  one on the Mac) with the limit raised to an hour and a half. The same
+  seed 4 in Docker could not route (Quartus for Windows on the Mac and for
+  Linux in the image give different results for one seed), so `build.sh`
+  doesn't reproduce this release from the seed in `XL1200.qsf`. By
   synthesis the design is 68,565 logic cells against build 48's 68,536.
   On the MiSTer: the Halt Machine section's test.
 - A DDR3 burst cut short (e.g. by resetting the machine when a file download
